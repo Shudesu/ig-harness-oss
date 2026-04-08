@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LINE Harness</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
+      background-size: 600% 600%;
+      animation: gradientShift 6s ease infinite;
+    }
+
+    @keyframes gradientShift {
+      0%   { background-position: 0% 50%; }
+      20%  { background-position: 50% 0%; }
+      40%  { background-position: 100% 50%; }
+      60%  { background-position: 50% 100%; }
+      80%  { background-position: 0% 80%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.6;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .blob-1 {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, #ff6b6b, #ee5a24);
+      top: -150px; left: -80px;
+      animation: blob1 8s ease-in-out infinite;
+    }
+    .blob-2 {
+      width: 450px; height: 450px;
+      background: radial-gradient(circle, #48dbfb, #0abde3);
+      top: 50%; right: -120px;
+      animation: blob2 10s ease-in-out infinite;
+    }
+    .blob-3 {
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, #feca57, #ff9f43);
+      bottom: -100px; left: 30%;
+      animation: blob3 9s ease-in-out infinite;
+    }
+    .blob-4 {
+      width: 350px; height: 350px;
+      background: radial-gradient(circle, #ff9ff3, #f368e0);
+      top: 20%; left: 60%;
+      animation: blob4 7s ease-in-out infinite;
+    }
+    @keyframes blob1 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(120px, 80px) scale(1.15); }
+      66%      { transform: translate(-60px, 120px) scale(0.9); }
+    }
+    @keyframes blob2 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(-100px, -80px) scale(1.2); }
+      66%      { transform: translate(80px, -100px) scale(0.85); }
+    }
+    @keyframes blob3 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(80px, -60px) scale(1.1); }
+      66%      { transform: translate(-100px, -40px) scale(0.95); }
+    }
+    @keyframes blob4 {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(-70px, 90px) scale(1.1); }
+      66%      { transform: translate(90px, -70px) scale(0.9); }
+    }
+
+    .window-container {
+      width: 92vw;
+      max-width: 1200px;
+      height: 82vh;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.35), 0 8px 32px rgba(0,0,0,0.2);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* PHASE 1: Terminal */
+    #terminal-phase {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    #terminal-phase.fade-out {
+      opacity: 0;
+      transform: scale(0.97);
+      pointer-events: none;
+    }
+
+    .terminal-titlebar {
+      background: #f0f0f0;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #ddd;
+      flex-shrink: 0;
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-red    { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green  { background: #27c93f; }
+    .terminal-title {
+      flex: 1; text-align: center;
+      font-size: 12px; color: #999;
+      margin-right: 36px;
+    }
+
+    .terminal-body {
+      flex: 1;
+      padding: 24px 32px;
+      overflow: hidden;
+      color: #333;
+      font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+      font-size: 24px;
+      line-height: 1.6;
+    }
+
+    .terminal-inner {
+      transition: transform 0.35s ease;
+    }
+
+    .t-line { display: flex; align-items: baseline; flex-wrap: wrap; }
+    .t-green  { color: #16a34a; }
+    .t-cyan   { color: #0891b2; }
+    .t-dim    { color: #b0b0b0; }
+    .t-white  { color: #111; font-weight: 600; }
+
+    .cursor {
+      display: inline-block;
+      width: 14px; height: 26px;
+      background: #111;
+      margin-left: 1px;
+      vertical-align: middle;
+      animation: blink 1s step-end infinite;
+    }
+    .cursor.hidden { display: none; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    .text-logo {
+      font-size: 36px;
+      font-weight: 800;
+      color: #06C755;
+      margin: 10px 0;
+      letter-spacing: -0.5px;
+    }
+
+    .completion-box {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-top: 8px;
+      background: #f9fafb;
+    }
+    .completion-box .box-title {
+      color: #7c3aed;
+      font-size: 18px; font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.06em;
+    }
+    .completion-box .box-row {
+      font-size: 20px; margin: 4px 0;
+    }
+
+    .success-line {
+      color: #16a34a;
+      font-size: 24px; font-weight: 600;
+      margin-top: 14px;
+    }
+
+    /* Floating CTA */
+    .floating-cta {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      z-index: 200;
+      opacity: 0;
+      transform: scale(0.85);
+      transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(6px);
+    }
+    .floating-cta.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .floating-cta-text {
+      font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+      font-size: 48px;
+      font-weight: 600;
+      text-align: center;
+      background: linear-gradient(135deg, #06C755, #34d399, #06C755);
+      background-size: 200% 200%;
+      animation: ctaGradient 8s ease infinite;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+    @keyframes ctaGradient {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    .floating-cta-sub {
+      font-size: 20px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.85);
+      margin-top: -12px;
+      letter-spacing: 0.5px;
+    }
+    .floating-cta-cmd {
+      background: rgba(0,0,0,0.8);
+      border: 3px solid rgba(255,255,255,0.25);
+      border-radius: 16px;
+      padding: 18px 40px;
+      font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .floating-cta-cmd .cmd-dollar { color: #a6e3a1; }
+    .floating-cta-cmd .cmd-npx { color: #feca57; }
+    .floating-cta-cmd .cmd-name { color: #48dbfb; }
+
+    /* PHASE 2: Dashboard */
+    #dashboard-phase {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s ease;
+      display: flex;
+      background: #f8fafc;
+      overflow: hidden;
+    }
+    #dashboard-phase.fade-in {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .db-sidebar {
+      width: 200px; min-width: 200px;
+      background: #fff;
+      border-right: 1px solid #e5e7eb;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .db-logo {
+      padding: 14px 14px 12px;
+      display: flex; align-items: center; gap: 8px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .db-logo-icon {
+      width: 28px; height: 28px;
+      background: #06C755; border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-weight: 800; font-size: 14px;
+    }
+    .db-logo-text { font-size: 13px; font-weight: 700; color: #111; }
+
+    .db-account { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+    .db-account-label { font-size: 10px; color: #9ca3af; margin-bottom: 2px; }
+    .db-account-name {
+      font-size: 12px; font-weight: 600; color: #374151;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .db-account-chevron { color: #9ca3af; font-size: 10px; }
+
+    .db-nav { flex: 1; padding: 6px 0; overflow-y: auto; }
+    .nav-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 14px; font-size: 12px; color: #374151;
+    }
+    .nav-item.active { background: #f0fdf4; color: #16a34a; font-weight: 600; }
+    .nav-item .nav-icon { width: 14px; text-align: center; font-size: 12px; }
+    .nav-section {
+      padding: 10px 14px 3px; font-size: 9px; font-weight: 600;
+      color: #9ca3af; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .db-sidebar-footer {
+      padding: 8px 14px; border-top: 1px solid #f3f4f6;
+      font-size: 10px; color: #d1d5db;
+    }
+
+    .db-main { flex: 1; overflow-y: auto; padding: 20px 24px; }
+    .db-main-title { font-size: 18px; font-weight: 700; color: #111; margin-bottom: 4px; }
+    .db-main-subtitle { font-size: 12px; color: #9ca3af; margin-bottom: 16px; }
+
+    .kpi-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin-bottom: 20px;
+    }
+    .kpi-card {
+      background: #fff; border: 1px solid #e5e7eb;
+      border-radius: 10px; padding: 14px;
+    }
+    .kpi-top { display: flex; align-items: flex-start; justify-content: space-between; }
+    .kpi-icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 15px;
+    }
+    .kpi-value { font-size: 22px; font-weight: 700; color: #111; letter-spacing: -0.5px; }
+    .kpi-label { font-size: 11px; color: #6b7280; margin-top: 6px; }
+    .kpi-link { font-size: 10px; text-decoration: none; font-weight: 500; margin-top: 4px; display: block; }
+
+    .qa-title { font-size: 13px; font-weight: 600; color: #111; margin-bottom: 8px; }
+    .qa-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .qa-card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+      padding: 10px 12px; font-size: 12px; font-weight: 500; color: #374151;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .qa-card .qa-icon { font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+<div class="blob blob-4"></div>
+
+<div class="window-container">
+  <!-- PHASE 1 -->
+  <div id="terminal-phase">
+    <div class="terminal-titlebar">
+      <div class="dot dot-red"></div>
+      <div class="dot dot-yellow"></div>
+      <div class="dot dot-green"></div>
+      <div class="terminal-title">zsh</div>
+    </div>
+    <div class="terminal-body" id="terminal-body">
+      <div class="terminal-inner" id="terminal-inner"></div>
+    </div>
+  </div>
+
+  <!-- Floating CTA -->
+  <div class="floating-cta" id="floating-cta">
+    <div class="floating-cta-text">コピペ1回で全自動セットアップ！</div>
+    <div class="floating-cta-cmd"><span class="cmd-dollar">$ </span><span class="cmd-npx">npx</span> <span class="cmd-name">create-line-harness</span></div>
+  </div>
+
+  <!-- PHASE 2 -->
+  <div id="dashboard-phase">
+    <aside class="db-sidebar">
+      <div class="db-logo">
+        <div class="db-logo-icon">H</div>
+        <div class="db-logo-text">LINE Harness</div>
+      </div>
+      <div class="db-account">
+        <div class="db-account-label">アカウント</div>
+        <div class="db-account-name">My LINE Bot <span class="db-account-chevron">▾</span></div>
+      </div>
+      <nav class="db-nav">
+        <div class="nav-item active"><span class="nav-icon">🏠</span> ダッシュボード</div>
+        <div class="nav-item"><span class="nav-icon">👥</span> 友だち管理</div>
+        <div class="nav-item"><span class="nav-icon">💬</span> 個別チャット</div>
+        <div class="nav-section">配信</div>
+        <div class="nav-item"><span class="nav-icon">🔄</span> シナリオ配信</div>
+        <div class="nav-item"><span class="nav-icon">📢</span> 一斉配信</div>
+        <div class="nav-item"><span class="nav-icon">📄</span> テンプレート</div>
+        <div class="nav-section">分析</div>
+        <div class="nav-item"><span class="nav-icon">📈</span> 流入経路</div>
+        <div class="nav-item"><span class="nav-icon">🎯</span> CV計測</div>
+        <div class="nav-section">自動化</div>
+        <div class="nav-item"><span class="nav-icon">⚡</span> オートメーション</div>
+      </nav>
+      <div class="db-sidebar-footer">v0.8.0</div>
+    </aside>
+    <main class="db-main">
+      <div class="db-main-title">ダッシュボード</div>
+      <div class="db-main-subtitle">My LINE Bot の管理画面</div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:#f0fdf4;">👥</div>
+            <div class="kpi-value">128</div>
+          </div>
+          <div class="kpi-label">友だち数</div>
+          <a class="kpi-link" style="color:#06C755;">詳細を見る →</a>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:#eff6ff;">🔄</div>
+            <div class="kpi-value">5</div>
+          </div>
+          <div class="kpi-label">アクティブシナリオ</div>
+          <a class="kpi-link" style="color:#3B82F6;">詳細を見る →</a>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:#f5f3ff;">📢</div>
+            <div class="kpi-value">23</div>
+          </div>
+          <div class="kpi-label">配信数（合計）</div>
+          <a class="kpi-link" style="color:#8B5CF6;">詳細を見る →</a>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:#fffbeb;">📄</div>
+            <div class="kpi-value">12</div>
+          </div>
+          <div class="kpi-label">テンプレート数</div>
+          <a class="kpi-link" style="color:#F59E0B;">詳細を見る →</a>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:#fef2f2;">⚡</div>
+            <div class="kpi-value">3</div>
+          </div>
+          <div class="kpi-label">オートメーション</div>
+          <a class="kpi-link" style="color:#EF4444;">詳細を見る →</a>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-top">
+            <div class="kpi-icon" style="background:#ecfdf5;">🎯</div>
+            <div class="kpi-value">2</div>
+          </div>
+          <div class="kpi-label">スコアリングルール</div>
+          <a class="kpi-link" style="color:#10B981;">詳細を見る →</a>
+        </div>
+      </div>
+      <div class="qa-title">クイックアクション</div>
+      <div class="qa-grid">
+        <div class="qa-card"><span class="qa-icon">👥</span> 友だち管理</div>
+        <div class="qa-card"><span class="qa-icon">🔄</span> シナリオ配信</div>
+        <div class="qa-card"><span class="qa-icon">📢</span> 一斉配信</div>
+        <div class="qa-card"><span class="qa-icon">💬</span> チャット</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var termBody = document.getElementById('terminal-body');
+  var inner    = document.getElementById('terminal-inner');
+  var phase1   = document.getElementById('terminal-phase');
+  var phase2   = document.getElementById('dashboard-phase');
+
+  var SPINNER_FRAMES = ['\u280B','\u2819','\u2839','\u2838','\u283C','\u2834','\u2826','\u2827','\u2807','\u280F'];
+
+  function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  // Scroll: keep the last line of content at the vertical center of terminal body.
+  // Before content reaches center, no shift (stays at top).
+  function adjustScroll() {
+    var bodyH = termBody.clientHeight;
+    var contentH = inner.scrollHeight;
+    var centerY = bodyH / 2;
+
+    if (contentH > centerY) {
+      var shift = contentH - centerY;
+      inner.style.transform = 'translateY(-' + shift + 'px)';
+    } else {
+      inner.style.transform = 'translateY(0)';
+    }
+  }
+
+  function appendRaw(html) {
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    inner.appendChild(div);
+    adjustScroll();
+    return div;
+  }
+
+  async function spinnerStep(message, durationMs) {
+    var line = document.createElement('div');
+    line.className = 't-line';
+    inner.appendChild(line);
+
+    var spinEl = document.createElement('span');
+    spinEl.className = 't-green';
+    spinEl.textContent = SPINNER_FRAMES[0];
+    line.appendChild(spinEl);
+
+    var msg = document.createElement('span');
+    msg.style.marginLeft = '8px';
+    msg.textContent = message;
+    line.appendChild(msg);
+
+    adjustScroll();
+
+    var frame = 0;
+    var iv = setInterval(function() {
+      frame = (frame + 1) % SPINNER_FRAMES.length;
+      spinEl.textContent = SPINNER_FRAMES[frame];
+    }, 80);
+
+    await sleep(durationMs);
+    clearInterval(iv);
+
+    spinEl.textContent = '\u2713';
+    return { line: line, msgEl: msg };
+  }
+
+  // Add a pipe-connected step line: │ before, ├─ or └─ for the step
+  function pipeLine(text, isLast) {
+    var prefix = isLast ? '\u2514\u2500 ' : '\u251C\u2500 ';
+    return '<span class="t-dim">' + prefix + '</span>' + text;
+  }
+
+  function pipeBlank() {
+    appendRaw('<span class="t-dim">\u2502</span>');
+  }
+
+  async function runAnimation() {
+    await sleep(400);
+
+    // 1. Prompt + typewriter
+    var promptLine = document.createElement('div');
+    promptLine.className = 't-line';
+    inner.appendChild(promptLine);
+    promptLine.innerHTML = '<span class="t-green">$ </span>';
+
+    var cmdSpan = document.createElement('span');
+    cmdSpan.className = 't-white';
+    promptLine.appendChild(cmdSpan);
+
+    var cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    promptLine.appendChild(cursor);
+
+    var cmd = 'npx create-line-harness';
+    for (var i = 0; i < cmd.length; i++) {
+      cmdSpan.textContent += cmd[i];
+      await sleep(40 + Math.random() * 25);
+    }
+    cursor.className = 'cursor hidden';
+    await sleep(300);
+
+    // 2. Text logo
+    appendRaw('');
+    var logo = document.createElement('div');
+    logo.className = 'text-logo';
+    logo.textContent = 'LINE Harness';
+    inner.appendChild(logo);
+    adjustScroll();
+    await sleep(400);
+
+    // 3. Steps with │ pipe lines
+    var s3 = await spinnerStep('\u74b0\u5883\u30c1\u30a7\u30c3\u30af\u4e2d\u2026', 350);
+    s3.msgEl.textContent = ' \u74b0\u5883\u30c1\u30a7\u30c3\u30af\u5b8c\u4e86';
+    adjustScroll();
+
+    pipeBlank();
+
+    var s4 = await spinnerStep('Cloudflare \u8a8d\u8a3c\u4e2d\u2026', 400);
+    s4.msgEl.textContent = ' Cloudflare \u8a8d\u8a3c\u6e08\u307f';
+    adjustScroll();
+
+    pipeBlank();
+    appendRaw(pipeLine('<span class="t-dim">Messaging API  </span><span class="t-white">2006841275</span>', false));
+    await sleep(80);
+    appendRaw(pipeLine('<span class="t-dim">Channel Secret  </span><span class="t-dim">a4f8\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cfe3b1</span>', false));
+    await sleep(80);
+    appendRaw(pipeLine('<span class="t-dim">Access Token   </span><span class="t-dim">xJ9k\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf\u25cfQw==</span>', false));
+    await sleep(80);
+    appendRaw(pipeLine('<span class="t-dim">LINE Login     </span><span class="t-white">2006841276</span>', false));
+    await sleep(150);
+
+    pipeBlank();
+
+    var s6 = await spinnerStep('D1 \u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u4f5c\u6210\u4e2d\u2026', 500);
+    s6.msgEl.textContent = ' D1 \u30c7\u30fc\u30bf\u30d9\u30fc\u30b9\u4f5c\u6210\u5b8c\u4e86';
+    adjustScroll();
+
+    pipeBlank();
+
+    var s7 = await spinnerStep('Worker \u30c7\u30d7\u30ed\u30a4\u4e2d\u2026', 600);
+    s7.msgEl.innerHTML = ' Worker \u30c7\u30d7\u30ed\u30a4\u5b8c\u4e86';
+    appendRaw(pipeLine('<span class="t-cyan">https://line-harness.my-bot.workers.dev</span>', false));
+    adjustScroll();
+
+    pipeBlank();
+
+    var s8 = await spinnerStep('\u7ba1\u7406\u753b\u9762\u30c7\u30d7\u30ed\u30a4\u4e2d\u2026', 600);
+    s8.msgEl.textContent = ' \u7ba1\u7406\u753b\u9762\u30c7\u30d7\u30ed\u30a4\u5b8c\u4e86';
+    adjustScroll();
+    await sleep(100);
+
+    pipeBlank();
+
+    appendRaw(pipeLine('<span class="t-dim">Webhook  </span><span class="t-cyan">https://line-harness.my-bot.workers.dev/webhook</span>', false));
+    await sleep(80);
+    appendRaw(pipeLine('<span class="t-dim">\u53cb\u3060\u3061\u8ffd\u52a0 </span><span class="t-cyan">https://line-harness.my-bot.workers.dev/auth/line</span>', false));
+    await sleep(80);
+    appendRaw(pipeLine('<span class="t-dim">\u7ba1\u7406\u753b\u9762  </span><span class="t-cyan">https://line-harness-admin.pages.dev</span>', true));
+    adjustScroll();
+    await sleep(300);
+
+    appendRaw('');
+    var done = document.createElement('div');
+    done.className = 'success-line';
+    done.textContent = 'LINE Harness \u3092\u4f7f\u3044\u59cb\u3081\u307e\u3057\u3087\u3046 \ud83c\udf89';
+    inner.appendChild(done);
+    adjustScroll();
+
+    await sleep(600);
+
+    // Transition to dashboard
+    phase1.classList.add('fade-out');
+    await sleep(400);
+    phase1.style.display = 'none';
+    phase2.classList.add('fade-in');
+
+    await sleep(500);
+    document.getElementById('floating-cta').classList.add('visible');
+  }
+
+  runAnimation().catch(console.error);
+})();
+</script>
+</body>
+</html>

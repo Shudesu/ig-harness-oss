@@ -1,0 +1,22 @@
+name = "ig-harness"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+workers_dev = true
+account_id = "YOUR_ACCOUNT_ID"
+
+# Static assets disabled for now — admin UI deployed separately
+# [assets]
+# directory = "./public"
+# not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "instagram-harness"
+database_id = "YOUR_D1_DATABASE_ID"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "instagram-harness-images"
+
+[triggers]
+crons = ["*/5 * * * *"]

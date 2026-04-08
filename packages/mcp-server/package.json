@@ -1,0 +1,22 @@
+{
+  "name": "@ig-harness/mcp-server",
+  "version": "0.3.0",
+  "type": "module",
+  "bin": {
+    "instagram-harness-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@ig-harness/sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3"
+  }
+}

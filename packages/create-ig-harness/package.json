@@ -1,0 +1,45 @@
+{
+  "name": "create-ig-harness",
+  "version": "0.3.0",
+  "description": "Set up Instagram Harness — AI-operated Instagram CRM — with one command",
+  "type": "module",
+  "bin": {
+    "create-ig-harness": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "keywords": [
+    "instagram",
+    "meta",
+    "crm",
+    "harness",
+    "cloudflare",
+    "workers",
+    "mcp",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shudesu/ig-harness.git",
+    "directory": "packages/create-ig-harness"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "execa": "^9.5.2",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

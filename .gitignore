@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+.wrangler/
+.vercel/
+.env
+.env.local
+*.log
+.DS_Store
+.mcp.json
+*.toml.bak
+.env.production
+.env.staging
+apps/web/out/
+apps/worker/dist/
