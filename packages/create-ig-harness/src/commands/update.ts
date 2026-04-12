@@ -3,17 +3,21 @@ import pc from "picocolors";
 import { existsSync, readFileSync } from "node:fs";
 import { ensureAuth } from "../steps/auth.js";
 import { wrangler } from "../lib/wrangler.js";
+import { deployWorker } from "../steps/deploy-worker.js";
 import { join } from "node:path";
 import { execa } from "execa";
 
-interface SetupState {
+interface DeployedState {
   apiKey?: string;
   workerUrl?: string;
   adminUrl?: string;
-  completedSteps: string[];
+  workerName?: string;
+  d1DatabaseId?: string;
+  d1DatabaseName?: string;
+  accountId?: string;
 }
 
-function loadSetupState(repoDir: string): SetupState | null {
+function loadDeployedState(repoDir: string): DeployedState | null {
   // After a successful setup the state file is deleted, so we look for a
   // persisted "deployed" state alongside the repo instead.
   const path = join(repoDir, ".ig-harness-deployed.json");
@@ -32,13 +36,15 @@ export async function runUpdate(repoDir: string): Promise<void> {
 
   await ensureAuth();
 
+  const deployedState = loadDeployedState(repoDir);
   const s = p.spinner();
 
-  // Run pending migrations
+  // Run pending migrations against the user's actual D1 (use saved name)
+  const dbName = deployedState?.d1DatabaseName ?? "ig-harness";
   s.start("マイグレーション確認中...");
   try {
     await wrangler(
-      ["d1", "migrations", "apply", "ig-harness", "--remote"],
+      ["d1", "migrations", "apply", dbName, "--remote"],
       { cwd: join(repoDir, "packages/db") },
     );
     s.stop("マイグレーション完了");
@@ -46,14 +52,31 @@ export async function runUpdate(repoDir: string): Promise<void> {
     s.stop("マイグレーション完了（変更なし）");
   }
 
-  // Redeploy Worker (uses the committed wrangler.toml which should have correct IDs)
+  // Redeploy Worker. The committed wrangler.toml is a TEMPLATE with our dev
+  // bindings, so we MUST overwrite it with the user's saved D1/R2/account
+  // bindings before deploying. Falls back to a plain `wrangler deploy` only
+  // when no deployed state is available (legacy installs from before this
+  // file was written).
   s.start("Worker 再デプロイ中...");
-  await wrangler(["deploy"], { cwd: join(repoDir, "apps/worker") });
+  if (
+    deployedState?.workerName &&
+    deployedState?.d1DatabaseId &&
+    deployedState?.d1DatabaseName &&
+    deployedState?.accountId
+  ) {
+    await deployWorker({
+      repoDir,
+      d1DatabaseId: deployedState.d1DatabaseId,
+      d1DatabaseName: deployedState.d1DatabaseName,
+      workerName: deployedState.workerName,
+      accountId: deployedState.accountId,
+    });
+  } else {
+    await wrangler(["deploy"], { cwd: join(repoDir, "apps/worker") });
+  }
   s.stop("Worker 再デプロイ完了");
 
   // Rebuild and redeploy Admin UI
-  // Read the admin project name from the deployed state if available
-  const deployedState = loadSetupState(repoDir);
   const webDir = join(repoDir, "apps/web");
 
   s.start("Admin UI 再デプロイ中...");

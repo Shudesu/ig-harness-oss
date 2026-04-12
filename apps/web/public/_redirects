@@ -1,1 +1,7 @@
-
+# Static export uses generateStaticParams() which only emits /campaigns/_.html
+# for the dynamic [id] route. Without these rewrites, direct loads of
+# /campaigns/<uuid> 404. Serve the placeholder shell at status 200 — the
+# client component reads useParams() from the URL at runtime.
+/campaigns/new /campaigns/new.html 200
+/campaigns /campaigns.html 200
+/campaigns/:id /campaigns/_.html 200

@@ -10,66 +10,63 @@ export function registerManageEngagementGates(server: McpServer): void {
       action: z
         .enum(["list", "create", "get", "update", "delete", "list_deliveries"])
         .describe("Action to perform"),
-      gateId: z
+      gate_id: z
         .string()
         .optional()
         .describe("Engagement gate ID (required for get, update, delete, list_deliveries)"),
       name: z.string().optional().describe("Gate name (required for create, optional for update)"),
-      triggerType: z
-        .enum(["comment_on_post", "dm_keyword", "story_reply", "mention"])
+      trigger_type: z
+        .enum(["comment_on_post", "dm_keyword", "story_mention"])
         .optional()
         .describe("Trigger type (required for create)"),
-      targetPostId: z
+      target_post_id: z
         .string()
         .nullable()
         .optional()
         .describe("Target Instagram post/media ID (when trigger is comment_on_post)"),
-      triggerKeyword: z
+      trigger_keyword: z
         .string()
         .nullable()
         .optional()
         .describe("Keyword that activates the gate"),
-      initialDmText: z
+      initial_dm_text: z
         .string()
         .optional()
         .describe("Initial DM text sent when gate triggers (required for create)"),
-      followReminderDmText: z
+      initial_dm_button_label: z
+        .string()
+        .optional()
+        .describe("Button label on initial CTA DM (defaults to '特典を受け取る')"),
+      follow_reminder_dm_text: z
         .string()
         .optional()
         .describe("Follow reminder DM text (required for create)"),
-      rewardDmText: z
+      follow_reminder_button_label: z
+        .string()
+        .optional()
+        .describe("Button label on follow reminder DM (defaults to 'フォローしたよ')"),
+      reward_dm_text: z
         .string()
         .optional()
         .describe("Reward DM text sent after follow verified (required for create)"),
-      requireFollow: z
-        .boolean()
-        .optional()
-        .describe("Whether follow is required before reward"),
-      initialButtonLabel: z
+      reward_url: z
         .string()
         .nullable()
         .optional()
-        .describe("Button label on initial DM"),
-      followReminderButtonLabel: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Button label on follow reminder DM"),
-      rewardButtonLabel: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Button label on reward DM"),
-      rewardUrl: z
-        .string()
-        .nullable()
-        .optional()
-        .describe("Reward URL (link attached to reward DM)"),
-      maxLoops: z
+        .describe("Reward URL appended to reward DM (use a LINE Harness tracked link with ?ig=<IGSID> for cross-platform linking)"),
+      require_follow: z
         .number()
         .int()
+        .min(0)
+        .max(1)
         .optional()
-        .describe("Maximum follow-reminder loops before giving up"),
+        .describe("Whether follow is required before reward (1=required, 0=skip check)"),
+      max_loops: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Maximum follow-reminder loops before dropping (0 = unlimited)"),
       status: z
         .enum(["active", "paused", "archived"])
         .optional()
@@ -77,20 +74,19 @@ export function registerManageEngagementGates(server: McpServer): void {
     },
     async ({
       action,
-      gateId,
+      gate_id,
       name,
-      triggerType,
-      targetPostId,
-      triggerKeyword,
-      initialDmText,
-      followReminderDmText,
-      rewardDmText,
-      requireFollow,
-      initialButtonLabel,
-      followReminderButtonLabel,
-      rewardButtonLabel,
-      rewardUrl,
-      maxLoops,
+      trigger_type,
+      target_post_id,
+      trigger_keyword,
+      initial_dm_text,
+      initial_dm_button_label,
+      follow_reminder_dm_text,
+      follow_reminder_button_label,
+      reward_dm_text,
+      reward_url,
+      require_follow,
+      max_loops,
       status,
     }) => {
       try {
@@ -117,28 +113,28 @@ export function registerManageEngagementGates(server: McpServer): void {
 
         if (action === "create") {
           if (!name) throw new Error("name is required for create");
-          if (!triggerType) throw new Error("triggerType is required for create");
-          if (!initialDmText) throw new Error("initialDmText is required for create");
-          if (!followReminderDmText)
-            throw new Error("followReminderDmText is required for create");
-          if (!rewardDmText) throw new Error("rewardDmText is required for create");
+          if (!trigger_type) throw new Error("trigger_type is required for create");
+          if (!initial_dm_text) throw new Error("initial_dm_text is required for create");
+          if (!follow_reminder_dm_text)
+            throw new Error("follow_reminder_dm_text is required for create");
+          if (!reward_dm_text) throw new Error("reward_dm_text is required for create");
 
           const input: Record<string, unknown> = {
             name,
-            triggerType,
-            initialDmText,
-            followReminderDmText,
-            rewardDmText,
+            trigger_type,
+            initial_dm_text,
+            follow_reminder_dm_text,
+            reward_dm_text,
           };
-          if (targetPostId !== undefined) input.targetPostId = targetPostId;
-          if (triggerKeyword !== undefined) input.triggerKeyword = triggerKeyword;
-          if (requireFollow !== undefined) input.requireFollow = requireFollow;
-          if (initialButtonLabel !== undefined) input.initialButtonLabel = initialButtonLabel;
-          if (followReminderButtonLabel !== undefined)
-            input.followReminderButtonLabel = followReminderButtonLabel;
-          if (rewardButtonLabel !== undefined) input.rewardButtonLabel = rewardButtonLabel;
-          if (rewardUrl !== undefined) input.rewardUrl = rewardUrl;
-          if (maxLoops !== undefined) input.maxLoops = maxLoops;
+          if (target_post_id !== undefined) input.target_post_id = target_post_id;
+          if (trigger_keyword !== undefined) input.trigger_keyword = trigger_keyword;
+          if (require_follow !== undefined) input.require_follow = require_follow;
+          if (initial_dm_button_label !== undefined)
+            input.initial_dm_button_label = initial_dm_button_label;
+          if (follow_reminder_button_label !== undefined)
+            input.follow_reminder_button_label = follow_reminder_button_label;
+          if (reward_url !== undefined) input.reward_url = reward_url;
+          if (max_loops !== undefined) input.max_loops = max_loops;
           if (status !== undefined) input.status = status;
 
           const gate = await gates.create(input);
@@ -149,10 +145,10 @@ export function registerManageEngagementGates(server: McpServer): void {
           };
         }
 
-        if (!gateId) throw new Error("gateId is required for this action");
+        if (!gate_id) throw new Error("gate_id is required for this action");
 
         if (action === "get") {
-          const gate = await gates.get(gateId);
+          const gate = await gates.get(gate_id);
           return {
             content: [
               { type: "text" as const, text: JSON.stringify({ success: true, gate }, null, 2) },
@@ -163,23 +159,23 @@ export function registerManageEngagementGates(server: McpServer): void {
         if (action === "update") {
           const patch: Record<string, unknown> = {};
           if (name !== undefined) patch.name = name;
-          if (triggerType !== undefined) patch.triggerType = triggerType;
-          if (targetPostId !== undefined) patch.targetPostId = targetPostId;
-          if (triggerKeyword !== undefined) patch.triggerKeyword = triggerKeyword;
-          if (initialDmText !== undefined) patch.initialDmText = initialDmText;
-          if (followReminderDmText !== undefined)
-            patch.followReminderDmText = followReminderDmText;
-          if (rewardDmText !== undefined) patch.rewardDmText = rewardDmText;
-          if (requireFollow !== undefined) patch.requireFollow = requireFollow;
-          if (initialButtonLabel !== undefined) patch.initialButtonLabel = initialButtonLabel;
-          if (followReminderButtonLabel !== undefined)
-            patch.followReminderButtonLabel = followReminderButtonLabel;
-          if (rewardButtonLabel !== undefined) patch.rewardButtonLabel = rewardButtonLabel;
-          if (rewardUrl !== undefined) patch.rewardUrl = rewardUrl;
-          if (maxLoops !== undefined) patch.maxLoops = maxLoops;
+          if (trigger_type !== undefined) patch.trigger_type = trigger_type;
+          if (target_post_id !== undefined) patch.target_post_id = target_post_id;
+          if (trigger_keyword !== undefined) patch.trigger_keyword = trigger_keyword;
+          if (initial_dm_text !== undefined) patch.initial_dm_text = initial_dm_text;
+          if (initial_dm_button_label !== undefined)
+            patch.initial_dm_button_label = initial_dm_button_label;
+          if (follow_reminder_dm_text !== undefined)
+            patch.follow_reminder_dm_text = follow_reminder_dm_text;
+          if (follow_reminder_button_label !== undefined)
+            patch.follow_reminder_button_label = follow_reminder_button_label;
+          if (reward_dm_text !== undefined) patch.reward_dm_text = reward_dm_text;
+          if (reward_url !== undefined) patch.reward_url = reward_url;
+          if (require_follow !== undefined) patch.require_follow = require_follow;
+          if (max_loops !== undefined) patch.max_loops = max_loops;
           if (status !== undefined) patch.status = status;
 
-          const gate = await gates.update(gateId, patch);
+          const gate = await gates.update(gate_id, patch);
           return {
             content: [
               { type: "text" as const, text: JSON.stringify({ success: true, gate }, null, 2) },
@@ -188,19 +184,19 @@ export function registerManageEngagementGates(server: McpServer): void {
         }
 
         if (action === "delete") {
-          await gates.delete(gateId);
+          await gates.delete(gate_id);
           return {
             content: [
               {
                 type: "text" as const,
-                text: JSON.stringify({ success: true, deleted: gateId }, null, 2),
+                text: JSON.stringify({ success: true, deleted: gate_id }, null, 2),
               },
             ],
           };
         }
 
         if (action === "list_deliveries") {
-          const deliveries = await gates.listDeliveries(gateId);
+          const deliveries = await gates.listDeliveries(gate_id);
           return {
             content: [
               {

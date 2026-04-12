@@ -16,7 +16,7 @@ import {
   jstNow,
 } from '@ig-harness/db';
 import { buildIgMessage, expandVariables } from '../services/step-delivery.js';
-import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword } from '../services/engagement-gate.js';
+import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention } from '../services/engagement-gate.js';
 import type { Env } from '../index.js';
 
 export type PostbackPayload =
@@ -314,20 +314,45 @@ async function handleCommentEvent(
     isVerified: profile?.is_verified_user ?? false,
   });
 
+  // Engagement gate trigger — runs FIRST so a configured gate takes precedence
+  // over the legacy comment-rule flow. If a gate fires, we skip the rule loop
+  // and the gate-triggered scenarios below to avoid double DMs.
+  let gateFired = false;
+  try {
+    gateFired = await triggerGateForComment(db, igClient, {
+      postId: mediaId,
+      commentText,
+      follower: { id: follower.id, igsid: senderId },
+    });
+  } catch (err) {
+    console.error('Engagement gate trigger failed:', err);
+  }
+
   // Check comment rules (match by keyword + optional media filter)
-  const commentRules = await db
-    .prepare(
-      `SELECT * FROM comment_rules WHERE is_active = 1 ORDER BY created_at ASC`,
-    )
-    .all<{
-      id: string;
-      keyword: string;
-      match_type: 'exact' | 'contains' | 'regex';
-      media_id: string | null;
-      response_type: string;
-      response_body: string;
-      delay_seconds: number;
-    }>();
+  // Only when no gate fired — gates supersede legacy rules.
+  const commentRules = gateFired
+    ? { results: [] as Array<{
+        id: string;
+        keyword: string;
+        match_type: 'exact' | 'contains' | 'regex';
+        media_id: string | null;
+        response_type: string;
+        response_body: string;
+        delay_seconds: number;
+      }> }
+    : await db
+        .prepare(
+          `SELECT * FROM comment_rules WHERE is_active = 1 ORDER BY created_at ASC`,
+        )
+        .all<{
+          id: string;
+          keyword: string;
+          match_type: 'exact' | 'contains' | 'regex';
+          media_id: string | null;
+          response_type: string;
+          response_body: string;
+          delay_seconds: number;
+        }>();
 
   for (const rule of commentRules.results) {
     // Media filter: if rule specifies a media_id, only match that post
@@ -383,18 +408,8 @@ async function handleCommentEvent(
     }
   }
 
-  // Engagement gate trigger
-  try {
-    await triggerGateForComment(db, igClient, {
-      postId: mediaId,
-      commentText,
-      follower: { id: follower.id, igsid: senderId },
-    });
-  } catch (err) {
-    console.error('Engagement gate trigger failed:', err);
-  }
-
-  // Check comment-triggered scenarios
+  // Check comment-triggered scenarios — skip if a gate fired
+  if (gateFired) return;
   const scenarios = await getScenarios(db);
   for (const scenario of scenarios) {
     if (scenario.trigger_type === 'comment' && scenario.is_active) {
@@ -466,7 +481,18 @@ async function handleMentionEvent(
     pictureUrl: null,
   });
 
-  // Send thank you DM
+  // Engagement gate trigger (story_mention) — fires before the legacy thank-you DM
+  // so a configured campaign takes precedence over the hard-coded reply.
+  try {
+    const triggered = await triggerGateForStoryMention(db, igClient, {
+      follower: { id: follower.id, igsid: mentionerId },
+    });
+    if (triggered) return;
+  } catch (err) {
+    console.error('Story mention gate trigger failed:', err);
+  }
+
+  // Send thank you DM (fallback when no gate matches)
   try {
     await igClient.sendText(
       mentionerId,

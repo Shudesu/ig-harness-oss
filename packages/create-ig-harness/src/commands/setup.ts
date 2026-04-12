@@ -187,7 +187,7 @@ export async function runSetup(repoDir: string): Promise<void> {
     message: "MCP 設定を .mcp.json に追加しますか？（Claude Code / Cursor 用）",
   });
   if (addMcp && !p.isCancel(addMcp)) {
-    generateMcpConfig({ workerUrl: state.workerUrl!, apiKey: state.apiKey!, repoDir });
+    await generateMcpConfig({ workerUrl: state.workerUrl!, apiKey: state.apiKey!, repoDir });
   }
 
   // Step 12: Show completion screen

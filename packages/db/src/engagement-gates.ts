@@ -83,12 +83,34 @@ export async function getEngagementGate(
     .first<EngagementGate>();
 }
 
+// Whitelist of columns allowed in PATCH. Filtering protects against SQL
+// injection via field names AND lets callers safely round-trip a full gate
+// row (including read-only or computed fields like `analytics`, `created_at`)
+// without crashing the UPDATE statement.
+const UPDATABLE_GATE_FIELDS = [
+  'name',
+  'status',
+  'trigger_type',
+  'target_post_id',
+  'trigger_keyword',
+  'require_follow',
+  'initial_dm_text',
+  'initial_dm_button_label',
+  'follow_reminder_dm_text',
+  'follow_reminder_button_label',
+  'reward_dm_text',
+  'reward_url',
+  'max_loops',
+] as const;
+
 export async function updateEngagementGate(
   db: D1Database,
   id: string,
   patch: Partial<Omit<EngagementGate, 'id' | 'created_at' | 'updated_at'>>,
 ): Promise<void> {
-  const fields = Object.keys(patch);
+  const fields = Object.keys(patch).filter((f) =>
+    (UPDATABLE_GATE_FIELDS as readonly string[]).includes(f),
+  );
   if (fields.length === 0) return;
   const setClause = fields.map((f) => `${f} = ?`).join(', ');
   const values = fields.map((f) => (patch as Record<string, unknown>)[f]);

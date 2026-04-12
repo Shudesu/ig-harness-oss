@@ -18,7 +18,7 @@ export async function triggerGateForComment(
   db: D1Database,
   igClient: IgClientLike,
   args: { postId: string; commentText: string; follower: FollowerRef },
-): Promise<void> {
+): Promise<boolean> {
   const gates = await listEngagementGates(db, { activeOnly: true });
   for (const gate of gates) {
     if (gate.trigger_type !== 'comment_on_post') continue;
@@ -31,10 +31,20 @@ export async function triggerGateForComment(
       igsid: args.follower.igsid,
     });
 
+    // Idempotent: only send the CTA on the very first trigger. The
+    // unique (gate_id, follower_id) constraint means a follower has
+    // exactly one delivery per gate; any subsequent comment/DM that
+    // matches the same gate must NOT resend the CTA, regardless of
+    // current status (cta_sent, pending_follow, delivered, dropped).
+    if (delivery.status !== 'triggered') {
+      return true;
+    }
+
     await sendCtaDm(igClient, gate, delivery);
     await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
-    return; // Only one gate per comment
+    return true; // Only one gate per comment
   }
+  return false;
 }
 
 export async function triggerGateForDmKeyword(
@@ -52,6 +62,39 @@ export async function triggerGateForDmKeyword(
       follower_id: args.follower.id,
       igsid: args.follower.igsid,
     });
+
+    // Idempotent: only send the CTA on the very first trigger.
+    if (delivery.status !== 'triggered') {
+      return true;
+    }
+
+    await sendCtaDm(igClient, gate, delivery);
+    await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
+    return true;
+  }
+  return false;
+}
+
+export async function triggerGateForStoryMention(
+  db: D1Database,
+  igClient: IgClientLike,
+  args: { follower: FollowerRef },
+): Promise<boolean> {
+  const gates = await listEngagementGates(db, { activeOnly: true });
+  for (const gate of gates) {
+    if (gate.trigger_type !== 'story_mention') continue;
+
+    const delivery = await createGateDelivery(db, {
+      gate_id: gate.id,
+      follower_id: args.follower.id,
+      igsid: args.follower.igsid,
+    });
+
+    // Idempotent: only send the CTA on the very first trigger.
+    if (delivery.status !== 'triggered') {
+      return true;
+    }
+
     await sendCtaDm(igClient, gate, delivery);
     await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
     return true;
@@ -87,13 +130,14 @@ export async function handleFollowCheckPostback(
   ]);
   if (!gate || !delivery) return;
   if (delivery.status === 'delivered' || delivery.status === 'dropped') return;
+  // Honour the operator pause/archive switch even for already-issued CTAs.
+  if (gate.status !== 'active') return;
 
-  // Realtime follow check (do NOT trust DB cache)
-  const profile = await igClient.getUserProfile(args.igsid);
-  const isFollowing = profile.is_user_follow_business === true;
   const now = new Date().toISOString();
 
-  if (isFollowing || gate.require_follow === 0) {
+  // Skip Graph API entirely when follow is not required so a transient
+  // profile lookup failure can't block reward delivery.
+  if (gate.require_follow === 0) {
     await deliverReward(db, igClient, gate, delivery);
     await updateGateDelivery(db, delivery.id, {
       status: 'delivered',
@@ -103,11 +147,36 @@ export async function handleFollowCheckPostback(
     return;
   }
 
+  // Realtime follow check (do NOT trust DB cache)
+  const profile = await igClient.getUserProfile(args.igsid);
+  const isFollowing = profile.is_user_follow_business === true;
+
+  if (isFollowing) {
+    await deliverReward(db, igClient, gate, delivery);
+    await updateGateDelivery(db, delivery.id, {
+      status: 'delivered',
+      delivered_at: now,
+      last_check_at: now,
+    });
+    return;
+  }
+
+  // Enforce max_loops if configured (0 = unlimited, ManyChat behaviour)
+  const nextLoopCount = delivery.loop_count + 1;
+  if (gate.max_loops > 0 && nextLoopCount > gate.max_loops) {
+    await updateGateDelivery(db, delivery.id, {
+      status: 'dropped',
+      loop_count: nextLoopCount,
+      last_check_at: now,
+    });
+    return;
+  }
+
   // Send reminder + same button (loop)
   await sendReminderDm(igClient, gate, delivery);
   await updateGateDelivery(db, delivery.id, {
     status: 'pending_follow',
-    loop_count: delivery.loop_count + 1,
+    loop_count: nextLoopCount,
     last_check_at: now,
   });
 }
@@ -131,15 +200,24 @@ async function sendReminderDm(
   ]);
 }
 
+function expandIgsidPlaceholder(template: string, igsid: string): string {
+  // Support both {IGSID} and {{IGSID}} so the dashboard hint and the more
+  // common Mustache-style placeholder both work.
+  return template
+    .replace(/\{\{\s*IGSID\s*\}\}/g, igsid)
+    .replace(/\{\s*IGSID\s*\}/g, igsid);
+}
+
 async function deliverReward(
   _db: D1Database,
   igClient: IgClientLike,
   gate: EngagementGate,
   delivery: GateDelivery,
 ): Promise<void> {
-  let text = gate.reward_dm_text;
+  let text = expandIgsidPlaceholder(gate.reward_dm_text, delivery.igsid);
   if (gate.reward_url) {
-    text = `${text}\n\n${gate.reward_url}`;
+    const expandedUrl = expandIgsidPlaceholder(gate.reward_url, delivery.igsid);
+    text = `${text}\n\n${expandedUrl}`;
   }
   await igClient.sendText(delivery.igsid, text);
 }
