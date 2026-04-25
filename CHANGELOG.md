@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.4] - 2026-04-25
+
+### Fixed
+- `create-ig-harness` Worker deploy step would intermittently send
+  `account_id = "YOUR_ACCOUNT_ID"` to the Cloudflare API even though the
+  scaffolder had already determined the real account id (failing with
+  `Could not route to /accounts/YOUR_ACCOUNT_ID/...`). Root cause: the
+  step backed up and overwrote the user-facing `wrangler.toml` in-place,
+  which on some runs collided with wrangler's own config resolution.
+  Now writes a deploy-only `wrangler.deploy.toml` and passes
+  `--config wrangler.deploy.toml`, so the user's `wrangler.toml` is
+  never touched and there is no restore-after-deploy race.
+
 ## [0.4.3] - 2026-04-25
 
 ### Fixed

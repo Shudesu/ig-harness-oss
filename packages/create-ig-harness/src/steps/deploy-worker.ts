@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { writeFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { wrangler } from "../lib/wrangler.js";
 
@@ -20,14 +20,11 @@ export async function deployWorker(
 ): Promise<DeployWorkerResult> {
   const s = p.spinner();
   const workerDir = join(options.repoDir, "apps/worker");
-  const tomlPath = join(workerDir, "wrangler.toml");
+  // Use a deploy-only config file so the user's wrangler.toml is never
+  // touched. wrangler resolves --config relative to its cwd.
+  const deployTomlName = "wrangler.deploy.toml";
+  const deployTomlPath = join(workerDir, deployTomlName);
 
-  // Backup existing wrangler.toml
-  const originalToml = existsSync(tomlPath)
-    ? readFileSync(tomlPath, "utf-8")
-    : null;
-
-  // Write deploy wrangler.toml
   s.start("Worker デプロイ中...");
   const deployToml = `name = "${options.workerName}"
 main = "src/index.ts"
@@ -47,10 +44,12 @@ bucket_name = "ig-harness-images"
 [triggers]
 crons = ["*/5 * * * *"]
 `;
-  writeFileSync(tomlPath, deployToml);
+  writeFileSync(deployTomlPath, deployToml);
 
   try {
-    const output = await wrangler(["deploy"], { cwd: workerDir });
+    const output = await wrangler(["deploy", "--config", deployTomlName], {
+      cwd: workerDir,
+    });
 
     // Parse worker URL from output
     const urlMatch = output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
@@ -61,11 +60,9 @@ crons = ["*/5 * * * *"]
     s.stop("Worker デプロイ完了");
     return { workerUrl };
   } finally {
-    // Restore original wrangler.toml
-    if (originalToml) {
-      writeFileSync(tomlPath, originalToml);
-    } else if (existsSync(tomlPath)) {
-      unlinkSync(tomlPath);
+    // Always remove the deploy-only config (success or failure)
+    if (existsSync(deployTomlPath)) {
+      unlinkSync(deployTomlPath);
     }
   }
 }
