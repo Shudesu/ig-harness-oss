@@ -22,6 +22,10 @@ import { registerManageCommentRules } from "./manage-comment-rules.js";
 import { registerManageForms } from "./manage-forms.js";
 import { registerManageTrackedLinks } from "./manage-tracked-links.js";
 import { registerManageEngagementGates } from "./manage-engagement-gates.js";
+import { registerManageLineConnections } from "./manage-line-connections.js";
+import { registerManageRichMessages } from "./manage-rich-messages.js";
+import { registerListRecentReels } from "./list-recent-reels.js";
+import { registerBulkApplyGatesToReels } from "./bulk-apply-gates.js";
 
 export function registerAllTools(server: McpServer): void {
   registerSendDm(server);
@@ -47,4 +51,8 @@ export function registerAllTools(server: McpServer): void {
   registerManageForms(server);
   registerManageTrackedLinks(server);
   registerManageEngagementGates(server);
+  registerManageLineConnections(server);
+  registerManageRichMessages(server);
+  registerListRecentReels(server);
+  registerBulkApplyGatesToReels(server);
 }

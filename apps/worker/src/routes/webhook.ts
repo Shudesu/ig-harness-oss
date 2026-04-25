@@ -17,6 +17,7 @@ import {
 } from '@ig-harness/db';
 import { buildIgMessage, expandVariables } from '../services/step-delivery.js';
 import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention } from '../services/engagement-gate.js';
+import { getIGAccessToken } from '../lib/ig-token.js';
 import type { Env } from '../index.js';
 
 export type PostbackPayload =
@@ -82,7 +83,7 @@ webhook.post('/webhook', async (c) => {
   }
 
   const igClient = new InstagramClient({
-    accessToken: c.env.IG_ACCESS_TOKEN,
+    accessToken: await getIGAccessToken(c.env),
     igUserId: c.env.IG_USER_ID,
   });
 
@@ -276,6 +277,7 @@ async function handleMessagingEvent(
           gateId: payload.gateId,
           deliveryId: payload.deliveryId,
           igsid: senderId,
+          workerBaseUrl: workerUrl,
         });
       } catch (err) {
         console.error('Follow check postback failed:', err);
@@ -323,6 +325,8 @@ async function handleCommentEvent(
       postId: mediaId,
       commentText,
       follower: { id: follower.id, igsid: senderId },
+      commentId: value.id,
+      commenterUsername: value.from?.username,
     });
   } catch (err) {
     console.error('Engagement gate trigger failed:', err);
@@ -334,7 +338,7 @@ async function handleCommentEvent(
     ? { results: [] as Array<{
         id: string;
         keyword: string;
-        match_type: 'exact' | 'contains' | 'regex';
+        match_type: 'exact' | 'contains' | 'regex' | 'any_comment';
         media_id: string | null;
         response_type: string;
         response_body: string;
@@ -342,12 +346,21 @@ async function handleCommentEvent(
       }> }
     : await db
         .prepare(
-          `SELECT * FROM comment_rules WHERE is_active = 1 ORDER BY created_at ASC`,
+          // Rule precedence:
+          //   1. keyword-specific rules (exact / contains / regex) before catch-all
+          //   2. post-scoped rules before account-wide rules (media_id NOT NULL first)
+          //   3. oldest first (stable)
+          // Without (2) a global `any_comment` would always shadow a later
+          // post-specific `any_comment` on the same post.
+          `SELECT * FROM comment_rules WHERE is_active = 1
+           ORDER BY CASE match_type WHEN 'any_comment' THEN 1 ELSE 0 END ASC,
+                    CASE WHEN media_id IS NULL THEN 1 ELSE 0 END ASC,
+                    created_at ASC`,
         )
         .all<{
           id: string;
           keyword: string;
-          match_type: 'exact' | 'contains' | 'regex';
+          match_type: 'exact' | 'contains' | 'regex' | 'any_comment';
           media_id: string | null;
           response_type: string;
           response_body: string;
@@ -359,7 +372,11 @@ async function handleCommentEvent(
     if (rule.media_id && rule.media_id !== mediaId) continue;
 
     let isMatch = false;
-    if (rule.match_type === 'exact') {
+    if (rule.match_type === 'any_comment') {
+      // No keyword check — any comment on the targeted media (or all media
+      // when media_id is NULL) fires the rule.
+      isMatch = true;
+    } else if (rule.match_type === 'exact') {
       isMatch = commentText === rule.keyword;
     } else if (rule.match_type === 'contains') {
       isMatch = commentText.toLowerCase().includes(rule.keyword.toLowerCase());

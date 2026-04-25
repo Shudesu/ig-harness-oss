@@ -7,7 +7,8 @@ import { AccountProvider } from '@/contexts/account-context'
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
-  if (pathname === '/login') {
+  // trailingSlash: true in next.config makes usePathname return '/login/'
+  if (pathname === '/login' || pathname === '/login/') {
     return <>{children}</>
   }
 

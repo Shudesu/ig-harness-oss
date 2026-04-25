@@ -9,6 +9,7 @@ import {
 import type { Broadcast as DbBroadcast, BroadcastMessageType } from '@ig-harness/db';
 import { InstagramClient } from '@ig-harness/ig-sdk';
 import { processBroadcastSend } from '../services/broadcast.js';
+import { getIGAccessToken } from '../lib/ig-token.js';
 import type { Env } from '../index.js';
 
 const broadcasts = new Hono<Env>();
@@ -160,7 +161,7 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       return c.json({ success: false, error: 'Broadcast is already sent or sending' }, 400);
     }
 
-    const igClient = new InstagramClient({ accessToken: c.env.IG_ACCESS_TOKEN, igUserId: c.env.IG_USER_ID });
+    const igClient = new InstagramClient({ accessToken: await getIGAccessToken(c.env), igUserId: c.env.IG_USER_ID });
     await processBroadcastSend(c.env.DB, igClient, existing.id, c.env.WORKER_URL);
 
     const result = await getBroadcastById(c.env.DB, existing.id);

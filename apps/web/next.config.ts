@@ -6,6 +6,7 @@ const pkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'u
 
 const nextConfig: NextConfig = {
   output: 'export',
+  trailingSlash: true,
   transpilePackages: ['@ig-harness/shared'],
   env: {
     APP_VERSION: pkg.version,

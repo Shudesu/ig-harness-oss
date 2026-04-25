@@ -53,7 +53,17 @@ export function registerManageEngagementGates(server: McpServer): void {
         .string()
         .nullable()
         .optional()
-        .describe("Reward URL appended to reward DM (use a LINE Harness tracked link with ?ig=<IGSID> for cross-platform linking)"),
+        .describe("Reward URL the recipient lands on. With line_connection_id set, this is auto-rewritten through a LINE Harness tracked link at delivery time so IG↔LINE userId is captured on click. Without a connection, this URL is sent as-is."),
+      line_connection_id: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("LINE Harness connection id (call manage_line_connections action='list' to look up registered ids). When set, reward / CTA / reminder URLs route through this LINE Harness instance and the recipient's IGSID is preserved on click — enabling automatic IG↔LINE friend-pair attribution."),
+      line_pool_slug: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("LINE Harness traffic-pool slug for click-side tagging. Optional — leave null if the connection's default pool is fine. Only meaningful alongside line_connection_id."),
       require_follow: z
         .number()
         .int()
@@ -71,6 +81,21 @@ export function registerManageEngagementGates(server: McpServer): void {
         .enum(["active", "paused", "archived"])
         .optional()
         .describe("Gate status (for update)"),
+      initial_dm_rich_message_id: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Rich message ID used as the CTA DM. When set, overrides initial_dm_text at send."),
+      reward_dm_rich_message_id: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Rich message ID used as the reward DM. When set, overrides reward_dm_text at send."),
+      follow_reminder_dm_rich_message_id: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Rich message ID used as the follow-reminder DM. When set, overrides follow_reminder_dm_text at send."),
     },
     async ({
       action,
@@ -88,6 +113,11 @@ export function registerManageEngagementGates(server: McpServer): void {
       require_follow,
       max_loops,
       status,
+      initial_dm_rich_message_id,
+      reward_dm_rich_message_id,
+      follow_reminder_dm_rich_message_id,
+      line_connection_id,
+      line_pool_slug,
     }) => {
       try {
         const client = getClient();
@@ -114,18 +144,22 @@ export function registerManageEngagementGates(server: McpServer): void {
         if (action === "create") {
           if (!name) throw new Error("name is required for create");
           if (!trigger_type) throw new Error("trigger_type is required for create");
-          if (!initial_dm_text) throw new Error("initial_dm_text is required for create");
-          if (!follow_reminder_dm_text)
-            throw new Error("follow_reminder_dm_text is required for create");
-          if (!reward_dm_text) throw new Error("reward_dm_text is required for create");
+
+          // Each DM slot must be covered either by legacy text or by a rich message.
+          const initialOk = !!initial_dm_text || !!initial_dm_rich_message_id;
+          const reminderOk = !!follow_reminder_dm_text || !!follow_reminder_dm_rich_message_id;
+          const rewardOk = !!reward_dm_text || !!reward_dm_rich_message_id;
+          if (!initialOk) throw new Error("initial_dm_text or initial_dm_rich_message_id required for create");
+          if (!reminderOk) throw new Error("follow_reminder_dm_text or follow_reminder_dm_rich_message_id required for create");
+          if (!rewardOk) throw new Error("reward_dm_text or reward_dm_rich_message_id required for create");
 
           const input: Record<string, unknown> = {
             name,
             trigger_type,
-            initial_dm_text,
-            follow_reminder_dm_text,
-            reward_dm_text,
           };
+          if (initial_dm_text !== undefined) input.initial_dm_text = initial_dm_text;
+          if (follow_reminder_dm_text !== undefined) input.follow_reminder_dm_text = follow_reminder_dm_text;
+          if (reward_dm_text !== undefined) input.reward_dm_text = reward_dm_text;
           if (target_post_id !== undefined) input.target_post_id = target_post_id;
           if (trigger_keyword !== undefined) input.trigger_keyword = trigger_keyword;
           if (require_follow !== undefined) input.require_follow = require_follow;
@@ -136,6 +170,14 @@ export function registerManageEngagementGates(server: McpServer): void {
           if (reward_url !== undefined) input.reward_url = reward_url;
           if (max_loops !== undefined) input.max_loops = max_loops;
           if (status !== undefined) input.status = status;
+          if (initial_dm_rich_message_id !== undefined)
+            input.initial_dm_rich_message_id = initial_dm_rich_message_id;
+          if (reward_dm_rich_message_id !== undefined)
+            input.reward_dm_rich_message_id = reward_dm_rich_message_id;
+          if (follow_reminder_dm_rich_message_id !== undefined)
+            input.follow_reminder_dm_rich_message_id = follow_reminder_dm_rich_message_id;
+          if (line_connection_id !== undefined) input.line_connection_id = line_connection_id;
+          if (line_pool_slug !== undefined) input.line_pool_slug = line_pool_slug;
 
           const gate = await gates.create(input);
           return {
@@ -174,6 +216,14 @@ export function registerManageEngagementGates(server: McpServer): void {
           if (require_follow !== undefined) patch.require_follow = require_follow;
           if (max_loops !== undefined) patch.max_loops = max_loops;
           if (status !== undefined) patch.status = status;
+          if (initial_dm_rich_message_id !== undefined)
+            patch.initial_dm_rich_message_id = initial_dm_rich_message_id;
+          if (reward_dm_rich_message_id !== undefined)
+            patch.reward_dm_rich_message_id = reward_dm_rich_message_id;
+          if (follow_reminder_dm_rich_message_id !== undefined)
+            patch.follow_reminder_dm_rich_message_id = follow_reminder_dm_rich_message_id;
+          if (line_connection_id !== undefined) patch.line_connection_id = line_connection_id;
+          if (line_pool_slug !== undefined) patch.line_pool_slug = line_pool_slug;
 
           const gate = await gates.update(gate_id, patch);
           return {

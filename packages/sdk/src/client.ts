@@ -9,6 +9,9 @@ import { FormsResource } from './resources/forms.js'
 import { StaffResource } from './resources/staff.js'
 import { ImagesResource } from './resources/images.js'
 import { EngagementGatesResource } from './resources/engagement-gates.js'
+import { LineConnectionsResource } from './resources/line-connections.js'
+import { RichMessagesResource } from './resources/rich-messages.js'
+import { PostsResource } from './resources/posts.js'
 import type { InstagramHarnessConfig } from './types.js'
 
 export class InstagramHarness {
@@ -22,6 +25,9 @@ export class InstagramHarness {
   readonly staff: StaffResource
   readonly images: ImagesResource
   readonly engagementGates: EngagementGatesResource
+  readonly lineConnections: LineConnectionsResource
+  readonly richMessages: RichMessagesResource
+  readonly posts: PostsResource
 
   constructor(config: InstagramHarnessConfig) {
     const apiUrl = config.apiUrl.replace(/\/$/, '')
@@ -42,5 +48,8 @@ export class InstagramHarness {
     this.staff = new StaffResource(http)
     this.images = new ImagesResource(http)
     this.engagementGates = new EngagementGatesResource(http)
+    this.lineConnections = new LineConnectionsResource(http)
+    this.richMessages = new RichMessagesResource(http)
+    this.posts = new PostsResource(http)
   }
 }

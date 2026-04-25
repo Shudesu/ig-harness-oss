@@ -132,7 +132,62 @@ export interface MediaInfo {
   id: string;
   caption?: string;
   media_type: "IMAGE" | "VIDEO" | "CAROUSEL_ALBUM";
+  media_product_type?: "FEED" | "REELS" | "STORY" | "AD";
   media_url?: string;
+  thumbnail_url?: string;
   timestamp: string;
   permalink: string;
+}
+
+// ── Rich Message Blocks ──
+// Reusable structured DM templates that expand to one-or-more IG Messenger
+// API calls at send time.
+
+export type RichMessageBlock =
+  | TextBlock
+  | ImageBlock
+  | CardBlock
+  | CarouselBlock
+  | QuickRepliesBlock;
+
+export interface TextBlock {
+  type: "text";
+  text: string;
+}
+
+export interface ImageBlock {
+  type: "image";
+  url: string;
+  alt?: string;
+}
+
+export interface CardBlock {
+  type: "card";
+  title: string;
+  subtitle?: string;
+  image_url?: string;
+  default_url?: string;
+  buttons: RichMessageButton[];
+}
+
+export interface CarouselBlock {
+  type: "carousel";
+  cards: Array<Omit<CardBlock, "type">>;
+}
+
+export interface QuickRepliesBlock {
+  type: "quick_replies";
+  text: string;
+  replies: Array<{ label: string; payload: string }>;
+}
+
+export type RichMessageButton =
+  | { type: "postback"; label: string; payload: string }
+  | { type: "url"; label: string; url: string };
+
+export interface RichMessageContext {
+  gateId?: string;
+  deliveryId?: string;
+  rewardUrl?: string | null;
+  followerUsername?: string | null;
 }

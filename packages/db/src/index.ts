@@ -8,6 +8,7 @@ export * from './forms';
 export * from './staff';
 export * from './health';
 export * from './engagement-gates.js';
+export * from './rich-messages.js';
 
 /**
  * Thin wrapper around D1Database.

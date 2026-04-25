@@ -72,6 +72,34 @@ images.post('/api/images', async (c) => {
   }
 });
 
+// GET /api/images — list uploaded images (authed, for gallery UI)
+images.get('/api/images', async (c) => {
+  const cursor = c.req.query('cursor') ?? undefined;
+  const rawLimit = Number(c.req.query('limit') ?? '50');
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1), 200);
+
+  const listed = await c.env.IMAGES.list({ limit, cursor });
+  const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+
+  const items = listed.objects.map((obj) => ({
+    key: obj.key,
+    url: `${workerUrl}/images/${obj.key}`,
+    size: obj.size,
+    uploaded: obj.uploaded.toISOString(),
+    content_type: obj.httpMetadata?.contentType ?? 'application/octet-stream',
+    original_filename: obj.customMetadata?.originalFilename,
+  }));
+
+  return c.json({
+    success: true,
+    data: {
+      items,
+      truncated: listed.truncated,
+      cursor: listed.truncated ? listed.cursor : null,
+    },
+  });
+});
+
 // GET /images/:key — serve image (public, no auth)
 images.get('/images/:key', async (c) => {
   const key = c.req.param('key');

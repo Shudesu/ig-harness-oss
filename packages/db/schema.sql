@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS comment_rules (
   name TEXT NOT NULL,
   media_id TEXT,
   keyword TEXT,
-  match_type TEXT DEFAULT 'contains' CHECK(match_type IN ('exact', 'contains', 'regex')),
+  match_type TEXT DEFAULT 'contains' CHECK(match_type IN ('exact', 'contains', 'regex', 'any_comment')),
   response_type TEXT NOT NULL CHECK(response_type IN ('text', 'image', 'template', 'quick_reply')),
   response_body TEXT NOT NULL,
   delay_seconds INTEGER DEFAULT 0,
@@ -182,12 +182,51 @@ CREATE TABLE IF NOT EXISTS engagement_gates (
   reward_dm_text TEXT NOT NULL,
   reward_url TEXT,
   max_loops INTEGER NOT NULL DEFAULT 0,
+  initial_dm_rich_message_id TEXT,
+  reward_dm_rich_message_id TEXT,
+  follow_reminder_dm_rich_message_id TEXT,
+  comment_reply_text TEXT,
+  followup_dm_sequence TEXT,
+  -- LINE Harness cross-link binding (set via campaign wizard). When present,
+  -- reward/CTA DMs rewrite outbound links through a LINE Harness tracked
+  -- link so IG↔LINE userId attribution is captured on first click.
+  line_connection_id TEXT,
+  line_pool_slug TEXT,
+  line_tracked_link_short TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
 
 CREATE INDEX IF NOT EXISTS idx_engagement_gates_status ON engagement_gates(status);
 CREATE INDEX IF NOT EXISTS idx_engagement_gates_target_post ON engagement_gates(target_post_id);
+CREATE INDEX IF NOT EXISTS idx_gates_initial_rm ON engagement_gates(initial_dm_rich_message_id);
+CREATE INDEX IF NOT EXISTS idx_gates_reward_rm ON engagement_gates(reward_dm_rich_message_id);
+CREATE INDEX IF NOT EXISTS idx_gates_reminder_rm ON engagement_gates(follow_reminder_dm_rich_message_id);
+
+-- Multi-post gate targeting. One gate can be attached to many IG media
+-- ids; empty = "applies to all posts" (matches the legacy NULL target
+-- semantics). Source of truth (engagement_gates.target_post_id is a
+-- legacy column kept for back-compat).
+CREATE TABLE IF NOT EXISTS gate_target_posts (
+  gate_id TEXT NOT NULL REFERENCES engagement_gates(id) ON DELETE CASCADE,
+  post_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
+  PRIMARY KEY (gate_id, post_id)
+);
+CREATE INDEX IF NOT EXISTS idx_gate_target_posts_post ON gate_target_posts(post_id);
+
+-- Reusable structured DM templates. blocks is a JSON array expanded into
+-- one-or-more IG Messenger API calls at send time.
+CREATE TABLE IF NOT EXISTS rich_messages (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('cta','reward','reminder','generic')),
+  blocks TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rich_messages_kind ON rich_messages(kind);
 
 CREATE TABLE IF NOT EXISTS gate_deliveries (
   id TEXT PRIMARY KEY,
@@ -200,6 +239,8 @@ CREATE TABLE IF NOT EXISTS gate_deliveries (
   last_check_at TEXT,
   triggered_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   delivered_at TEXT,
+  followup_step_sent INTEGER NOT NULL DEFAULT 0,
+  next_followup_at TEXT,
   metadata TEXT NOT NULL DEFAULT '{}'
 );
 
@@ -208,3 +249,13 @@ CREATE INDEX IF NOT EXISTS idx_gate_deliveries_follower ON gate_deliveries(follo
 CREATE INDEX IF NOT EXISTS idx_gate_deliveries_igsid ON gate_deliveries(igsid);
 CREATE INDEX IF NOT EXISTS idx_gate_deliveries_status ON gate_deliveries(status);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_gate_deliveries_gate_follower ON gate_deliveries(gate_id, follower_id);
+
+-- Singleton row (id=1) holding the latest refreshed long-lived IG token.
+-- Cron extends the expiry before the 60-day window elapses so the env secret
+-- does not need manual rotation.
+CREATE TABLE IF NOT EXISTS ig_token_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  access_token TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  refreshed_at INTEGER NOT NULL
+);

@@ -12,6 +12,7 @@ import {
 import { getFriendByLineUserId, getFriendById } from '@ig-harness/db';
 import { addTagToFriend, enrollFriendInScenario } from '@ig-harness/db';
 import type { Form as DbForm, FormSubmission as DbFormSubmission } from '@ig-harness/db';
+import { getIGAccessToken } from '../lib/ig-token.js';
 import type { Env } from '../index.js';
 
 const forms = new Hono<Env>();
@@ -277,7 +278,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
           if (!igsid) { console.log('Form reply: no igsid'); return; }
           console.log('Form reply: sending to', igsid);
           const { InstagramClient } = await import('@ig-harness/ig-sdk');
-          const igClient = new InstagramClient({ accessToken: c.env.IG_ACCESS_TOKEN, igUserId: c.env.IG_USER_ID });
+          const igClient = new InstagramClient({ accessToken: await getIGAccessToken(c.env), igUserId: c.env.IG_USER_ID });
 
           // Build summary text from answers
           const entries = Object.entries(submissionData as Record<string, unknown>);

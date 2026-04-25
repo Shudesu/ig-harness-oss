@@ -109,6 +109,10 @@ importers:
         version: 5.9.3
 
   packages/db:
+    dependencies:
+      '@ig-harness/ig-sdk':
+        specifier: workspace:*
+        version: link:../ig-sdk
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20241205.0

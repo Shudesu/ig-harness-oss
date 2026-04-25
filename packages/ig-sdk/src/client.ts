@@ -7,6 +7,9 @@ import type {
   QuickReplyItem,
   UserProfile,
   MediaInfo,
+  RichMessageBlock,
+  CardBlock,
+  RichMessageContext,
 } from "./types.js";
 
 const GRAPH_API_BASE = "https://graph.instagram.com/v21.0";
@@ -126,7 +129,121 @@ export class InstagramClient {
   async getMediaInfo(mediaId: string): Promise<MediaInfo> {
     return this.request(
       "GET",
-      `/${mediaId}?fields=id,caption,media_type,media_url,timestamp,permalink`,
+      `/${mediaId}?fields=id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,permalink`,
     );
+  }
+
+  /**
+   * List the authenticated user's own media (posts + reels).
+   * Callers typically filter by media_product_type === 'REELS' for reels only.
+   */
+  async getMyMedia(limit = 50): Promise<MediaInfo[]> {
+    const url =
+      `${GRAPH_API_BASE}/${this.igUserId}/media` +
+      `?fields=id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,permalink` +
+      `&limit=${limit}` +
+      `&access_token=${this.accessToken}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`getMyMedia failed: ${res.status} ${await res.text()}`);
+    }
+    const json = (await res.json()) as { data?: MediaInfo[] };
+    return json.data ?? [];
+  }
+
+  /**
+   * Send a multi-block rich message. Each block expands to one IG Messenger
+   * API call; blocks are dispatched sequentially with an 800ms pause between
+   * them to produce a natural conversational rhythm.
+   *
+   * Placeholders are interpolated before dispatch:
+   *   {IGSID}, {GATE_ID}, {DELIVERY_ID}, {REWARD_URL}, {FOLLOWER_USERNAME}
+   */
+  async sendRichMessage(
+    recipientId: string,
+    blocks: RichMessageBlock[],
+    context: RichMessageContext = {},
+  ): Promise<{ sentBlocks: number }> {
+    const interpolate = (s: string): string =>
+      s
+        .replace(/\{\{?\s*IGSID\s*\}?\}/g, recipientId)
+        .replace(/\{\{?\s*GATE_ID\s*\}?\}/g, context.gateId ?? "")
+        .replace(/\{\{?\s*DELIVERY_ID\s*\}?\}/g, context.deliveryId ?? "")
+        .replace(/\{\{?\s*REWARD_URL\s*\}?\}/g, context.rewardUrl ?? "")
+        .replace(
+          /\{\{?\s*FOLLOWER_USERNAME\s*\}?\}/g,
+          context.followerUsername ?? "",
+        );
+
+    const cardToElement = (
+      card: Omit<CardBlock, "type">,
+    ): GenericTemplateElement => ({
+      title: interpolate(card.title).slice(0, 80),
+      subtitle: card.subtitle
+        ? interpolate(card.subtitle).slice(0, 80)
+        : undefined,
+      image_url: card.image_url ? interpolate(card.image_url) : undefined,
+      default_action: card.default_url
+        ? { type: "web_url", url: interpolate(card.default_url) }
+        : undefined,
+      buttons: card.buttons.map((b) => {
+        if (b.type === "postback") {
+          return {
+            type: "postback" as const,
+            title: interpolate(b.label).slice(0, 20),
+            payload: interpolate(b.payload),
+          };
+        }
+        return {
+          type: "web_url" as const,
+          title: interpolate(b.label).slice(0, 20),
+          url: interpolate(b.url),
+        };
+      }),
+    });
+
+    let sent = 0;
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i]!;
+      switch (block.type) {
+        case "text":
+          await this.sendText(recipientId, interpolate(block.text).slice(0, 1000));
+          break;
+        case "image":
+          await this.sendImage(recipientId, interpolate(block.url));
+          break;
+        case "card":
+          await this.sendGenericTemplate(recipientId, [
+            cardToElement({
+              title: block.title,
+              subtitle: block.subtitle,
+              image_url: block.image_url,
+              default_url: block.default_url,
+              buttons: block.buttons,
+            }),
+          ]);
+          break;
+        case "carousel":
+          await this.sendGenericTemplate(
+            recipientId,
+            block.cards.map(cardToElement),
+          );
+          break;
+        case "quick_replies":
+          await this.sendQuickReply(
+            recipientId,
+            interpolate(block.text).slice(0, 1000),
+            block.replies.map((r) => ({
+              content_type: "text" as const,
+              title: interpolate(r.label).slice(0, 20),
+              payload: interpolate(r.payload),
+            })),
+          );
+          break;
+      }
+      sent++;
+      if (i < blocks.length - 1) await new Promise((r) => setTimeout(r, 800));
+    }
+    return { sentBlocks: sent };
   }
 }

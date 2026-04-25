@@ -9,8 +9,8 @@
     "build": "pnpm -r build",
     "deploy:worker": "pnpm --filter worker deploy",
     "deploy:web": "pnpm --filter web build",
-    "db:migrate": "wrangler d1 execute instagram-harness --file=packages/db/schema.sql",
-    "db:migrate:local": "wrangler d1 execute instagram-harness --file=packages/db/schema.sql --local",
+    "db:migrate": "wrangler d1 execute instagram-harness --remote --file=packages/db/schema.sql && node scripts/apply-migrations.mjs --remote",
+    "db:migrate:local": "wrangler d1 execute instagram-harness --local --file=packages/db/schema.sql && node scripts/apply-migrations.mjs --local",
     "deploy:setup": "node packages/create-ig-harness/dist/index.js",
     "deploy:update": "node packages/create-ig-harness/dist/index.js update"
   },

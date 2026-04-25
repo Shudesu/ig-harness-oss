@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { InstagramClient } from '@ig-harness/ig-sdk';
 import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
+import { processFollowupDrip } from './services/engagement-gate.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
 import { webhook } from './routes/webhook.js';
@@ -19,6 +20,10 @@ import { images } from './routes/images.js';
 import { crossLink } from './routes/cross-link.js';
 import { engagementGates } from './routes/engagement-gates.js';
 import { posts } from './routes/posts.js';
+import { richMessages } from './routes/rich-messages.js';
+import { integrations } from './routes/integrations.js';
+import { lineConnections } from './routes/line-connections.js';
+import { getIGAccessToken, refreshIGAccessTokenIfNeeded } from './lib/ig-token.js';
 
 export type Env = {
   Bindings: {
@@ -68,6 +73,9 @@ app.route('/', images);
 app.route('/', crossLink);
 app.route('/', engagementGates);
 app.route('/', posts);
+app.route('/', richMessages);
+app.route('/', integrations);
+app.route('/', lineConnections);
 
 // LINE Harness UUID linkage endpoint
 app.get('/connect', (c) => {
@@ -223,14 +231,24 @@ async function scheduled(
   env: Env['Bindings'],
   _ctx: ExecutionContext,
 ): Promise<void> {
+  try {
+    const result = await refreshIGAccessTokenIfNeeded(env);
+    if (result.refreshed) {
+      console.log(`IG token refreshed, new expiry: ${new Date(result.expiresAt! * 1000).toISOString()}`);
+    }
+  } catch (err) {
+    console.error('IG token refresh attempt failed:', err);
+  }
+
   const igClient = new InstagramClient({
-    accessToken: env.IG_ACCESS_TOKEN,
+    accessToken: await getIGAccessToken(env),
     igUserId: env.IG_USER_ID,
   });
 
   const jobs = [
     processStepDeliveries(env.DB, igClient, env.WORKER_URL),
     processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL),
+    processFollowupDrip(env.DB, igClient, env.WORKER_URL),
   ];
 
   await Promise.allSettled(jobs);

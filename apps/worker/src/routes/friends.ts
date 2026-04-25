@@ -11,6 +11,7 @@ import {
   jstNow,
 } from '@ig-harness/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@ig-harness/db';
+import { getIGAccessToken } from '../lib/ig-token.js';
 import type { Env } from '../index.js';
 
 const friends = new Hono<Env>();
@@ -311,7 +312,7 @@ friends.post('/api/friends/:id/messages', async (c) => {
     }
 
     const { InstagramClient } = await import('@ig-harness/ig-sdk');
-    const igClient = new InstagramClient({ accessToken: c.env.IG_ACCESS_TOKEN, igUserId: c.env.IG_USER_ID });
+    const igClient = new InstagramClient({ accessToken: await getIGAccessToken(c.env), igUserId: c.env.IG_USER_ID });
     const messageType = body.messageType ?? 'text';
     const igsid = friend.igsid;
 

@@ -29,7 +29,7 @@ export interface FollowerTag {
 }
 
 // ── Comment Rules (IG-specific) ──
-export type MatchType = "exact" | "contains" | "regex";
+export type MatchType = "exact" | "contains" | "regex" | "any_comment";
 export type ResponseType = "text" | "image" | "template" | "quick_reply";
 
 export interface CommentRule {

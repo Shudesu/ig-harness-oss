@@ -13,6 +13,7 @@ export { FormsResource } from './resources/forms.js'
 export { StaffResource } from './resources/staff.js'
 export { ImagesResource } from './resources/images.js'
 export { EngagementGatesResource } from './resources/engagement-gates.js'
+export { LineConnectionsResource } from './resources/line-connections.js'
 
 // All types
 export type {
@@ -71,4 +72,9 @@ export type {
   GateDelivery,
   CreateEngagementGateInput,
   UpdateEngagementGateInput,
+  LineConnection,
+  CreateLineConnectionInput,
+  UpdateLineConnectionInput,
+  LineHarnessTrackedLink,
+  LineHarnessPool,
 } from './types.js'

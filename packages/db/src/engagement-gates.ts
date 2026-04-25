@@ -15,8 +15,58 @@ export interface EngagementGate {
   reward_dm_text: string;
   reward_url: string | null;
   max_loops: number;
+  initial_dm_rich_message_id: string | null;
+  reward_dm_rich_message_id: string | null;
+  follow_reminder_dm_rich_message_id: string | null;
+  comment_reply_text: string | null;
+  /** JSON-serialized FollowupDmStep[]. Empty / NULL = no 24h drip. */
+  followup_dm_sequence: string | null;
+  /**
+   * LINE Harness multi-connection binding. When the operator picks a
+   * connection + pool in the campaign wizard, we rewrite outbound reward /
+   * CTA / reminder links through a LINE Harness tracked link so a click
+   * captures the IG ↔ LINE userId pair. `line_tracked_link_short` is the
+   * cached tracked-link id created lazily on first delivery — keeping it
+   * on the gate (instead of per delivery) avoids one `POST /api/tracked-links`
+   * call per recipient.
+   */
+  line_connection_id: string | null;
+  line_pool_slug: string | null;
+  line_tracked_link_short: string | null;
+  /**
+   * Hydrated list of IG media ids this gate targets (via gate_target_posts
+   * junction). Empty array = "applies to all posts". Only populated by the
+   * route/service layer after a row is fetched; the column itself lives on
+   * a separate table, so db-level INSERT/UPDATE helpers don't touch it.
+   */
+  target_post_ids?: string[];
   created_at: string;
   updated_at: string;
+}
+
+/** One step in a reward follow-up drip. Text is required; image_url /
+ *  button_label / button_url are optional and only render when all
+ *  button fields are present. */
+export interface FollowupDmStep {
+  delay_minutes: number;
+  text: string;
+  image_url?: string;
+  button_label?: string;
+  button_url?: string;
+}
+
+export function parseFollowupSequence(raw: string | null | undefined): FollowupDmStep[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (x): x is FollowupDmStep =>
+        x && typeof x === 'object' && typeof x.text === 'string' && typeof x.delay_minutes === 'number',
+    );
+  } catch {
+    return [];
+  }
 }
 
 export interface GateDelivery {
@@ -29,6 +79,8 @@ export interface GateDelivery {
   last_check_at: string | null;
   triggered_at: string;
   delivered_at: string | null;
+  followup_step_sent: number;
+  next_followup_at: string | null;
   metadata: string;
 }
 
@@ -43,8 +95,12 @@ export async function createEngagementGate(
        (id, name, status, trigger_type, target_post_id, trigger_keyword,
         require_follow, initial_dm_text, initial_dm_button_label,
         follow_reminder_dm_text, follow_reminder_button_label,
-        reward_dm_text, reward_url, max_loops)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        reward_dm_text, reward_url, max_loops,
+        initial_dm_rich_message_id, reward_dm_rich_message_id,
+        follow_reminder_dm_rich_message_id, comment_reply_text,
+        followup_dm_sequence,
+        line_connection_id, line_pool_slug)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id, gate.name, gate.status, gate.trigger_type, gate.target_post_id,
@@ -52,6 +108,13 @@ export async function createEngagementGate(
       gate.initial_dm_button_label, gate.follow_reminder_dm_text,
       gate.follow_reminder_button_label, gate.reward_dm_text,
       gate.reward_url, gate.max_loops,
+      gate.initial_dm_rich_message_id ?? null,
+      gate.reward_dm_rich_message_id ?? null,
+      gate.follow_reminder_dm_rich_message_id ?? null,
+      gate.comment_reply_text ?? null,
+      gate.followup_dm_sequence ?? null,
+      gate.line_connection_id ?? null,
+      gate.line_pool_slug ?? null,
     )
     .run();
   const row = await db
@@ -70,17 +133,84 @@ export async function listEngagementGates(
   const result = await db
     .prepare(`SELECT * FROM engagement_gates ${where} ORDER BY created_at DESC`)
     .all<EngagementGate>();
-  return result.results;
+  const gates = result.results;
+
+  // Hydrate target_post_ids in a single roundtrip.
+  if (gates.length > 0) {
+    const posts = await db
+      .prepare(`SELECT gate_id, post_id FROM gate_target_posts`)
+      .all<{ gate_id: string; post_id: string }>();
+    const byGate = new Map<string, string[]>();
+    for (const row of posts.results) {
+      const arr = byGate.get(row.gate_id) ?? [];
+      arr.push(row.post_id);
+      byGate.set(row.gate_id, arr);
+    }
+    for (const g of gates) g.target_post_ids = byGate.get(g.id) ?? [];
+  }
+  return gates;
 }
 
 export async function getEngagementGate(
   db: D1Database,
   id: string,
 ): Promise<EngagementGate | null> {
-  return await db
+  const row = await db
     .prepare('SELECT * FROM engagement_gates WHERE id = ?')
     .bind(id)
     .first<EngagementGate>();
+  if (!row) return null;
+  row.target_post_ids = await getGateTargetPosts(db, id);
+  return row;
+}
+
+export async function getGateTargetPosts(
+  db: D1Database,
+  gateId: string,
+): Promise<string[]> {
+  const result = await db
+    .prepare('SELECT post_id FROM gate_target_posts WHERE gate_id = ? ORDER BY created_at ASC')
+    .bind(gateId)
+    .all<{ post_id: string }>();
+  return result.results.map((r) => r.post_id);
+}
+
+/**
+ * Replace the gate's target post list with the given ids (transaction-ish:
+ * we delete existing rows first, then insert new ones). Empty array = apply
+ * to all posts (no rows in the junction).
+ */
+export async function setGateTargetPosts(
+  db: D1Database,
+  gateId: string,
+  postIds: string[],
+): Promise<void> {
+  const unique = Array.from(new Set(postIds.map((p) => p.trim()).filter(Boolean)));
+  await db.prepare('DELETE FROM gate_target_posts WHERE gate_id = ?').bind(gateId).run();
+  if (unique.length === 0) return;
+  // D1 can't batch inserts easily without prepared+bind loops; loop is fine
+  // for the expected N ≤ ~100 per gate.
+  for (const pid of unique) {
+    await db
+      .prepare('INSERT OR IGNORE INTO gate_target_posts (gate_id, post_id) VALUES (?, ?)')
+      .bind(gateId, pid)
+      .run();
+  }
+}
+
+/**
+ * Given a post id, return the gate ids that already target it. Used by the
+ * wizard's media picker to show "このリールは既に N キャンペーン適用中" badges.
+ */
+export async function findGatesTargetingPost(
+  db: D1Database,
+  postId: string,
+): Promise<string[]> {
+  const result = await db
+    .prepare('SELECT gate_id FROM gate_target_posts WHERE post_id = ?')
+    .bind(postId)
+    .all<{ gate_id: string }>();
+  return result.results.map((r) => r.gate_id);
 }
 
 // Whitelist of columns allowed in PATCH. Filtering protects against SQL
@@ -101,6 +231,14 @@ const UPDATABLE_GATE_FIELDS = [
   'reward_dm_text',
   'reward_url',
   'max_loops',
+  'initial_dm_rich_message_id',
+  'reward_dm_rich_message_id',
+  'follow_reminder_dm_rich_message_id',
+  'comment_reply_text',
+  'followup_dm_sequence',
+  'line_connection_id',
+  'line_pool_slug',
+  'line_tracked_link_short',
 ] as const;
 
 export async function updateEngagementGate(
@@ -163,7 +301,14 @@ export async function getGateDelivery(
 export async function updateGateDelivery(
   db: D1Database,
   id: string,
-  patch: { status?: GateDelivery['status']; loop_count?: number; delivered_at?: string | null; last_check_at?: string | null },
+  patch: {
+    status?: GateDelivery['status'];
+    loop_count?: number;
+    delivered_at?: string | null;
+    last_check_at?: string | null;
+    followup_step_sent?: number;
+    next_followup_at?: string | null;
+  },
 ): Promise<void> {
   const fields = Object.keys(patch).filter((k) => (patch as Record<string, unknown>)[k] !== undefined);
   if (fields.length === 0) return;
@@ -197,6 +342,8 @@ export async function getGateAnalytics(
   dropped: number;
   follow_rate: number;
   line_linked: number;
+  clicks_total: number;
+  clicks_unique: number;
 }> {
   const counts = await db
     .prepare(
@@ -217,6 +364,13 @@ export async function getGateAnalytics(
     )
     .bind(gateId)
     .first<{ n: number }>();
+  const clickCounts = await db
+    .prepare(
+      `SELECT COUNT(*) AS total, COUNT(DISTINCT COALESCE(igsid, id)) AS uniq
+       FROM gate_clicks WHERE gate_id = ?`,
+    )
+    .bind(gateId)
+    .first<{ total: number; uniq: number }>();
   return {
     triggered,
     cta_sent: map.cta_sent ?? 0,
@@ -225,6 +379,8 @@ export async function getGateAnalytics(
     dropped: map.dropped ?? 0,
     follow_rate,
     line_linked: lineLinked?.n ?? 0,
+    clicks_total: clickCounts?.total ?? 0,
+    clicks_unique: clickCounts?.uniq ?? 0,
   };
 }
 

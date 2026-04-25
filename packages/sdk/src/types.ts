@@ -495,6 +495,27 @@ export interface EngagementGate {
   reward_dm_text: string
   reward_url: string | null
   max_loops: number
+  initial_dm_rich_message_id: string | null
+  reward_dm_rich_message_id: string | null
+  follow_reminder_dm_rich_message_id: string | null
+  comment_reply_text: string | null
+  followup_dm_sequence: string | null
+  /**
+   * LINE Harness cross-link binding. When set, reward / CTA / reminder
+   * DMs rewrite outbound URLs through a LINE Harness tracked link so the
+   * recipient's IGSID rides along `?ig=<IGSID>` on click — capturing the
+   * IG↔LINE userId pair on first friend-add.
+   *   - line_connection_id: id from /api/line-connections
+   *   - line_pool_slug:     LINE-side traffic pool used for attribution
+   *   - line_tracked_link_short: cached tracked-link short id, populated
+   *     lazily on first delivery (read-only from the SDK consumer's
+   *     perspective; the worker sets it).
+   */
+  line_connection_id: string | null
+  line_pool_slug: string | null
+  line_tracked_link_short: string | null
+  /** Hydrated list of IG post ids this gate applies to. Empty = all posts. */
+  target_post_ids?: string[]
   created_at: string
   updated_at: string
 }
@@ -507,6 +528,8 @@ export interface GateAnalytics {
   dropped: number
   follow_rate: number
   line_linked: number
+  clicks_total: number
+  clicks_unique: number
 }
 
 export interface EngagementGateWithAnalytics extends EngagementGate {
@@ -520,13 +543,25 @@ export interface CreateEngagementGateInput {
   target_post_id?: string | null
   trigger_keyword?: string | null
   require_follow?: number
-  initial_dm_text: string
+  initial_dm_text?: string
   initial_dm_button_label?: string
-  follow_reminder_dm_text: string
+  follow_reminder_dm_text?: string
   follow_reminder_button_label?: string
-  reward_dm_text: string
+  reward_dm_text?: string
   reward_url?: string | null
   max_loops?: number
+  initial_dm_rich_message_id?: string | null
+  reward_dm_rich_message_id?: string | null
+  follow_reminder_dm_rich_message_id?: string | null
+  comment_reply_text?: string | null
+  followup_dm_sequence?: string | null
+  /** LINE Harness cross-link binding (see EngagementGate). Setting only
+   *  one of the two without the other is allowed but the cross-link
+   *  rewriter requires both connection_id + a non-null reward_url to
+   *  fire — pool_slug is optional. */
+  line_connection_id?: string | null
+  line_pool_slug?: string | null
+  target_post_ids?: string[]
 }
 
 export interface UpdateEngagementGateInput {
@@ -543,6 +578,17 @@ export interface UpdateEngagementGateInput {
   reward_dm_text?: string
   reward_url?: string | null
   max_loops?: number
+  initial_dm_rich_message_id?: string | null
+  reward_dm_rich_message_id?: string | null
+  follow_reminder_dm_rich_message_id?: string | null
+  comment_reply_text?: string | null
+  followup_dm_sequence?: string | null
+  /** LINE Harness cross-link binding (see EngagementGate). Patching
+   *  connection_id, pool_slug, or reward_url invalidates the cached
+   *  line_tracked_link_short so the next delivery regenerates it. */
+  line_connection_id?: string | null
+  line_pool_slug?: string | null
+  target_post_ids?: string[]
 }
 
 export interface GateDelivery {
@@ -556,6 +602,93 @@ export interface GateDelivery {
   triggered_at: string
   delivered_at: string | null
   metadata: string
+}
+
+// ─── Rich Messages ──────────────────────────────────────
+export type RichMessageKind = 'cta' | 'reward' | 'reminder' | 'generic'
+
+export type RichMessageBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; url: string; alt?: string }
+  | {
+      type: 'card'
+      title: string
+      subtitle?: string
+      image_url?: string
+      default_url?: string
+      buttons: Array<
+        | { type: 'postback'; label: string; payload: string }
+        | { type: 'url'; label: string; url: string }
+      >
+    }
+  | {
+      type: 'carousel'
+      cards: Array<{
+        title: string
+        subtitle?: string
+        image_url?: string
+        default_url?: string
+        buttons: Array<
+          | { type: 'postback'; label: string; payload: string }
+          | { type: 'url'; label: string; url: string }
+        >
+      }>
+    }
+  | {
+      type: 'quick_replies'
+      text: string
+      replies: Array<{ label: string; payload: string }>
+    }
+
+export interface RichMessage {
+  id: string
+  name: string
+  kind: RichMessageKind
+  blocks: RichMessageBlock[]
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateRichMessageInput {
+  name: string
+  kind: RichMessageKind
+  blocks: RichMessageBlock[]
+}
+
+export interface UpdateRichMessageInput {
+  name?: string
+  kind?: RichMessageKind
+  blocks?: RichMessageBlock[]
+}
+
+// ─── Reels / Bulk Apply ─────────────────────────────────
+export interface ReelInfo {
+  id: string
+  caption?: string
+  media_type: string
+  media_product_type?: string
+  media_url?: string
+  thumbnail_url?: string
+  timestamp: string
+  permalink: string
+}
+
+export interface BulkApplyGatesInput {
+  reel_ids: string[]
+  name_prefix: string
+  initial_dm_rich_message_id: string
+  reward_dm_rich_message_id: string
+  follow_reminder_dm_rich_message_id?: string
+  trigger_keyword?: string | null
+  require_follow?: boolean
+  reward_url?: string
+  max_loops?: number
+}
+
+export interface BulkApplyGatesResult {
+  created: number
+  skipped: number
+  gates: Array<{ id: string; reel_id: string; status: 'created' | 'skipped' }>
 }
 
 // ─── Images ─────────────────────────────────────────────
@@ -574,4 +707,72 @@ export interface UploadImageInput {
   mimeType?: string
   /** Optional original filename */
   filename?: string
+}
+
+// ─── LINE Harness cross-platform binding ─────────────────
+/**
+ * Per-LINE-Harness-deployment connection registered in this IG Harness.
+ * One row per LINE Harness instance the operator wants to send IG
+ * traffic into; engagement gates reference a connection by id +
+ * optionally a traffic-pool slug. Mirrors the shape returned by
+ * `GET /api/line-connections` — secrets are masked server-side, so
+ * the SDK never sees a raw api_key.
+ */
+export interface LineConnection {
+  id: string
+  name: string
+  worker_url: string
+  /** API key masked to first 4 + last 4 chars (e.g. `lh_0••••8aa3`). */
+  api_key_masked: string
+  account_id: string | null
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateLineConnectionInput {
+  name: string
+  worker_url: string
+  /** Plaintext API key — only set on create / rotation. The server
+   *  stores it and never echoes it back unmasked. */
+  api_key: string
+  account_id?: string | null
+  is_default?: boolean
+}
+
+export interface UpdateLineConnectionInput {
+  name?: string
+  worker_url?: string
+  /** Plaintext API key. Send only when rotating; omit to keep the
+   *  current value. The server never echoes it back unmasked. */
+  api_key?: string
+  account_id?: string | null
+  /** Promote this connection to default. False/undefined leaves the
+   *  current default untouched. */
+  is_default?: boolean
+}
+
+/**
+ * Tracked link returned by LINE Harness `/api/tracked-links` (proxied
+ * through this worker). The IG side only ever reads these — we don't
+ * own the writer.
+ */
+export interface LineHarnessTrackedLink {
+  id: string
+  name: string
+  originalUrl: string
+  trackingUrl: string
+  tagId: string | null
+  scenarioId: string | null
+  isActive: boolean
+  clickCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** Traffic pool exposed by LINE Harness for the selected connection. */
+export interface LineHarnessPool {
+  id: string
+  slug: string
+  name: string
 }

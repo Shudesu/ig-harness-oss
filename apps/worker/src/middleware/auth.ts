@@ -18,6 +18,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path === '/openapi.json' ||
     path === '/api/affiliates/click' ||
     path.startsWith('/t/') ||
+    path.startsWith('/click/') ||
     path.startsWith('/images/') ||
     path === '/api/integrations/stripe/webhook' ||
     path.match(/^\/api\/webhooks\/incoming\/[^/]+\/receive$/) ||
