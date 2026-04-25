@@ -26,7 +26,9 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
     process.env.HOME || process.env.USERPROFILE || tmpdir(),
     ".ig-harness",
   );
-  if (existsSync(join(homeDir, "pnpm-workspace.yaml"))) {
+  const isExisting = existsSync(join(homeDir, "pnpm-workspace.yaml"));
+
+  if (isExisting) {
     // Pull latest
     const s = p.spinner();
     s.start("最新バージョンを取得中...");
@@ -36,24 +38,24 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
       // Non-critical, continue with existing
     }
     s.stop("リポジトリ更新完了");
-    return homeDir;
+  } else {
+    // Clone fresh
+    const s = p.spinner();
+    s.start("IG Harness をダウンロード中...");
+
+    try {
+      await execa("git", ["clone", "--depth", "1", REPO_URL, homeDir]);
+    } catch (error: any) {
+      s.stop("ダウンロード失敗");
+      throw new Error(
+        `git clone に失敗しました: ${error.message}\ngit がインストールされているか確認してください。`,
+      );
+    }
+    s.stop("ダウンロード完了");
   }
 
-  // Clone fresh
+  // Install dependencies (always — handles both fresh clone and re-runs)
   const s = p.spinner();
-  s.start("Instagram Harness をダウンロード中...");
-
-  try {
-    await execa("git", ["clone", "--depth", "1", REPO_URL, homeDir]);
-  } catch (error: any) {
-    s.stop("ダウンロード失敗");
-    throw new Error(
-      `git clone に失敗しました: ${error.message}\ngit がインストールされているか確認してください。`,
-    );
-  }
-  s.stop("ダウンロード完了");
-
-  // Install dependencies
   s.start("依存関係インストール中...");
   try {
     await execa("npx", ["pnpm", "install", "--frozen-lockfile"], {
@@ -64,6 +66,18 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
     await execa("npx", ["pnpm", "install"], { cwd: homeDir });
   }
   s.stop("依存関係インストール完了");
+
+  // Build workspace packages — Worker bundling needs @ig-harness/* dist files
+  s.start("ワークスペースパッケージをビルド中...");
+  try {
+    await execa("npx", ["pnpm", "-r", "build"], { cwd: homeDir });
+    s.stop("ビルド完了");
+  } catch (error: any) {
+    s.stop("ビルド失敗");
+    throw new Error(
+      `pnpm -r build に失敗しました: ${error.stderr || error.message}`,
+    );
+  }
 
   return homeDir;
 }

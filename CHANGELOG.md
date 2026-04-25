@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.3] - 2026-04-25
+
+### Fixed
+- `create-ig-harness` scaffolder now runs `pnpm -r build` after install, so
+  Worker deploy can resolve workspace packages like `@ig-harness/ig-sdk`.
+  Previously the scaffolder went straight from install to `wrangler deploy`,
+  which failed with "Could not resolve @ig-harness/ig-sdk" because the
+  workspace `dist/` directories were empty. Affects every external user
+  who had a fresh `~/.ig-harness/` clone.
+- Re-running the scaffolder against an existing `~/.ig-harness/` checkout
+  now also re-runs install + build (previously only `git pull` ran, leaving
+  stale dependencies / dist).
+
 ## [0.4.2] - 2026-04-25
 
 ### Fixed
