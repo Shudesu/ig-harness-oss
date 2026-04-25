@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2] - 2026-04-25
+
+### Fixed
+- `create-ig-harness` scaffolder cloned the wrong git URL
+  (`Shudesu/ig-harness.git`, which is private) so `npx create-ig-harness`
+  always failed with a clone error for external users. Repo URL now
+  points at the public mirror `Shudesu/ig-harness-oss.git`.
+  ([#1](https://github.com/Shudesu/ig-harness-oss/issues/1))
+
 ## [0.4.1] - 2026-04-25
 
 ### Fixed
