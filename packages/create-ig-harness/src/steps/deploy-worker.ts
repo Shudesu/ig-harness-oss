@@ -7,6 +7,7 @@ interface DeployWorkerOptions {
   repoDir: string;
   d1DatabaseId: string;
   d1DatabaseName: string;
+  r2BucketName: string;
   workerName: string;
   accountId: string;
 }
@@ -39,7 +40,7 @@ database_id = "${options.d1DatabaseId}"
 
 [[r2_buckets]]
 binding = "IMAGES"
-bucket_name = "ig-harness-images"
+bucket_name = "${options.r2BucketName}"
 
 [triggers]
 crons = ["*/5 * * * *"]

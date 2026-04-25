@@ -10,9 +10,9 @@ interface DatabaseResult {
 
 export async function createDatabase(
   repoDir: string,
+  databaseName: string,
 ): Promise<DatabaseResult> {
   const s = p.spinner();
-  const databaseName = "ig-harness";
 
   // Create D1 database
   s.start("D1 データベース作成中...");

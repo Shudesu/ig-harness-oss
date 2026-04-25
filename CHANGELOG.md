@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.5] - 2026-04-25
+
+### Fixed
+- `create-ig-harness` no longer uses hardcoded names for the Worker, D1
+  database, and R2 bucket — the previous `ig-harness` / `ig-harness-images`
+  literals collided with any prior deployment on the same Cloudflare
+  account, so a returning user (or anyone running the scaffolder a
+  second time on the same account) would silently overwrite their
+  existing Worker bindings. Fix: scaffolder now generates a random
+  8-char hex suffix once per setup and applies it to all three
+  resources (`ig-harness-<suffix>`, `ig-harness-<suffix>-images`).
+  The suffix is persisted to the state file so resumes stay consistent.
+
 ## [0.4.4] - 2026-04-25
 
 ### Fixed

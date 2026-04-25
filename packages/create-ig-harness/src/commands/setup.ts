@@ -2,6 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import { checkDeps } from "../steps/check-deps.js";
 import { ensureAuth, getAccountId } from "../steps/auth.js";
 import { promptMetaCredentials } from "../steps/prompt.js";
@@ -23,10 +24,12 @@ interface SetupState {
   apiKey?: string;
   d1DatabaseId?: string;
   d1DatabaseName?: string;
+  r2BucketName?: string;
   workerName?: string;
   accountId?: string;
   workerUrl?: string;
   adminUrl?: string;
+  resourceSuffix?: string;
   completedSteps: string[];
 }
 
@@ -105,20 +108,37 @@ export async function runSetup(repoDir: string): Promise<void> {
     saveState(repoDir, state);
   }
 
+  // Step 4.5: Generate a random suffix once and reuse it across worker / D1 / R2.
+  // Guarantees no name collision with anyone else's deploy on the same account.
+  if (!state.resourceSuffix) {
+    state.resourceSuffix = randomBytes(4).toString("hex");
+    saveState(repoDir, state);
+  }
+  const baseName = `ig-harness-${state.resourceSuffix}`;
+  const workerName = state.workerName ?? baseName;
+  const databaseName = state.d1DatabaseName ?? baseName;
+  const r2BucketName = state.r2BucketName ?? `${baseName}-images`;
+  state.workerName = workerName;
+  state.r2BucketName = r2BucketName;
+  saveState(repoDir, state);
+
   // Step 5: Create R2 bucket for image hosting
   if (!isDone(state, "r2bucket")) {
-    await createR2Bucket();
+    await createR2Bucket(r2BucketName);
     markDone(state, "r2bucket");
     saveState(repoDir, state);
   } else {
-    p.log.success("R2 バケット: 作成済み（スキップ）");
+    p.log.success(`R2 バケット: 作成済み（${r2BucketName}）（スキップ）`);
   }
 
   // Step 6: Create D1 database + run migrations
   if (!isDone(state, "database")) {
-    const { databaseId, databaseName } = await createDatabase(repoDir);
+    const { databaseId, databaseName: createdName } = await createDatabase(
+      repoDir,
+      databaseName,
+    );
     state.d1DatabaseId = databaseId;
-    state.d1DatabaseName = databaseName;
+    state.d1DatabaseName = createdName;
     markDone(state, "database");
     saveState(repoDir, state);
   } else {
@@ -126,13 +146,12 @@ export async function runSetup(repoDir: string): Promise<void> {
   }
 
   // Step 7: Deploy Worker
-  const workerName = "ig-harness";
-  state.workerName = workerName;
   if (!isDone(state, "worker")) {
     const { workerUrl } = await deployWorker({
       repoDir,
       d1DatabaseId: state.d1DatabaseId!,
       d1DatabaseName: state.d1DatabaseName!,
+      r2BucketName: state.r2BucketName!,
       workerName,
       accountId: state.accountId!,
     });
