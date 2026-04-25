@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.6] - 2026-04-26
+
+### Fixed
+- `replyToComment` always failed with `Instagram API error 400: Object
+  does not exist, cannot be loaded due to missing permissions, or does
+  not support this operation` (code 100, subcode 33) because the SDK
+  sent the message as a JSON body. The IG Graph API only accepts
+  query-parameter encoded `message` for `/replies`. Switching to
+  `POST /{comment_id}/replies?message=<urlencoded>` makes engagement
+  gates' `comment_reply_text` (the public reply with @username) post
+  correctly. DM dispatch was already working — only the public reply
+  was silently broken.
+
 ## [0.4.5] - 2026-04-25
 
 ### Fixed

@@ -123,7 +123,19 @@ export class InstagramClient {
   }
 
   async replyToComment(commentId: string, message: string): Promise<{ id: string }> {
-    return this.request("POST", `/${commentId}/replies`, { message });
+    // IG Graph API requires query-parameter encoding for /replies, not JSON body.
+    // Sending JSON returns "Object does not exist" because the API can't parse
+    // the message and falls back to looking up the comment by id only.
+    const url = `${GRAPH_API_BASE}/${commentId}/replies?message=${encodeURIComponent(message)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Instagram API error ${res.status}: ${error}`);
+    }
+    return res.json() as Promise<{ id: string }>;
   }
 
   async getMediaInfo(mediaId: string): Promise<MediaInfo> {
