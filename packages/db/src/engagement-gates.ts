@@ -21,6 +21,11 @@ export interface EngagementGate {
   comment_reply_text: string | null;
   /** JSON-serialized FollowupDmStep[]. Empty / NULL = no 24h drip. */
   followup_dm_sequence: string | null;
+  /** When 1, every matching trigger creates a new delivery and the
+   *  service skips the "already triggered" early-return — the same
+   *  follower can receive the CTA flow repeatedly. Default 0
+   *  (idempotent: 1 follower × 1 gate = 1 delivery). */
+  allow_repeat: number;
   /**
    * LINE Harness multi-connection binding. When the operator picks a
    * connection + pool in the campaign wizard, we rewrite outbound reward /
@@ -99,8 +104,8 @@ export async function createEngagementGate(
         initial_dm_rich_message_id, reward_dm_rich_message_id,
         follow_reminder_dm_rich_message_id, comment_reply_text,
         followup_dm_sequence,
-        line_connection_id, line_pool_slug)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        line_connection_id, line_pool_slug, allow_repeat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id, gate.name, gate.status, gate.trigger_type, gate.target_post_id,
@@ -115,6 +120,7 @@ export async function createEngagementGate(
       gate.followup_dm_sequence ?? null,
       gate.line_connection_id ?? null,
       gate.line_pool_slug ?? null,
+      gate.allow_repeat ?? 0,
     )
     .run();
   const row = await db
@@ -239,6 +245,7 @@ const UPDATABLE_GATE_FIELDS = [
   'line_connection_id',
   'line_pool_slug',
   'line_tracked_link_short',
+  'allow_repeat',
 ] as const;
 
 export async function updateEngagementGate(
@@ -269,22 +276,60 @@ export async function deleteEngagementGate(
 
 export async function createGateDelivery(
   db: D1Database,
-  data: { gate_id: string; follower_id: number; igsid: string; metadata?: object },
+  data: {
+    gate_id: string;
+    follower_id: number;
+    igsid: string;
+    metadata?: object;
+    /** Pass `gate.allow_repeat` here. When 1, this helper always inserts a
+     *  new delivery row instead of reusing the existing per-follower row.
+     *  Migration 0013 dropped the unique index, so concurrent rows are
+     *  allowed at the DB level. */
+    allow_repeat?: number;
+  },
 ): Promise<GateDelivery> {
   const id = crypto.randomUUID();
+
+  // allow_repeat=1: always create a brand-new delivery so the same follower
+  // can receive the CTA flow again. Used for demo / nurture campaigns.
+  if (data.allow_repeat === 1) {
+    await db
+      .prepare(
+        `INSERT INTO gate_deliveries (id, gate_id, follower_id, igsid, metadata)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .bind(id, data.gate_id, data.follower_id, data.igsid, JSON.stringify(data.metadata ?? {}))
+      .run();
+    const row = await db
+      .prepare('SELECT * FROM gate_deliveries WHERE id = ?')
+      .bind(id)
+      .first<GateDelivery>();
+    if (!row) throw new Error('Failed to create gate delivery');
+    return row;
+  }
+
+  // allow_repeat=0 (legacy idempotent): SELECT existing row first; only
+  // INSERT if none exists. Race-tolerant: 2 concurrent webhooks may produce
+  // 2 rows in the worst case, but we no longer rely on the unique index
+  // (dropped in migration 0013) for correctness.
+  const existing = await db
+    .prepare('SELECT * FROM gate_deliveries WHERE gate_id = ? AND follower_id = ? LIMIT 1')
+    .bind(data.gate_id, data.follower_id)
+    .first<GateDelivery>();
+  if (existing) return existing;
+
   await db
     .prepare(
       `INSERT INTO gate_deliveries (id, gate_id, follower_id, igsid, metadata)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(gate_id, follower_id) DO NOTHING`,
+       VALUES (?, ?, ?, ?, ?)`,
     )
     .bind(id, data.gate_id, data.follower_id, data.igsid, JSON.stringify(data.metadata ?? {}))
     .run();
   const row = await db
-    .prepare('SELECT * FROM gate_deliveries WHERE gate_id = ? AND follower_id = ?')
-    .bind(data.gate_id, data.follower_id)
+    .prepare('SELECT * FROM gate_deliveries WHERE id = ?')
+    .bind(id)
     .first<GateDelivery>();
-  if (!row) throw new Error('Failed to create or fetch gate delivery');
+  if (!row) throw new Error('Failed to create gate delivery');
   return row;
 }
 

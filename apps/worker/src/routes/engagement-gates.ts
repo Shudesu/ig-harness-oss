@@ -125,6 +125,11 @@ engagementGates.post('/api/engagement-gates', async (c) => {
     follow_reminder_dm_rich_message_id?: string | null;
     comment_reply_text?: string | null;
     followup_dm_sequence?: string | null;
+    /** When 1, every matching trigger creates a new delivery and the
+     *  service skips the idempotent early-return so the same follower
+     *  can run the CTA flow repeatedly (demo/nurture campaigns).
+     *  Default 0 (legacy idempotent: 1 follower × 1 gate = 1 delivery). */
+    allow_repeat?: number;
     /** LINE Harness cross-link binding. When both are set, reward / CTA
      *  DMs rewrite outbound URLs through a LINE Harness tracked link so
      *  first-click captures the IG↔LINE userId pair. */
@@ -211,6 +216,7 @@ engagementGates.post('/api/engagement-gates', async (c) => {
     line_connection_id: body.line_connection_id ?? null,
     line_pool_slug: body.line_pool_slug ?? null,
     line_tracked_link_short: null,
+    allow_repeat: body.allow_repeat ?? 0,
   });
 
   // Populate the junction table with the full id list.

@@ -122,6 +122,7 @@ export async function triggerGateForComment(
       gate_id: gate.id,
       follower_id: args.follower.id,
       igsid: args.follower.igsid,
+      allow_repeat: gate.allow_repeat,
     });
 
     // Idempotent: only send the CTA on the very first trigger. The
@@ -129,7 +130,9 @@ export async function triggerGateForComment(
     // exactly one delivery per gate; any subsequent comment/DM that
     // matches the same gate must NOT resend the CTA, regardless of
     // current status (cta_sent, pending_follow, delivered, dropped).
-    if (delivery.status !== 'triggered') {
+    // Idempotent skip — but allow_repeat=1 gates always proceed so the
+    // same follower can run the CTA → reward flow again (demo/nurture).
+    if (gate.allow_repeat !== 1 && delivery.status !== 'triggered') {
       return true;
     }
 
@@ -184,10 +187,13 @@ export async function triggerGateForDmKeyword(
       gate_id: gate.id,
       follower_id: args.follower.id,
       igsid: args.follower.igsid,
+      allow_repeat: gate.allow_repeat,
     });
 
     // Idempotent: only send the CTA on the very first trigger.
-    if (delivery.status !== 'triggered') {
+    // Idempotent skip — but allow_repeat=1 gates always proceed so the
+    // same follower can run the CTA → reward flow again (demo/nurture).
+    if (gate.allow_repeat !== 1 && delivery.status !== 'triggered') {
       return true;
     }
 
@@ -211,10 +217,13 @@ export async function triggerGateForStoryMention(
       gate_id: gate.id,
       follower_id: args.follower.id,
       igsid: args.follower.igsid,
+      allow_repeat: gate.allow_repeat,
     });
 
     // Idempotent: only send the CTA on the very first trigger.
-    if (delivery.status !== 'triggered') {
+    // Idempotent skip — but allow_repeat=1 gates always proceed so the
+    // same follower can run the CTA → reward flow again (demo/nurture).
+    if (gate.allow_repeat !== 1 && delivery.status !== 'triggered') {
       return true;
     }
 

@@ -220,6 +220,7 @@ posts.post('/api/posts/bulk-apply-gates', async (c) => {
       line_connection_id: null,
       line_pool_slug: null,
       line_tracked_link_short: null,
+      allow_repeat: 0,
     });
     created.push({ id: gate.id, reel_id: reelId, status: 'created' });
   }

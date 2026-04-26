@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.2] - 2026-04-26
+
+### Added
+- **`allow_repeat` フラグ on `engagement_gates`**: When set to 1, every
+  matching trigger creates a fresh delivery and the service skips the
+  idempotent early-return — the same follower can run the CTA → reward
+  flow repeatedly. Useful for demo / nurture campaigns.
+  - Default `0` (legacy idempotent behavior preserved)
+  - Migration `0013_gate_allow_repeat.sql` adds the column and drops
+    the `uq_gate_deliveries_gate_follower` unique index so multiple rows
+    per `(gate_id, follower_id)` are allowed at the DB level
+  - `createGateDelivery` in `@ig-harness/db` accepts `allow_repeat` and
+    branches: `1` → always insert, `0` → SELECT-then-INSERT (legacy)
+  - `triggerGateForComment` / `triggerGateForDmKeyword` /
+    `triggerGateForStoryMention` pass `gate.allow_repeat` through and
+    skip the `delivery.status !== 'triggered'` early-return when 1
+- API: POST/PATCH `/api/engagement-gates` accepts `allow_repeat: 0 | 1`
+
 ## [0.5.1] - 2026-04-26
 
 ### Added

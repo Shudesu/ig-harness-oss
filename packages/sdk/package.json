@@ -1,6 +1,6 @@
 {
   "name": "@ig-harness/sdk",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "AI-native SDK for Instagram Harness — programmatic Instagram DM automation",
   "type": "module",
   "exports": {
