@@ -10,6 +10,7 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
     path === '/webhook' ||
     path === '/privacy' ||
     path === '/privacy-policy' ||
+    path === '/terms-of-service' ||
     path === '/data-deletion' ||
     path === '/connect' ||
     path === '/line' ||

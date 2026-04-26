@@ -215,6 +215,24 @@ app.get('/privacy-policy', (c) => {
 </body></html>`);
 });
 
+// Terms of Service page (recommended for Meta app public mode)
+app.get('/terms-of-service', (c) => {
+  return c.html(`<!DOCTYPE html><html><head><title>Terms of Service - Instagram Harness</title></head><body>
+<h1>Terms of Service</h1>
+<p>This Instagram Harness instance is operated by the account owner for the sole purpose of automating their own Instagram professional account.</p>
+<h2>1. Acceptable use</h2>
+<p>This instance only interacts with the Instagram account(s) the owner has explicitly connected. It must not be used to spam, harass, or impersonate other users.</p>
+<h2>2. Data handling</h2>
+<p>All conversation data, follower data, and webhook payloads are stored in the operator's Cloudflare D1 database and are not shared with third parties. See the <a href="/privacy-policy">Privacy Policy</a> for details.</p>
+<h2>3. No warranty</h2>
+<p>This software is provided "as is" without warranty of any kind. The operator is not liable for any service interruption, data loss, or Meta policy actions on the connected Instagram account.</p>
+<h2>4. Compliance with Meta Platform Terms</h2>
+<p>This instance is operated in compliance with the <a href="https://developers.facebook.com/terms/">Meta Platform Terms</a> and the <a href="https://developers.facebook.com/devpolicy/">Meta Developer Policies</a>. Use of automation features must respect Instagram's user-facing rules including rate limits and anti-spam policies.</p>
+<h2>5. Contact</h2>
+<p>Contact: ${c.env.CONTACT_EMAIL ?? 'admin@example.com'}</p>
+</body></html>`);
+});
+
 // 404 fallback — API paths return JSON 404, everything else serves from static assets (admin)
 app.notFound(async (c) => {
   const path = new URL(c.req.url).pathname;
