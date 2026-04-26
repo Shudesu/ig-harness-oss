@@ -3,6 +3,10 @@
 IG DM 向けオープンソースの自動化 / マーケティングオートメーション。
 **ManyChat・iステップ の代替** として、Cloudflare 上でセルフホストし月額0円〜で運用できます。
 
+> 📖 **セットアップガイド (スクショ付き完全版)**: <https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide>
+>
+> Cloudflare アカウント作成 → Meta App 設定 → Webhook 連携まで、つまずきやすいポイントを画像付きで解説しています。
+
 ## 特徴
 
 - **エンゲージメントゲート（NEW）** — ManyChat スタイルの「フォロー → コメント → DM 配布」ループ。フォロー未完了なら "フォローしてから戻ってきて" DMを送り、フォロー確認後に特典DMを自動配布

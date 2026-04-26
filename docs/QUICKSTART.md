@@ -2,6 +2,8 @@
 
 > この手順通りに上から順にやれば、罠を踏まずにDM自動化が動く。
 
+📖 **スクショ付き完全版ガイド**: <https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide>
+
 ## 前提条件
 - Instagramビジネスアカウント（プロアカウント）
 - Facebookアカウント（IGビジネスアカウントにリンク済み）

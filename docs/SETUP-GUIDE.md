@@ -2,6 +2,8 @@
 
 > 2026-03-30〜04-02 の実際のセットアップで踏んだ罠と解決策を全て記録。
 
+📖 **スクショ付き完全版ガイド**: <https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide>
+
 ## 1. Meta App 作成
 
 ### 手順

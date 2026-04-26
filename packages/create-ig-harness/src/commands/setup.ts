@@ -66,6 +66,11 @@ function markDone(state: SetupState, step: string): void {
 export async function runSetup(repoDir: string): Promise<void> {
   p.intro(pc.bgMagenta(pc.black(" Instagram Harness セットアップ ")));
 
+  p.note(
+    `${pc.bold("📖 セットアップガイド (スクリーンショット付き):")}\n   ${pc.cyan("https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide")}\n\n   各ステップで詰まったらこのページを参照してください。`,
+    "はじめに",
+  );
+
   const state = loadState(repoDir);
 
   if (state.completedSteps.length > 0) {
@@ -261,6 +266,11 @@ export async function runSetup(repoDir: string): Promise<void> {
     const { unlinkSync } = await import("node:fs");
     unlinkSync(statePath);
   }
+
+  p.note(
+    `${pc.bold("📖 詳しい解説 (Meta App公開手順、トラブルシュート、運用Tips):")}\n   ${pc.cyan("https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide")}`,
+    "セットアップガイド",
+  );
 
   p.outro(pc.green("Instagram Harness を使い始めましょう 🚀"));
 }

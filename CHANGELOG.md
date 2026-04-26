@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.1] - 2026-04-26
+
+### Added
+- Persistent links to the **Setup Guide wiki**
+  (<https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide>) at
+  five user-facing entry points so anyone running into a setup snag can jump
+  straight to the screenshot-rich walkthrough:
+  - `create-ig-harness setup` intro and outro panels
+  - `README.md` top-level banner
+  - `docs/QUICKSTART.md` and `docs/SETUP-GUIDE.md` headers
+  - Admin sidebar footer (above the Logout button)
+
 ## [0.5.0] - 2026-04-26
 
 ### Added
