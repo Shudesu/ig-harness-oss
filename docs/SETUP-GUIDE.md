@@ -54,10 +54,16 @@ path === '/connect' ||
 ### 罠: 「プライバシーポリシーのURLが無効」エラー
 Meta がキャッシュしてる場合がある。URL パスを変えて再試行（例: `/privacy` → `/privacy-policy`）。
 
-### アプリレビューは不要
+### アプリレビューは「DM配信のみ」なら不要、「公開コメント返信」を使うなら必要
 > 「自分のInstagramビジネスのためにのみ構築する場合は、このステップはスキップすることができます。」
 
-公開トグルを押すだけでOK。
+これは **DM 配信 / Webhook 受信 / 自分のコメントへの操作** までは正しい。公開トグル押すだけで運用開始できる。
+
+ただし以下は Standard Access (= App Review なし) では動かない:
+- 外部ユーザーのコメントへの公開返信 (`POST /{ig-comment-id}/replies`) → API が `subcode 33 "does not exist"` で拒否
+- 外部コメントの GET / hide / delete
+
+`comment_reply_text` 機能を使うなら **Meta App Review を申請して `instagram_business_manage_comments` の Advanced Access を取得**する必要がある。Tester 追加 + token 再発行でも回避不可 (2026-04-26 検証済み)。それまでは `comment_reply_text` を空にして DM 配信のみで運用すること。
 
 ## 4. ManyChat との共存問題
 

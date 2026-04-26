@@ -109,6 +109,8 @@ curl -X POST "https://graph.instagram.com/v25.0/YOUR_IG_USER_ID/subscribed_apps?
 
 > 「自分のビジネスのためにのみ構築する場合、アプリレビューはスキップできます」
 
+⚠ **ただし `comment_reply_text` (公開コメント返信) を使う場合は別途 Meta App Review が必要**。Standard Access では外部コメントへの reply が `subcode 33` で拒否されます。DM 配信のみなら App Review 不要で即運用可。
+
 ### 5c: ルーティング設定（ManyChat使ったことある人は必須）
 Instagram APIダッシュボード → **ルーティング設定** → 自分のアプリをプライマリレシーバーに。
 

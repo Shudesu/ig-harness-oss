@@ -9,7 +9,7 @@ IG DM 向けオープンソースの自動化 / マーケティングオート�
 - **LINE Harness との UUID クロスプラットフォーム連携（NEW）** — 共有シークレット webhook で IG ユーザーと LINE 友だちを同一UUIDに紐付け、IG → LINE の導線を1本化
 - **キャンペーンダッシュボード（NEW）** — `/campaigns` でゲートの CRUD + 実行分析（フォロー通過率 / DM配布数 / LINE紐付け数）
 - **コメント → DM 自動配布** — 特定投稿/リールへのコメントをトリガーに DM で特典配布
-- **コメント自動リプライ** — キーワードごとのコメント自動返信
+- **コメント自動リプライ** — キーワードごとのコメント自動返信 *(⚠ Meta App Review / Advanced Access 通過後のみ動作。Standard Access では DM 配信のみ)*
 - **ステップ配信** — キーワードトリガーで時間差 DM 連続送信
 - **リッチメッセージ** — ボタン付きカード、カルーセル、クイックリプライ
 - **一斉配信** — 全フォロワー or タグ絞り込みで DM 一斉送信
@@ -34,7 +34,8 @@ IG DM 向けオープンソースの自動化 / マーケティングオート�
 | MCP (AI連携) | ✅ | ❌ | ❌ |
 | セルフホスト | ✅ | ❌ | ❌ |
 | オープンソース | ✅ | ❌ | ❌ |
-| Meta Review 不要 | ✅ (dev mode) | — | — |
+| Standard Access で運用可 | ✅ (DM配信のみ) | ❌ (Advanced 必須) | ❌ (Advanced 必須) |
+| 公開コメント返信 | App Review 必須 | ✅ | ✅ |
 
 ## 技術スタック
 
@@ -49,7 +50,18 @@ IG DM 向けオープンソースの自動化 / マーケティングオート�
 | MCP Server | Model Context Protocol, `@ig-harness/sdk` ベース |
 | IG連携 | Instagram Graph API (Meta Dev Mode) |
 
-**Meta レビュー不要**: Dev Mode（テスター追加）で運用するため、本番 Meta App Review を経由せずに即日デプロイできます。
+## Meta App Review について
+
+| 機能 | 必要なアクセスレベル |
+|------|----------------------|
+| DM 自動配布、ステップ配信、一斉配信、フォーム、トラッキングリンク | **Standard Access** (App Review 不要) |
+| Webhook 受信 (コメント / DM / ストーリーメンション) | **Standard Access** |
+| エンゲージメントゲートのフォロー check / DM 配布 / LINE 連携 | **Standard Access** |
+| **公開コメント返信** (`comment_reply_text` / 外部ユーザーのコメントへのスレッド型 reply) | **Advanced Access (Meta App Review 通過必須)** |
+
+**重要**: 旧 Dev Mode + テスター追加で外部コメント reply が動くという情報は誤りです (Meta API は Tester 登録済みアカウントのコメントでも `subcode 33` で拒否)。`comment_reply_text` を本番で使うには、Meta App Review を申請して `instagram_business_manage_comments` の **Advanced Access** を取得する必要があります。
+
+App Review 通過までは `comment_reply_text` を空にして DM 配信のみで運用してください。本リポジトリの管理画面 (`/campaigns/new`) でも該当箇所に警告を表示しています。
 
 ## アーキテクチャ
 

@@ -786,6 +786,9 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                 <p className="mt-2 text-[11px] text-gray-400">
                   複数入れると毎回ランダムで1つ選ばれます（ボット感を減らす）。<code className="font-mono">{'{{username}}'}</code> でコメントした人の @username を差し込めます。全部空欄ならDMのみ。
                 </p>
+                <p className="mt-1 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+                  🚫 Meta App Review 必須：Standard Access では外部ユーザーのコメントへの公開返信は動作しません（API が <code className="font-mono">subcode 33</code> で拒否）。Advanced Access (App Review 承認後) のみ機能します。それまでは DM 配信のみ実行されます。
+                </p>
                 <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                   ⚠️ IG仕様：未フォローのユーザーへのDMは「メッセージリクエスト」に振り分けられたり届かないことがあります。公開返信でリクエスト確認を促すと到達率UP。
                 </p>
