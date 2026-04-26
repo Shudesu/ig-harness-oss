@@ -138,6 +138,27 @@ export class InstagramClient {
     return res.json() as Promise<{ id: string }>;
   }
 
+  /**
+   * Post a top-level comment to a media owned by the authenticated IG user.
+   * This works under Standard Access (unlike /{comment_id}/replies, which
+   * needs Advanced Access for external commenters' comments). Used as a
+   * Standard-Access-friendly substitute for replyToComment by writing
+   * "@username message" as a regular comment on the media — UX-wise this
+   * is functionally identical to a public reply.
+   */
+  async postCommentToMedia(mediaId: string, message: string): Promise<{ id: string }> {
+    const url = `${GRAPH_API_BASE}/${mediaId}/comments?message=${encodeURIComponent(message)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    if (!res.ok) {
+      const error = await res.text();
+      throw new Error(`Instagram API error ${res.status}: ${error}`);
+    }
+    return res.json() as Promise<{ id: string }>;
+  }
+
   async getMediaInfo(mediaId: string): Promise<MediaInfo> {
     return this.request(
       "GET",

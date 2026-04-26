@@ -54,16 +54,14 @@ path === '/connect' ||
 ### 罠: 「プライバシーポリシーのURLが無効」エラー
 Meta がキャッシュしてる場合がある。URL パスを変えて再試行（例: `/privacy` → `/privacy-policy`）。
 
-### アプリレビューは「DM配信のみ」なら不要、「公開コメント返信」を使うなら必要
+### アプリレビューは原則不要 (本物のスレッド型 reply を使うときのみ必要)
 > 「自分のInstagramビジネスのためにのみ構築する場合は、このステップはスキップすることができます。」
 
-これは **DM 配信 / Webhook 受信 / 自分のコメントへの操作** までは正しい。公開トグル押すだけで運用開始できる。
+ig-harness が使う API は **DM 配信 / Webhook 受信 / 自分のメディアへのコメント投下 (`POST /{media_id}/comments`)** まで全て **Standard Access** で動くため、公開トグル押すだけで運用開始できる。
 
-ただし以下は Standard Access (= App Review なし) では動かない:
-- 外部ユーザーのコメントへの公開返信 (`POST /{ig-comment-id}/replies`) → API が `subcode 33 "does not exist"` で拒否
-- 外部コメントの GET / hide / delete
+例外: **本物のスレッド型 reply** (`POST /{ig-comment-id}/replies` で外部ユーザーのコメント直下にネスト返信) を使う場合のみ、Meta App Review を申請して `instagram_business_manage_comments` の **Advanced Access** を取得する必要がある。Tester 追加 + token 再発行でも回避不可 (2026-04-26 検証済み)。
 
-`comment_reply_text` 機能を使うなら **Meta App Review を申請して `instagram_business_manage_comments` の Advanced Access を取得**する必要がある。Tester 追加 + token 再発行でも回避不可 (2026-04-26 検証済み)。それまでは `comment_reply_text` を空にして DM 配信のみで運用すること。
+ig-harness の `comment_reply_text` 機能は `postCommentToMedia` (= トップレベル + @mention 投下) で実装されているため、Standard Access のままで動作する。投稿位置が IG UI 上「投稿全体のコメント欄」に並ぶ点だけ留意 (親コメント直下のスレッド返信ではない)。
 
 ## 4. ManyChat との共存問題
 

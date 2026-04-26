@@ -9,7 +9,7 @@ IG DM 向けオープンソースの自動化 / マーケティングオート�
 - **LINE Harness との UUID クロスプラットフォーム連携（NEW）** — 共有シークレット webhook で IG ユーザーと LINE 友だちを同一UUIDに紐付け、IG → LINE の導線を1本化
 - **キャンペーンダッシュボード（NEW）** — `/campaigns` でゲートの CRUD + 実行分析（フォロー通過率 / DM配布数 / LINE紐付け数）
 - **コメント → DM 自動配布** — 特定投稿/リールへのコメントをトリガーに DM で特典配布
-- **コメント自動リプライ** — キーワードごとのコメント自動返信 *(⚠ Meta App Review / Advanced Access 通過後のみ動作。Standard Access では DM 配信のみ)*
+- **コメント自動リプライ** — キーワードごとのコメント自動返信 *(@mention 付きトップレベル投下方式。本物のスレッド型 reply は Meta App Review / Advanced Access 必須)*
 - **ステップ配信** — キーワードトリガーで時間差 DM 連続送信
 - **リッチメッセージ** — ボタン付きカード、カルーセル、クイックリプライ
 - **一斉配信** — 全フォロワー or タグ絞り込みで DM 一斉送信
@@ -34,8 +34,8 @@ IG DM 向けオープンソースの自動化 / マーケティングオート�
 | MCP (AI連携) | ✅ | ❌ | ❌ |
 | セルフホスト | ✅ | ❌ | ❌ |
 | オープンソース | ✅ | ❌ | ❌ |
-| Standard Access で運用可 | ✅ (DM配信のみ) | ❌ (Advanced 必須) | ❌ (Advanced 必須) |
-| 公開コメント返信 | App Review 必須 | ✅ | ✅ |
+| Standard Access で運用可 | ✅ (擬似コメント返信含む) | ❌ (Advanced 必須) | ❌ (Advanced 必須) |
+| 本物のスレッド型 reply | App Review 必須 | ✅ | ✅ |
 
 ## 技術スタック
 
@@ -57,11 +57,12 @@ IG DM 向けオープンソースの自動化 / マーケティングオート�
 | DM 自動配布、ステップ配信、一斉配信、フォーム、トラッキングリンク | **Standard Access** (App Review 不要) |
 | Webhook 受信 (コメント / DM / ストーリーメンション) | **Standard Access** |
 | エンゲージメントゲートのフォロー check / DM 配布 / LINE 連携 | **Standard Access** |
-| **公開コメント返信** (`comment_reply_text` / 外部ユーザーのコメントへのスレッド型 reply) | **Advanced Access (Meta App Review 通過必須)** |
+| **コメント自動リプライ** (`comment_reply_text`) | **Standard Access** *(@mention 付きトップレベル投下、`POST /{media_id}/comments` 経由)* |
+| **本物のスレッド型 reply** (親コメント直下にネストされる返信) | **Advanced Access (Meta App Review 通過必須)** |
 
-**重要**: 旧 Dev Mode + テスター追加で外部コメント reply が動くという情報は誤りです (Meta API は Tester 登録済みアカウントのコメントでも `subcode 33` で拒否)。`comment_reply_text` を本番で使うには、Meta App Review を申請して `instagram_business_manage_comments` の **Advanced Access** を取得する必要があります。
+**実装ノート**: ig-harness は `comment_reply_text` 機能を `postCommentToMedia` (= `POST /{ig-media-id}/comments`) で実装しているため、Standard Access のままで動作します。投稿される位置は IG UI 上「投稿全体のコメント欄に新しいコメントとして並ぶ」形になり、親コメント直下の **スレッド返信ではない** 点だけ留意してください (UX 的には @mention 通知で commenter には届きます)。
 
-App Review 通過までは `comment_reply_text` を空にして DM 配信のみで運用してください。本リポジトリの管理画面 (`/campaigns/new`) でも該当箇所に警告を表示しています。
+`POST /{ig-comment-id}/replies` (本物のスレッド型 reply) を使いたい場合のみ Meta App Review を申請して `instagram_business_manage_comments` の **Advanced Access** を取得してください。Tester 追加 + token 再発行でも回避不可 (2026-04-26 検証済み)。
 
 ## アーキテクチャ
 

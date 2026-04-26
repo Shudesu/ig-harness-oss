@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.7] - 2026-04-26
+
+### Added
+- `InstagramClient.postCommentToMedia(mediaId, message)` — posts a top-level
+  comment to one of the authenticated user's own media. This works under
+  Standard Access (unlike `/{comment_id}/replies` which requires Advanced
+  Access for external commenters' comments).
+
+### Changed
+- Engagement gate's "comment_reply_text" feature now uses
+  `postCommentToMedia(mediaId, "@{{username}} ...")` instead of
+  `replyToComment(commentId, ...)`. Trade-off: replies are visible as
+  top-level @mention comments rather than threaded replies. Threaded
+  replies still require Advanced Access (App Review).
+- Webhook handler skips comments whose `from.id` matches `IG_USER_ID` so
+  the gate's own auto-posted public reply doesn't recursively re-trigger
+  itself with a "user not found" DM-send error.
+
 ## [0.4.6] - 2026-04-26
 
 ### Fixed

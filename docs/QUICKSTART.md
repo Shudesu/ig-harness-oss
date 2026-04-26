@@ -109,7 +109,7 @@ curl -X POST "https://graph.instagram.com/v25.0/YOUR_IG_USER_ID/subscribed_apps?
 
 > 「自分のビジネスのためにのみ構築する場合、アプリレビューはスキップできます」
 
-⚠ **ただし `comment_reply_text` (公開コメント返信) を使う場合は別途 Meta App Review が必要**。Standard Access では外部コメントへの reply が `subcode 33` で拒否されます。DM 配信のみなら App Review 不要で即運用可。
+ℹ️ ig-harness の機能は DM 配信 / Webhook 受信 / `comment_reply_text` (=トップレベル+@mention 擬似 reply) まで全て Standard Access で動くので App Review なしで即運用可能。**例外**: 親コメント直下の **本物のスレッド型 reply** (`POST /{ig-comment-id}/replies`) を使う場合のみ、Meta App Review を申請して Advanced Access が必要。
 
 ### 5c: ルーティング設定（ManyChat使ったことある人は必須）
 Instagram APIダッシュボード → **ルーティング設定** → 自分のアプリをプライマリレシーバーに。

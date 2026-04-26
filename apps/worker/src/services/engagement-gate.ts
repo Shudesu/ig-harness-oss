@@ -56,6 +56,7 @@ interface IgClientLike {
   ): Promise<{ sentBlocks: number }>;
   getUserProfile(igsid: string): Promise<UserProfile>;
   replyToComment(commentId: string, message: string): Promise<unknown>;
+  postCommentToMedia(mediaId: string, message: string): Promise<unknown>;
 }
 
 interface FollowerRef {
@@ -135,15 +136,20 @@ export async function triggerGateForComment(
     await sendCtaDm(db, igClient, gate, delivery);
     await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
 
-    // Optional public comment reply. Posted after the DM so a reply
-    // failure doesn't block delivery. Errors are swallowed because IG
-    // sometimes rejects replies on the 2nd+ comment in a thread; the
-    // DM flow is the primary channel.
+    // Optional public comment. Posted after the DM so a failure doesn't
+    // block delivery.
+    //
+    // Why postCommentToMedia instead of replyToComment:
+    //   /{comment_id}/replies requires Advanced Access for external
+    //   commenters' comments — under Standard Access it always returns
+    //   "Object does not exist". Top-level comment with @username has
+    //   identical UX (visible mention to the commenter) and works under
+    //   Standard Access since the app owner is posting on their own media.
     //
     // Supports rotation: comment_reply_text can be a plain string OR a
     // JSON array of strings. When it's an array, a random entry is
     // picked per delivery so the replies don't look robotic.
-    if (gate.comment_reply_text && args.commentId) {
+    if (gate.comment_reply_text) {
       const patterns = parseCommentReplyPatterns(gate.comment_reply_text);
       if (patterns.length > 0) {
         const picked = patterns[Math.floor(Math.random() * patterns.length)]!;
@@ -152,9 +158,9 @@ export async function triggerGateForComment(
           args.commenterUsername ?? '',
         );
         try {
-          await igClient.replyToComment(args.commentId, replyText);
+          await igClient.postCommentToMedia(args.postId, replyText);
         } catch (err) {
-          console.error('[gate] comment reply failed:', err);
+          console.error('[gate] comment post failed:', err);
         }
       }
     }

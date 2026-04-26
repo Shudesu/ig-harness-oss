@@ -105,7 +105,7 @@ webhook.post('/webhook', async (c) => {
         for (const change of entry.changes) {
           try {
             if (change.field === 'comments') {
-              await handleCommentEvent(db, igClient, change.value, c.env.WORKER_URL);
+              await handleCommentEvent(db, igClient, change.value, c.env.IG_USER_ID, c.env.WORKER_URL);
             } else if (change.field === 'mentions') {
               await handleMentionEvent(db, igClient, change.value);
             }
@@ -292,11 +292,20 @@ async function handleCommentEvent(
   db: D1Database,
   igClient: InstagramClient,
   value: { id: string; text: string; from: { id: string; username: string }; media: { id: string }; created_time: string },
+  igUserId: string,
   _workerUrl?: string,
 ): Promise<void> {
   const senderId = value.from.id;
   const commentText = value.text;
   const mediaId = value.media.id;
+
+  // Skip our own comments — when the gate posts a public reply via
+  // postCommentToMedia, IG fires a comment webhook for that too. Without
+  // this guard we'd try to DM ourselves, fail, and pollute the gate
+  // delivery table with a self-trigger.
+  if (senderId === igUserId) {
+    return;
+  }
 
   // Upsert follower
   let profile;
