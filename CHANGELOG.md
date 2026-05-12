@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.3] - 2026-05-12
+
+### Fixed
+- **`@ig-harness/sdk` build failure on fresh installs**: `packages/sdk` was
+  missing a `@types/node` devDependency, so `tsup --dts` failed during
+  `pnpm -r build` with `TS2304: Cannot find name 'URLSearchParams'` in
+  `src/resources/followers.ts`. Affected anyone running
+  `npx create-ig-harness@0.5.2` from a clean workspace (notably on Windows
+  where there was no pre-existing hoisted `@types/node`).
+  - Added `@types/node@^22` to `packages/sdk/package.json`
+  - `mcp-server` / `create-ig-harness` bumped to 0.5.3 to keep the unified
+    version policy
+
 ## [0.5.2] - 2026-04-26
 
 ### Added
