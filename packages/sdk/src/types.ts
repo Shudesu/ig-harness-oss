@@ -242,6 +242,45 @@ export interface CreateRichMenuInput {
   areas: RichMenuArea[]
 }
 
+// ─── Ad Platforms ──────────────────────────────────────
+export type AdPlatformName = 'meta' | 'x' | 'google' | 'tiktok'
+
+export interface AdPlatform {
+  id: string
+  name: AdPlatformName
+  displayName: string | null
+  config: Record<string, unknown>
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateAdPlatformInput {
+  name: AdPlatformName
+  displayName?: string
+  config: Record<string, unknown>
+}
+
+export interface UpdateAdPlatformInput {
+  name?: AdPlatformName
+  displayName?: string
+  config?: Record<string, unknown>
+  isActive?: boolean
+}
+
+export type ConversionLogStatus = 'sent' | 'failed'
+
+export interface ConversionLog {
+  id: string
+  platformId: string
+  eventName: string
+  friendId: string | null
+  status: ConversionLogStatus
+  error: string | null
+  sentAt: string | null
+  createdAt: string
+}
+
 // ─── Segment ─────────────────────────────────────────────
 export interface SegmentRule {
   type: 'tag_exists' | 'tag_not_exists' | 'metadata_equals' | 'metadata_not_equals' | 'ref_code' | 'is_following'
