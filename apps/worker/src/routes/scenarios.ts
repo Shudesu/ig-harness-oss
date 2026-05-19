@@ -45,7 +45,7 @@ function serializeStep(row: DbScenarioStep) {
     stepOrder: row.step_order,
     delayMinutes: row.delay_minutes,
     messageType: row.message_type,
-    messageContent: row.message_content,
+    messageContent: row.body,
     conditionType: row.condition_type ?? null,
     conditionValue: row.condition_value ?? null,
     nextStepOnFalse: row.next_step_on_false ?? null,
@@ -57,12 +57,12 @@ function serializeStep(row: DbScenarioStep) {
 function serializeFriendScenario(row: DbFriendScenario) {
   return {
     id: row.id,
-    friendId: row.friend_id,
+    friendId: row.follower_id,
     scenarioId: row.scenario_id,
-    currentStepOrder: row.current_step_order,
+    currentStepOrder: row.current_step,
     status: row.status,
-    startedAt: row.started_at,
-    nextDeliveryAt: row.next_delivery_at,
+    startedAt: row.enrolled_at,
+    nextDeliveryAt: row.next_step_at,
     updatedAt: row.updated_at,
   };
 }
@@ -266,7 +266,7 @@ scenarios.put('/api/scenarios/:id/steps/:stepId', async (c) => {
       step_order: body.stepOrder,
       delay_minutes: body.delayMinutes,
       message_type: body.messageType,
-      message_content: body.messageContent,
+      body: body.messageContent,
       condition_type: body.conditionType,
       condition_value: body.conditionValue,
       next_step_on_false: body.nextStepOnFalse,

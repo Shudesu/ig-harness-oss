@@ -305,7 +305,10 @@ export async function getScenarioSteps(
 
 export async function enrollFriendInScenario(
   db: D1Database,
-  friendId: string,
+  // followers.id is INTEGER PRIMARY KEY in SQLite, so callers reading rows
+  // directly hand us a number. Other callers (API routes resolving IDs via
+  // route params) pass strings. D1 accepts both via `.bind()`.
+  friendId: string | number,
   scenarioId: string,
 ): Promise<FriendScenario> {
   const id = crypto.randomUUID();
