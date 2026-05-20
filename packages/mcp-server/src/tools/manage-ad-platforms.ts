@@ -136,12 +136,13 @@ export function registerManageAdPlatforms(server: McpServer): void {
               eventName,
               friendId,
             );
+            const { success: _ignored, ...details } = result;
 
             return {
               content: [
                 {
                   type: "text" as const,
-                  text: JSON.stringify({ success: true, ...result }, null, 2),
+                  text: JSON.stringify({ success: true, ...details }, null, 2),
                 },
               ],
             };
