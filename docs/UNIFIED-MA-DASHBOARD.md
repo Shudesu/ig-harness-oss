@@ -75,9 +75,10 @@ The `create-*` CLIs should converge on the same operational behavior:
 ## Near-term IG work
 
 1. Harden `create-ig-harness update` so it does not unexpectedly clone/pull.
-2. Add a first-class LINE connection setup step to IG, matching the existing
+2. Add `GET /api/capabilities` to IG as the first connector-discovery endpoint.
+3. Add a first-class LINE connection setup step to IG, matching the existing
    `line_harness_connections` worker API.
-3. Add `/api/capabilities` to IG and LINE so a dashboard can discover features.
-4. Move X's ad-hoc LINE form creation into a reusable connector contract.
-5. Start a separate `ma-dashboard` app only after the connector contract is
+4. Add `/api/capabilities` to LINE and X so a dashboard can discover features.
+5. Move X's ad-hoc LINE form creation into a reusable connector contract.
+6. Start a separate `ma-dashboard` app only after the connector contract is
    stable enough to avoid a brittle three-product mega-refactor.
