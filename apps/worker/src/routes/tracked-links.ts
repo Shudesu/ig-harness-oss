@@ -212,6 +212,7 @@ trackedLinks.get('/t/:linkId', async (c) => {
     const { getFriendByIgsid } = await import('@ig-harness/db');
     const friend = await getFriendByIgsid(c.env.DB, igsid);
     if (friend) {
+      // followers.id is numeric — coerce so it matches the string-typed slot.
       friendId = String(friend.id);
     }
   }
