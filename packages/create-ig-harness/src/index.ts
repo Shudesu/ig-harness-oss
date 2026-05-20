@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runSetup } from "./commands/setup.js";
 import { runUpdate } from "./commands/update.js";
+import { WranglerError } from "./lib/wrangler.js";
 import { ensureRepo } from "./steps/clone-repo.js";
 
 const args = process.argv.slice(2);
@@ -64,6 +66,16 @@ function parseArgs(): {
   return { command, repoDir, help, version };
 }
 
+function getConfigDir(explicitRepoDir: string | null): string {
+  if (explicitRepoDir) return explicitRepoDir;
+  const cwdState = join(process.cwd(), ".ig-harness-deployed.json");
+  if (existsSync(cwdState)) return process.cwd();
+  const home = homedir() || process.env.HOME || process.env.USERPROFILE || tmpdir();
+  const dir = join(home, ".ig-harness");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 async function main(): Promise<void> {
   const { command, repoDir: explicitRepoDir, help, version } = parseArgs();
 
@@ -77,12 +89,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Ensure repo is available (clone if needed)
-  const repoDir = await ensureRepo(explicitRepoDir);
-
   if (command === "setup") {
+    // Setup needs the actual template repo so it can deploy Worker/Admin code.
+    const repoDir = await ensureRepo(explicitRepoDir);
     await runSetup(repoDir);
   } else if (command === "update") {
+    // Update reads persisted deployed state and talks to Cloudflare directly.
+    // Avoid a surprising clone/pull when operators only want to redeploy.
+    const repoDir = getConfigDir(explicitRepoDir);
     await runUpdate(repoDir);
   } else {
     console.error(`Unknown command: ${command}`);
@@ -93,5 +107,9 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   console.error("Error:", error.message);
+  if (error instanceof WranglerError) {
+    const help = error.getHelp();
+    if (help) console.error(`\nHint:\n${help}`);
+  }
   process.exit(1);
 });
