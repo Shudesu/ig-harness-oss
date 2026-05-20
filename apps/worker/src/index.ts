@@ -23,6 +23,7 @@ import { posts } from './routes/posts.js';
 import { richMessages } from './routes/rich-messages.js';
 import { integrations } from './routes/integrations.js';
 import { lineConnections } from './routes/line-connections.js';
+import { capabilities } from './routes/capabilities.js';
 import { getIGAccessToken, refreshIGAccessTokenIfNeeded } from './lib/ig-token.js';
 
 export type Env = {
@@ -78,6 +79,7 @@ app.route('/', posts);
 app.route('/', richMessages);
 app.route('/', integrations);
 app.route('/', lineConnections);
+app.route('/', capabilities);
 
 // LINE Harness UUID linkage endpoint
 app.get('/connect', (c) => {
