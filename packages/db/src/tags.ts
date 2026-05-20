@@ -74,7 +74,9 @@ export async function removeTagFromFriend(
 
 export async function getFriendTags(
   db: D1Database,
-  friendId: string,
+  // followers.id is numeric in SQLite; route params arrive as string. Both
+  // bind cleanly through D1.
+  friendId: string | number,
 ): Promise<Tag[]> {
   const result = await db
     .prepare(

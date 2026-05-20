@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getClient } from "../client.js";
+import type { CreateStaffInput, UpdateStaffInput } from "@ig-harness/sdk";
 
 export function registerManageStaff(server: McpServer): void {
   server.tool(
@@ -37,7 +38,9 @@ export function registerManageStaff(server: McpServer): void {
         if (action === "create") {
           if (!name) throw new Error("name is required for create action");
           if (!role) throw new Error("role is required for create action");
-          const member = await client.staff.create({ name, email: email ?? undefined, role });
+          const input: CreateStaffInput = { name, role };
+          if (email !== undefined && email !== null) input.email = email;
+          const member = await client.staff.create(input);
           return {
             content: [{
               type: "text" as const,
@@ -59,7 +62,7 @@ export function registerManageStaff(server: McpServer): void {
 
         if (action === "update") {
           if (!staffId) throw new Error("staffId is required for update action");
-          const updates: Record<string, unknown> = {};
+          const updates: UpdateStaffInput = {};
           if (name !== undefined) updates.name = name;
           if (email !== undefined) updates.email = email;
           if (role !== undefined) updates.role = role;

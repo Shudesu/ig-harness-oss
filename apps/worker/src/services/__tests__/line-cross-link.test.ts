@@ -88,6 +88,7 @@ function makeGate(overrides: Partial<EngagementGate> = {}): EngagementGate {
     follow_reminder_dm_rich_message_id: null,
     comment_reply_text: null,
     followup_dm_sequence: null,
+    allow_repeat: 0,
     line_connection_id: null,
     line_pool_slug: null,
     line_tracked_link_short: null,
