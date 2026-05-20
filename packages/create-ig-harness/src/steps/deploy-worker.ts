@@ -1,7 +1,10 @@
 import * as p from "@clack/prompts";
 import { writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { wrangler } from "../lib/wrangler.js";
+import { wrangler, WranglerError } from "../lib/wrangler.js";
+
+const WORKERS_DEV_URL = /(https:\/\/[^\s]+\.workers\.dev)/;
+const TTY_REQUIRED = /non[- ]?interactive|cloudflare_api_token|consent denied|authentication error|expired/i;
 
 interface DeployWorkerOptions {
   repoDir: string;
@@ -48,15 +51,42 @@ crons = ["*/5 * * * *"]
   writeFileSync(deployTomlPath, deployToml);
 
   try {
-    const output = await wrangler(["deploy", "--config", deployTomlName], {
-      cwd: workerDir,
-    });
+    let workerUrl: string;
+    try {
+      const output = await wrangler(["deploy", "--config", deployTomlName], {
+        cwd: workerDir,
+      });
+      const urlMatch = output.match(WORKERS_DEV_URL);
+      if (!urlMatch) {
+        throw new Error(`Worker URL を出力からパースできません:\n${output}`);
+      }
+      workerUrl = urlMatch[1];
+    } catch (firstError) {
+      const isAuthError =
+        firstError instanceof WranglerError &&
+        TTY_REQUIRED.test(firstError.stderr);
+      if (!isAuthError) throw firstError;
 
-    // Parse worker URL from output
-    const urlMatch = output.match(/(https:\/\/[^\s]+\.workers\.dev)/);
-    const workerUrl = urlMatch
-      ? urlMatch[1]
-      : `https://${options.workerName}.workers.dev`;
+      s.stop("wrangler 認証更新のため対話モードで再実行します...");
+      await wrangler(["deploy", "--config", deployTomlName], {
+        cwd: workerDir,
+        tty: true,
+      });
+
+      const output = await wrangler(["deploy", "--config", deployTomlName], {
+        cwd: workerDir,
+      });
+      const urlMatch = output.match(WORKERS_DEV_URL);
+      if (!urlMatch) {
+        throw new Error(
+          [
+            "Worker のデプロイは完了しましたが URL を取得できませんでした。",
+            "もう一度同じ update/setup コマンドを実行すると URL 取得を再試行します。",
+          ].join("\n"),
+        );
+      }
+      workerUrl = urlMatch[1];
+    }
 
     s.stop("Worker デプロイ完了");
     return { workerUrl };

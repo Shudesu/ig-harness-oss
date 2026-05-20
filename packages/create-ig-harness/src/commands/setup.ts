@@ -14,6 +14,7 @@ import { setSecrets } from "../steps/secrets.js";
 import { generateMcpConfig } from "../steps/mcp-config.js";
 import { showWebhookGuide } from "../steps/webhook-guide.js";
 import { generateApiKey } from "../lib/crypto.js";
+import { setAccountId } from "../lib/wrangler.js";
 
 interface SetupState {
   metaAppId?: string;
@@ -92,6 +93,7 @@ export async function runSetup(repoDir: string): Promise<void> {
     saveState(repoDir, state);
     p.log.success(`Cloudflare アカウント: ${accountId}`);
   }
+  setAccountId(state.accountId);
 
   // Step 3: Get Meta / Instagram credentials (skip if already saved)
   if (!isDone(state, "credentials")) {
