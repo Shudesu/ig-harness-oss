@@ -17,7 +17,9 @@ import {
 } from '@ig-harness/db';
 import { buildIgMessage, expandVariables } from '../services/step-delivery.js';
 import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention } from '../services/engagement-gate.js';
-import { getIGAccessToken } from '../lib/ig-token.js';
+import type { IgAccountRef } from '../services/line-cross-link.js';
+import { listIgAccounts } from '@ig-harness/db';
+import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 export type PostbackPayload =
@@ -38,14 +40,22 @@ export function parsePostbackPayload(raw: string): PostbackPayload {
 const webhook = new Hono<Env>();
 
 // GET /webhook — Meta verification challenge
-webhook.get('/webhook', (c) => {
+webhook.get('/webhook', async (c) => {
   const mode = c.req.query('hub.mode') ?? null;
   const token = c.req.query('hub.verify_token') ?? null;
   const challenge = c.req.query('hub.challenge') ?? null;
 
-  const result = verifyWebhookChallenge(mode, token, challenge, c.env.IG_VERIFY_TOKEN);
-  if (result) {
-    return c.text(result, 200);
+  // Accounts connected through a different Meta App carry their own verify
+  // token — accept any known one so each App's webhook subscription succeeds.
+  await ensureDefaultAccount(c.env, c.env.DB);
+  const accounts = await listIgAccounts(c.env.DB);
+  const expectedTokens = [c.env.IG_VERIFY_TOKEN, ...accounts.map((a) => a.verify_token)]
+    .filter((t): t is string => !!t);
+  for (const expected of expectedTokens) {
+    const result = verifyWebhookChallenge(mode, token, challenge, expected);
+    if (result) {
+      return c.text(result, 200);
+    }
   }
   return c.json({ error: 'Verification failed' }, 403);
 });
@@ -56,9 +66,20 @@ webhook.post('/webhook', async (c) => {
   const signature = c.req.header('X-Hub-Signature-256') ?? '';
   const db = c.env.DB;
 
-  // Verify signature — try IG App Secret first, then Meta App Secret
-  // TODO: determine which secret Meta uses for Instagram API webhooks
-  const valid = await verifyWebhookSignature(rawBody, signature, c.env.IG_APP_SECRET);
+  // Verify signature — env App Secret first, then per-account secrets so
+  // accounts connected through a different Meta App also validate.
+  await ensureDefaultAccount(c.env, c.env.DB);
+  const accounts = await listIgAccounts(c.env.DB);
+  const secrets = [c.env.IG_APP_SECRET, ...accounts.map((a) => a.app_secret)]
+    .filter((sec): sec is string => !!sec)
+    .filter((sec, i, arr) => arr.indexOf(sec) === i);
+  let valid = false;
+  for (const secret of secrets) {
+    if (await verifyWebhookSignature(rawBody, signature, secret)) {
+      valid = true;
+      break;
+    }
+  }
   if (!valid) {
     console.log('Signature verification failed, logging raw body for debug:', rawBody.substring(0, 200));
     // Don't reject — process anyway during development mode
@@ -82,19 +103,24 @@ webhook.post('/webhook', async (c) => {
     return c.json({ status: 'ok' }, 200);
   }
 
-  const igClient = new InstagramClient({
-    accessToken: await getIGAccessToken(c.env),
-    igUserId: c.env.IG_USER_ID,
-  });
-
   // Process asynchronously — Meta expects quick response
   const processingPromise = (async () => {
     for (const entry of body.entry) {
+      // entry.id is the receiving business account's IG user id — resolve
+      // which managed account this entry belongs to before any processing.
+      const account = pickAccountForEntry(accounts, entry.id);
+      if (!account) {
+        console.warn(`[webhook] no account matches entry.id=${entry.id} (accounts=${accounts.length}); skipping entry`);
+        continue;
+      }
+      const igClient = await getAccountClient(c.env, db, account);
+      const igAccount: IgAccountRef = toIgAccountRef(account);
+
       // Handle DM messaging events (messaging = primary, standby = secondary receiver)
       const messagingEvents = entry.messaging ?? entry.standby ?? [];
       for (const event of messagingEvents) {
         try {
-          await handleMessagingEvent(db, igClient, event, c.env.WORKER_URL);
+          await handleMessagingEvent(db, igClient, event, c.env.WORKER_URL, igAccount, account.id);
         } catch (err) {
           console.error('Error handling messaging event:', err);
         }
@@ -105,9 +131,9 @@ webhook.post('/webhook', async (c) => {
         for (const change of entry.changes) {
           try {
             if (change.field === 'comments') {
-              await handleCommentEvent(db, igClient, change.value, c.env.IG_USER_ID, c.env.WORKER_URL);
+              await handleCommentEvent(db, igClient, change.value, account.ig_user_id, c.env.WORKER_URL, igAccount, account.id);
             } else if (change.field === 'mentions') {
-              await handleMentionEvent(db, igClient, change.value);
+              await handleMentionEvent(db, igClient, change.value, igAccount, account.id);
             }
           } catch (err) {
             console.error('Error handling change event:', err);
@@ -126,6 +152,8 @@ async function handleMessagingEvent(
   igClient: InstagramClient,
   event: MessagingEvent,
   workerUrl?: string,
+  igAccount?: IgAccountRef,
+  accountId?: string,
 ): Promise<void> {
   const senderId = event.sender.id;
 
@@ -148,6 +176,7 @@ async function handleMessagingEvent(
     isFollowing: profile?.is_user_follow_business ?? false,
     followerCount: profile?.follower_count ?? null,
     isVerified: profile?.is_verified_user ?? false,
+    accountId,
   });
 
   if (event.message?.text) {
@@ -204,6 +233,8 @@ async function handleMessagingEvent(
       const triggered = await triggerGateForDmKeyword(db, igClient, {
         text: incomingText,
         follower: { id: follower.id, igsid: senderId },
+        igAccount,
+        accountId,
       });
       if (triggered) {
         // Skip scenario triggers if gate fired
@@ -215,7 +246,7 @@ async function handleMessagingEvent(
 
     // Check dm_keyword scenario triggers
     {
-      const scenarios = await getScenarios(db);
+      const scenarios = await getScenarios(db, { accountId });
       for (const scenario of scenarios) {
         if (
           scenario.trigger_type === 'dm_keyword' &&
@@ -278,6 +309,7 @@ async function handleMessagingEvent(
           deliveryId: payload.deliveryId,
           igsid: senderId,
           workerBaseUrl: workerUrl,
+          igAccount,
         });
       } catch (err) {
         console.error('Follow check postback failed:', err);
@@ -294,6 +326,8 @@ async function handleCommentEvent(
   value: { id: string; text: string; from: { id: string; username: string }; media: { id: string }; created_time: string },
   igUserId: string,
   _workerUrl?: string,
+  igAccount?: IgAccountRef,
+  accountId?: string,
 ): Promise<void> {
   const senderId = value.from.id;
   const commentText = value.text;
@@ -323,6 +357,7 @@ async function handleCommentEvent(
     isFollowing: profile?.is_user_follow_business ?? false,
     followerCount: profile?.follower_count ?? null,
     isVerified: profile?.is_verified_user ?? false,
+    accountId,
   });
 
   // Engagement gate trigger — runs FIRST so a configured gate takes precedence
@@ -336,6 +371,8 @@ async function handleCommentEvent(
       follower: { id: follower.id, igsid: senderId },
       commentId: value.id,
       commenterUsername: value.from?.username,
+      igAccount,
+      accountId,
     });
   } catch (err) {
     console.error('Engagement gate trigger failed:', err);
@@ -362,10 +399,12 @@ async function handleCommentEvent(
           // Without (2) a global `any_comment` would always shadow a later
           // post-specific `any_comment` on the same post.
           `SELECT * FROM comment_rules WHERE is_active = 1
+           ${accountId ? 'AND account_id = ?' : ''}
            ORDER BY CASE match_type WHEN 'any_comment' THEN 1 ELSE 0 END ASC,
                     CASE WHEN media_id IS NULL THEN 1 ELSE 0 END ASC,
                     created_at ASC`,
         )
+        .bind(...(accountId ? [accountId] : []))
         .all<{
           id: string;
           keyword: string;
@@ -436,7 +475,7 @@ async function handleCommentEvent(
 
   // Check comment-triggered scenarios — skip if a gate fired
   if (gateFired) return;
-  const scenarios = await getScenarios(db);
+  const scenarios = await getScenarios(db, { accountId });
   for (const scenario of scenarios) {
     if (scenario.trigger_type === 'comment' && scenario.is_active) {
       const keywordMatch = !scenario.trigger_keyword || commentText.toLowerCase().includes(scenario.trigger_keyword.toLowerCase());
@@ -492,6 +531,8 @@ async function handleMentionEvent(
   db: D1Database,
   igClient: InstagramClient,
   value: { media_id?: string; comment_id?: string; mentioned_user_id?: string },
+  igAccount?: IgAccountRef,
+  accountId?: string,
 ): Promise<void> {
   // When someone mentions us in their story, send them a DM
   const mentionerId = (value as any).from?.id ?? (value as any).mentioned_user_id;
@@ -505,6 +546,7 @@ async function handleMentionEvent(
     username: mentionerUsername,
     displayName: null,
     pictureUrl: null,
+    accountId,
   });
 
   // Engagement gate trigger (story_mention) — fires before the legacy thank-you DM
@@ -512,6 +554,8 @@ async function handleMentionEvent(
   try {
     const triggered = await triggerGateForStoryMention(db, igClient, {
       follower: { id: follower.id, igsid: mentionerId },
+      igAccount,
+      accountId,
     });
     if (triggered) return;
   } catch (err) {

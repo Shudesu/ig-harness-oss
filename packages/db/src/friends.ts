@@ -24,36 +24,52 @@ export interface GetFriendsOptions {
   limit?: number;
   offset?: number;
   tagId?: string;
+  /** Scope to a single IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function getFriends(
   db: D1Database,
   opts: GetFriendsOptions = {},
 ): Promise<Friend[]> {
-  const { limit = 50, offset = 0, tagId } = opts;
+  const { limit = 50, offset = 0, tagId, accountId } = opts;
 
   if (tagId) {
+    const conditions: string[] = ['ft.tag_id = ?'];
+    const binds: unknown[] = [tagId];
+    if (accountId) {
+      conditions.push('f.account_id = ?');
+      binds.push(accountId);
+    }
     const result = await db
       .prepare(
         `SELECT f.*
          FROM followers f
          INNER JOIN follower_tags ft ON ft.follower_id = f.id
-         WHERE ft.tag_id = ?
+         WHERE ${conditions.join(' AND ')}
          ORDER BY f.first_seen_at DESC
          LIMIT ? OFFSET ?`,
       )
-      .bind(tagId, limit, offset)
+      .bind(...binds, limit, offset)
       .all<Friend>();
     return result.results;
   }
 
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (accountId) {
+    conditions.push('account_id = ?');
+    binds.push(accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db
     .prepare(
       `SELECT * FROM followers
+       ${where}
        ORDER BY first_seen_at DESC
        LIMIT ? OFFSET ?`,
     )
-    .bind(limit, offset)
+    .bind(...binds, limit, offset)
     .all<Friend>();
   return result.results;
 }
@@ -97,6 +113,8 @@ export interface UpsertFriendInput {
   // Legacy alias
   lineUserId?: string;
   statusMessage?: string | null;
+  /** Owning IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function upsertFriend(
@@ -117,6 +135,7 @@ export async function upsertFriend(
              is_following = ?,
              follower_count = ?,
              is_verified = ?,
+             account_id = COALESCE(account_id, ?),
              updated_at = ?
          WHERE igsid = ?`,
       )
@@ -127,6 +146,7 @@ export async function upsertFriend(
         input.isFollowing != null ? (input.isFollowing ? 1 : 0) : (existing as any).is_following ?? 0,
         input.followerCount ?? (existing as any).follower_count ?? null,
         input.isVerified != null ? (input.isVerified ? 1 : 0) : (existing as any).is_verified ?? 0,
+        input.accountId ?? null,
         now,
         igsid,
       )
@@ -137,8 +157,8 @@ export async function upsertFriend(
 
   await db
     .prepare(
-      `INSERT INTO followers (igsid, username, name, profile_pic_url, is_following, follower_count, is_verified, first_seen_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO followers (igsid, username, name, profile_pic_url, is_following, follower_count, is_verified, account_id, first_seen_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       igsid,
@@ -148,6 +168,7 @@ export async function upsertFriend(
       input.isFollowing ? 1 : 0,
       input.followerCount ?? null,
       input.isVerified ? 1 : 0,
+      input.accountId ?? null,
       now,
       now,
     )
@@ -172,9 +193,14 @@ export async function updateFriendFollowStatus(
     .run();
 }
 
-export async function getFriendCount(db: D1Database): Promise<number> {
-  const row = await db
-    .prepare(`SELECT COUNT(*) as count FROM followers`)
-    .first<{ count: number }>();
+export async function getFriendCount(
+  db: D1Database,
+  opts: { accountId?: string } = {},
+): Promise<number> {
+  const where = opts.accountId ? 'WHERE account_id = ?' : '';
+  const stmt = db.prepare(`SELECT COUNT(*) as count FROM followers ${where}`);
+  const row = opts.accountId
+    ? await stmt.bind(opts.accountId).first<{ count: number }>()
+    : await stmt.first<{ count: number }>();
   return row?.count ?? 0;
 }

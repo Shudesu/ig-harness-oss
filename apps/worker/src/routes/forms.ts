@@ -9,10 +9,10 @@ import {
   createFormSubmission,
   jstNow,
 } from '@ig-harness/db';
-import { getFriendByLineUserId, getFriendById } from '@ig-harness/db';
+import { getFriendByLineUserId, getFriendById, getIgAccountById } from '@ig-harness/db';
 import { addTagToFriend, enrollFriendInScenario } from '@ig-harness/db';
 import type { Form as DbForm, FormSubmission as DbFormSubmission } from '@ig-harness/db';
-import { getIGAccessToken } from '../lib/ig-token.js';
+import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const forms = new Hono<Env>();
@@ -49,7 +49,9 @@ function serializeSubmission(row: DbFormSubmission & { friend_name?: string | nu
 // GET /api/forms — list all forms
 forms.get('/api/forms', async (c) => {
   try {
-    const items = await getForms(c.env.DB);
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+    const items = await getForms(c.env.DB, { accountId: account.id });
     return c.json({ success: true, data: items.map(serializeForm) });
   } catch (err) {
     console.error('GET /api/forms error:', err);
@@ -75,6 +77,8 @@ forms.get('/api/forms/:id', async (c) => {
 // POST /api/forms — create form
 forms.post('/api/forms', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const body = await c.req.json<{
       name: string;
       description?: string | null;
@@ -99,6 +103,7 @@ forms.post('/api/forms', async (c) => {
       onSubmitMessageType: body.onSubmitMessageType ?? null,
       onSubmitMessageContent: body.onSubmitMessageContent ?? null,
       saveToMetadata: body.saveToMetadata,
+      accountId: account.id,
     });
 
     return c.json({ success: true, data: serializeForm(form) }, 201);
@@ -224,9 +229,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
     if (!friendId && body.lineUserId) {
       const friend = await getFriendByLineUserId(c.env.DB, body.lineUserId);
       if (friend) {
-        // followers.id is numeric in SQLite — coerce so downstream string-typed
-        // helpers (createFormSubmission, addTagToFriend, ...) get a consistent shape.
-        friendId = String(friend.id);
+        friendId = friend.id;
       }
     }
 
@@ -279,8 +282,13 @@ forms.post('/api/forms/:id/submit', async (c) => {
           const igsid = friend.igsid;
           if (!igsid) { console.log('Form reply: no igsid'); return; }
           console.log('Form reply: sending to', igsid);
-          const { InstagramClient } = await import('@ig-harness/ig-sdk');
-          const igClient = new InstagramClient({ accessToken: await getIGAccessToken(c.env), igUserId: c.env.IG_USER_ID });
+          // Public submits carry no ?account_id= — the form's owning account
+          // (not the deploy default) must send the confirmation DM.
+          const account = form.account_id
+            ? await getIgAccountById(c.env.DB, form.account_id)
+            : await resolveAccount(c);
+          if (!account) { console.log('Form reply: no IG account configured'); return; }
+          const igClient = await getAccountClient(c.env, c.env.DB, account);
 
           // Build summary text from answers
           const entries = Object.entries(submissionData as Record<string, unknown>);

@@ -12,6 +12,7 @@ import {
   hasCheckFollowPostback,
   setGateTargetPosts,
 } from '@ig-harness/db';
+import { resolveAccount } from '../lib/accounts.js';
 
 const engagementGates = new Hono<Env>();
 
@@ -75,7 +76,9 @@ function decodeBase64Url(input: string): string {
 }
 
 engagementGates.get('/api/engagement-gates', async (c) => {
-  const gates = await listEngagementGates(c.env.DB);
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const gates = await listEngagementGates(c.env.DB, { accountId: account.id });
   return c.json({ success: true, data: gates });
 });
 
@@ -106,6 +109,8 @@ engagementGates.get('/api/engagement-gates/post-coverage', async (c) => {
 });
 
 engagementGates.post('/api/engagement-gates', async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const body = await c.req.json<{
     name: string;
     status?: 'active' | 'paused' | 'archived';
@@ -217,6 +222,7 @@ engagementGates.post('/api/engagement-gates', async (c) => {
     line_pool_slug: body.line_pool_slug ?? null,
     line_tracked_link_short: null,
     allow_repeat: body.allow_repeat ?? 0,
+    accountId: account.id,
   });
 
   // Populate the junction table with the full id list.

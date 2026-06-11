@@ -1,6 +1,6 @@
 {
   "name": "create-ig-harness",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "Set up IG Harness — AI-operated IG DM CRM — with one command",
   "type": "module",
   "bin": {

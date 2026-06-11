@@ -50,16 +50,22 @@ export interface FriendScenario {
 
 export type ScenarioWithStepCount = Scenario & { step_count: number };
 
-export async function getScenarios(db: D1Database): Promise<ScenarioWithStepCount[]> {
-  const result = await db
-    .prepare(
-      `SELECT s.*, COUNT(ss.id) as step_count
-       FROM scenarios s
-       LEFT JOIN scenario_steps ss ON s.id = ss.scenario_id
-       GROUP BY s.id
-       ORDER BY s.created_at DESC`,
-    )
-    .all<ScenarioWithStepCount>();
+export async function getScenarios(
+  db: D1Database,
+  opts: { accountId?: string } = {},
+): Promise<ScenarioWithStepCount[]> {
+  const where = opts.accountId ? 'WHERE s.account_id = ?' : '';
+  const stmt = db.prepare(
+    `SELECT s.*, COUNT(ss.id) as step_count
+     FROM scenarios s
+     LEFT JOIN scenario_steps ss ON s.id = ss.scenario_id
+     ${where}
+     GROUP BY s.id
+     ORDER BY s.created_at DESC`,
+  );
+  const result = opts.accountId
+    ? await stmt.bind(opts.accountId).all<ScenarioWithStepCount>()
+    : await stmt.all<ScenarioWithStepCount>();
   return result.results;
 }
 
@@ -89,6 +95,8 @@ export interface CreateScenarioInput {
   description?: string | null;
   triggerType: ScenarioTriggerType;
   triggerTagId?: string | null;
+  /** Owning IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function createScenario(
@@ -100,8 +108,8 @@ export async function createScenario(
 
   await db
     .prepare(
-      `INSERT INTO scenarios (id, name, description, trigger_type, trigger_tag_id, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+      `INSERT INTO scenarios (id, name, description, trigger_type, trigger_tag_id, is_active, account_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -109,6 +117,7 @@ export async function createScenario(
       input.description ?? null,
       input.triggerType,
       input.triggerTagId ?? null,
+      input.accountId ?? null,
       now,
       now,
     )
@@ -305,10 +314,7 @@ export async function getScenarioSteps(
 
 export async function enrollFriendInScenario(
   db: D1Database,
-  // followers.id is INTEGER PRIMARY KEY in SQLite, so callers reading rows
-  // directly hand us a number. Other callers (API routes resolving IDs via
-  // route params) pass strings. D1 accepts both via `.bind()`.
-  friendId: string | number,
+  friendId: string,
   scenarioId: string,
 ): Promise<FriendScenario> {
   const id = crypto.randomUUID();
@@ -364,16 +370,28 @@ export async function enrollFriendInScenario(
 export async function getFriendScenariosDueForDelivery(
   db: D1Database,
   now: string,
+  accountId?: string,
 ): Promise<FriendScenario[]> {
   // Fetch all active scenarios with a delivery time, then filter by epoch comparison
   // to handle mixed timestamp formats (Z and +09:00) during migration
-  const result = await db
-    .prepare(
-      `SELECT * FROM follower_scenarios
-       WHERE status = 'active'
-         AND next_step_at IS NOT NULL`,
-    )
-    .all<FriendScenario>();
+  const result = accountId
+    ? await db
+        .prepare(
+          `SELECT fs.* FROM follower_scenarios fs
+           INNER JOIN scenarios s ON s.id = fs.scenario_id
+           WHERE fs.status = 'active'
+             AND fs.next_step_at IS NOT NULL
+             AND s.account_id = ?`,
+        )
+        .bind(accountId)
+        .all<FriendScenario>()
+    : await db
+        .prepare(
+          `SELECT * FROM follower_scenarios
+           WHERE status = 'active'
+             AND next_step_at IS NOT NULL`,
+        )
+        .all<FriendScenario>();
   const nowMs = new Date(now).getTime();
   return result.results
     .filter((fs) => new Date(fs.next_step_at!).getTime() <= nowMs)

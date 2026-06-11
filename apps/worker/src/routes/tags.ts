@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { getTags, createTag, deleteTag } from '@ig-harness/db';
 import type { Tag as DbTag } from '@ig-harness/db';
+import { resolveAccount } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const tags = new Hono<Env>();
@@ -17,7 +18,9 @@ function serializeTag(row: DbTag) {
 // GET /api/tags - list all tags
 tags.get('/api/tags', async (c) => {
   try {
-    const items = await getTags(c.env.DB);
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+    const items = await getTags(c.env.DB, { accountId: account.id });
     return c.json({ success: true, data: items.map(serializeTag) });
   } catch (err) {
     console.error('GET /api/tags error:', err);
@@ -28,6 +31,8 @@ tags.get('/api/tags', async (c) => {
 // POST /api/tags - create tag
 tags.post('/api/tags', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const body = await c.req.json<{ name: string; color?: string }>();
 
     if (!body.name) {
@@ -37,6 +42,7 @@ tags.post('/api/tags', async (c) => {
     const tag = await createTag(c.env.DB, {
       name: body.name,
       color: body.color,
+      accountId: account.id,
     });
 
     return c.json({ success: true, data: serializeTag(tag) }, 201);

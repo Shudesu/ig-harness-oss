@@ -15,6 +15,7 @@ export interface Form {
   save_to_metadata: number;
   is_active: number;
   submit_count: number;
+  account_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -29,10 +30,21 @@ export interface FormSubmission {
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function getForms(db: D1Database): Promise<Form[]> {
-  const result = await db
-    .prepare(`SELECT * FROM forms ORDER BY created_at DESC`)
-    .all<Form>();
+export async function getForms(
+  db: D1Database,
+  opts: { accountId?: string } = {},
+): Promise<Form[]> {
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.accountId) {
+    conditions.push('account_id = ?');
+    binds.push(opts.accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`SELECT * FROM forms ${where} ORDER BY created_at DESC`);
+  const result = binds.length > 0
+    ? await stmt.bind(...binds).all<Form>()
+    : await stmt.all<Form>();
   return result.results;
 }
 
@@ -52,6 +64,8 @@ export interface CreateFormInput {
   onSubmitMessageType?: 'text' | 'flex' | null;
   onSubmitMessageContent?: string | null;
   saveToMetadata?: boolean;
+  /** Owning IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function createForm(db: D1Database, input: CreateFormInput): Promise<Form> {
@@ -63,8 +77,8 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
       `INSERT INTO forms
          (id, name, description, fields, on_submit_tag_id, on_submit_scenario_id,
           on_submit_message_type, on_submit_message_content,
-          save_to_metadata, is_active, submit_count, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
+          save_to_metadata, is_active, submit_count, account_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -76,6 +90,7 @@ export async function createForm(db: D1Database, input: CreateFormInput): Promis
       input.onSubmitMessageType ?? null,
       input.onSubmitMessageContent ?? null,
       input.saveToMetadata !== false ? 1 : 0,
+      input.accountId ?? null,
       now,
       now,
     )

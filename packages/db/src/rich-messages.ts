@@ -38,14 +38,14 @@ function parseRow(row: RichMessageRow | null): RichMessage | null {
 
 export async function createRichMessage(
   db: D1Database,
-  data: { name: string; kind: RichMessageKind; blocks: RichMessageBlock[] },
+  data: { name: string; kind: RichMessageKind; blocks: RichMessageBlock[]; accountId?: string },
 ): Promise<RichMessage> {
   const id = crypto.randomUUID();
   await db
     .prepare(
-      `INSERT INTO rich_messages (id, name, kind, blocks) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO rich_messages (id, name, kind, blocks, account_id) VALUES (?, ?, ?, ?, ?)`,
     )
-    .bind(id, data.name, data.kind, JSON.stringify(data.blocks))
+    .bind(id, data.name, data.kind, JSON.stringify(data.blocks), data.accountId ?? null)
     .run();
   const row = await db
     .prepare('SELECT * FROM rich_messages WHERE id = ?')
@@ -69,15 +69,24 @@ export async function getRichMessage(
 
 export async function listRichMessages(
   db: D1Database,
-  opts: { kind?: RichMessageKind; limit?: number } = {},
+  opts: { kind?: RichMessageKind; limit?: number; accountId?: string } = {},
 ): Promise<RichMessage[]> {
-  const where = opts.kind ? 'WHERE kind = ?' : '';
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.kind) {
+    conditions.push('kind = ?');
+    binds.push(opts.kind);
+  }
+  if (opts.accountId) {
+    conditions.push('account_id = ?');
+    binds.push(opts.accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
   const stmt = db.prepare(
     `SELECT * FROM rich_messages ${where} ORDER BY created_at DESC LIMIT ?`,
   );
-  const bound = opts.kind ? stmt.bind(opts.kind, limit) : stmt.bind(limit);
-  const result = await bound.all<RichMessageRow>();
+  const result = await stmt.bind(...binds, limit).all<RichMessageRow>();
   return result.results.map((r) => parseRow(r)!).filter(Boolean);
 }
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { lineConnectionsApi, type LineConnection } from '@/lib/api'
 import Header from '@/components/layout/header'
+import IgAccountsSection from '@/components/settings/ig-accounts-section'
 
 const ACCENT = '#E1306C'
 
@@ -88,7 +89,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <Header title="設定" description="外部サービスとの連携を管理" />
+      <Header title="設定" description="Instagram アカウントと外部サービスの連携を管理" />
 
       {error && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 max-w-2xl">
@@ -97,6 +98,9 @@ export default function SettingsPage() {
       )}
 
       <div className="max-w-2xl space-y-6">
+        {/* Instagram アカウント管理 */}
+        <IgAccountsSection />
+
         {/* 登録済み接続先 */}
         <section className="bg-white rounded-xl border border-gray-200 p-6">
           <div className="flex items-center justify-between mb-4">

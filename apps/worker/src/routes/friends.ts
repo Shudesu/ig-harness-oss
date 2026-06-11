@@ -9,9 +9,10 @@ import {
   getScenarios,
   enrollFriendInScenario,
   jstNow,
+  getIgAccountById,
 } from '@ig-harness/db';
 import type { Friend as DbFriend, Tag as DbTag } from '@ig-harness/db';
-import { getIGAccessToken } from '../lib/ig-token.js';
+import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const friends = new Hono<Env>();
@@ -44,6 +45,8 @@ function serializeTag(row: DbTag) {
 // GET /api/friends - list with pagination
 friends.get('/api/friends', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const limit = Number(c.req.query('limit') ?? '50');
     const offset = Number(c.req.query('offset') ?? '0');
     const tagId = c.req.query('tagId');
@@ -52,9 +55,9 @@ friends.get('/api/friends', async (c) => {
 
     const db = c.env.DB;
 
-    // Build WHERE conditions
-    const conditions: string[] = [];
-    const binds: unknown[] = [];
+    // Build WHERE conditions — always scoped to the acting IG account
+    const conditions: string[] = ['f.account_id = ?'];
+    const binds: unknown[] = [account.id];
     if (tagId) {
       conditions.push('EXISTS (SELECT 1 FROM follower_tags ft WHERE ft.follower_id = f.id AND ft.tag_id = ?)');
       binds.push(tagId);
@@ -116,14 +119,16 @@ friends.get('/api/friends', async (c) => {
 // GET /api/friends/count - friend count (must be before /:id)
 friends.get('/api/friends/count', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const lineAccountId = c.req.query('lineAccountId');
     let count: number;
     if (lineAccountId) {
-      const row = await c.env.DB.prepare('SELECT COUNT(*) as count FROM followers WHERE igsid IS NOT NULL AND external_user_id = ?')
-        .bind(lineAccountId).first<{ count: number }>();
+      const row = await c.env.DB.prepare('SELECT COUNT(*) as count FROM followers WHERE igsid IS NOT NULL AND external_user_id = ? AND account_id = ?')
+        .bind(lineAccountId, account.id).first<{ count: number }>();
       count = row?.count ?? 0;
     } else {
-      count = await getFriendCount(c.env.DB);
+      count = await getFriendCount(c.env.DB, { accountId: account.id });
     }
     return c.json({ success: true, data: { count } });
   } catch (err) {
@@ -311,8 +316,14 @@ friends.post('/api/friends/:id/messages', async (c) => {
       return c.json({ success: false, error: 'Friend not found' }, 404);
     }
 
-    const { InstagramClient } = await import('@ig-harness/ig-sdk');
-    const igClient = new InstagramClient({ accessToken: await getIGAccessToken(c.env), igUserId: c.env.IG_USER_ID });
+    // Message with the friend's owning account — the request's selected
+    // account may not even be able to reach this IGSID (IGSIDs are scoped
+    // per business account on Meta's side).
+    const account = (friend as { account_id?: string | null }).account_id
+      ? await getIgAccountById(db, (friend as { account_id?: string | null }).account_id!)
+      : await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+    const igClient = await getAccountClient(c.env, c.env.DB, account);
     const messageType = body.messageType ?? 'text';
     const igsid = friend.igsid;
 

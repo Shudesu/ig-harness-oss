@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.6.0] - 2026-06-11
+
+### Added
+- **マルチアカウント対応（1 Worker で複数 IG ビジネスアカウント）**
+  - 新テーブル `ig_accounts`（migration `0014_ig_accounts.sql`）。アカウントごとに
+    access token / 任意の app_secret・verify_token（別 Meta App 運用向け）を保持
+  - **既存デプロイは無停止で自動移行**: 初回アクセス時に env（IG_USER_ID 等）から
+    default アカウントを lazy seed し、既存データの `account_id` を backfill。
+    アカウントを追加しない限り挙動は従来と完全に同一
+  - Webhook: `entry.id` で受信アカウントを確定（単一アカウント時は従来互換の
+    フォールバック）。署名検証は env + 各アカウントの app_secret を順に試行
+  - 既存 API 全てに optional `?account_id=`（省略時 default）— SDK / MCP /
+    既存 admin は無改修で動作
+  - 新 API `/api/accounts`（owner のみ）: 登録 / トークン更新 / 有効・無効
+  - cron はアクティブアカウントをループし、per-account でトークンリフレッシュ
+    （`ig_token_state` singleton は seed 元として残置、新規書き込み停止）+
+    step 配信 / broadcast / followup drip を実行
+  - Admin: サイドバーのアカウント切替（2件以上で表示）、設定ページに
+    「Instagram アカウント」管理セクション
+  - SDK: `InstagramHarnessConfig.accountId` で全リクエストをスコープ
+  - MCP ツールのアカウント指定は次バージョン対応（default アカウントで動作）
+
+### Known limitations (multi-account)
+- `followers.igsid` / `tags.name` のグローバル UNIQUE 制約は維持。DM の IGSID は
+  Meta 仕様でアカウントごとに異なるため実運用での衝突は稀だが、同一ユーザーが
+  複数アカウントに接触した場合 follower 行は最初のアカウントに帰属する。
+  タグ名前空間は全アカウント共有（同名タグは作成不可）。
+  SQLite の制約変更はテーブル再構築（FK の ON DELETE CASCADE により危険）が
+  必要なため、安全な手順を用意して次バージョンで対応予定
+
+### Added (from unreleased)
+- **IG account attribution on LINE cross-link**: tracked link URLs sent to
+  LINE Harness now carry `iga` (IG business account user id, from
+  `env.IG_USER_ID`) and `igan` (account @username, from `env.IG_USERNAME`,
+  omitted when unset) alongside the existing `ig` (follower IGSID) param.
+  LINE Harness stores them in `friends.metadata` so each LINE friend shows
+  which Instagram account funneled them in. Worker-only change — no DB
+  migration, no npm package release required.
+  - `resolveLineCrossLinkUrl` accepts `options.account` (`IgAccountRef`);
+    values are env-sourced today and swap to an accounts table when the
+    single-worker multi-account refactor lands
+
 ## [0.5.3] - 2026-05-12
 
 ### Fixed

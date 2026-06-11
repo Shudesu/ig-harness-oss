@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAccount } from '@/contexts/account-context'
 
 // ─── Instagram Harness navigation (4 pages only) ───
 
@@ -61,6 +62,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [staffName, setStaffName] = useState<string | null>(null)
+  const { accounts, selectedAccountId, setSelectedAccountId } = useAccount()
 
   useEffect(() => {
     setStaffName(localStorage.getItem('lh_staff_name'))
@@ -90,6 +92,31 @@ export default function Sidebar() {
             <p className="text-xs text-gray-400">管理画面</p>
           </div>
         </div>
+
+        {/* Account switcher — only shown when multiple IG accounts exist */}
+        {accounts.length >= 2 && (
+          <select
+            value={selectedAccountId ?? ''}
+            onChange={(e) => {
+              const id = e.target.value
+              if (!id || id === selectedAccountId) return
+              setSelectedAccountId(id)
+              // Land on the dashboard instead of reloading in place: detail
+              // URLs like /campaigns/[id] belong to the previous account and
+              // would render (or let you edit) cross-account data.
+              window.location.href = '/'
+            }}
+            aria-label="アカウント切替"
+            className="mt-3 w-full px-2 py-1.5 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E1306C] cursor-pointer"
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+                {!account.isActive ? ' (停止中)' : ''}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Navigation */}

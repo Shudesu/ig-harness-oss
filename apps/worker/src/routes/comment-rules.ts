@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { jstNow } from '@ig-harness/db';
+import { resolveAccount } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const commentRules = new Hono<Env>();
@@ -39,8 +40,11 @@ function serialize(row: CommentRuleRow) {
 // GET /api/comment-rules - list all
 commentRules.get('/api/comment-rules', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const result = await c.env.DB
-      .prepare(`SELECT * FROM comment_rules ORDER BY created_at DESC`)
+      .prepare(`SELECT * FROM comment_rules WHERE account_id = ? ORDER BY created_at DESC`)
+      .bind(account.id)
       .all<CommentRuleRow>();
     return c.json({ success: true, data: result.results.map(serialize) });
   } catch (err) {
@@ -69,6 +73,8 @@ commentRules.get('/api/comment-rules/:id', async (c) => {
 // POST /api/comment-rules - create
 commentRules.post('/api/comment-rules', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const body = await c.req.json<{
       name: string;
       triggerType?: string;
@@ -92,8 +98,8 @@ commentRules.post('/api/comment-rules', async (c) => {
 
     await c.env.DB
       .prepare(
-        `INSERT INTO comment_rules (id, name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO comment_rules (id, name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, is_active, account_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -105,6 +111,7 @@ commentRules.post('/api/comment-rules', async (c) => {
         body.responseType,
         JSON.stringify(body.responseBody),
         body.delaySeconds || 0,
+        account.id,
         now,
         now,
       )

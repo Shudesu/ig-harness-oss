@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS followers (
   is_verified INTEGER DEFAULT 0,
   score INTEGER DEFAULT 0,
   metadata TEXT DEFAULT '{}',
+  account_id TEXT,
   first_seen_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS tags (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   color TEXT DEFAULT '#6B7280',
+  account_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
 
@@ -49,6 +51,7 @@ CREATE TABLE IF NOT EXISTS comment_rules (
   response_body TEXT NOT NULL,
   delay_seconds INTEGER DEFAULT 0,
   reply_text TEXT DEFAULT NULL,
+  account_id TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
@@ -77,6 +80,7 @@ CREATE TABLE IF NOT EXISTS scenarios (
   name TEXT NOT NULL,
   trigger_type TEXT NOT NULL CHECK(trigger_type IN ('dm_keyword', 'comment', 'manual', 'follower_add')),
   trigger_keyword TEXT,
+  account_id TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
@@ -118,6 +122,7 @@ CREATE TABLE IF NOT EXISTS broadcasts (
   scheduled_at TEXT,
   sent_at TEXT,
   total_sent INTEGER DEFAULT 0,
+  account_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
@@ -127,6 +132,7 @@ CREATE TABLE IF NOT EXISTS forms (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   fields TEXT NOT NULL,
+  account_id TEXT,
   is_active INTEGER DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
@@ -146,6 +152,7 @@ CREATE TABLE IF NOT EXISTS tracked_links (
   destination_url TEXT NOT NULL,
   ref_code TEXT NOT NULL UNIQUE,
   click_count INTEGER DEFAULT 0,
+  account_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
 
@@ -193,6 +200,7 @@ CREATE TABLE IF NOT EXISTS engagement_gates (
   line_connection_id TEXT,
   line_pool_slug TEXT,
   line_tracked_link_short TEXT,
+  account_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
@@ -222,6 +230,7 @@ CREATE TABLE IF NOT EXISTS rich_messages (
   name TEXT NOT NULL,
   kind TEXT NOT NULL CHECK(kind IN ('cta','reward','reminder','generic')),
   blocks TEXT NOT NULL,
+  account_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now')))
 );
@@ -258,4 +267,24 @@ CREATE TABLE IF NOT EXISTS ig_token_state (
   access_token TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
   refreshed_at INTEGER NOT NULL
+);
+
+-- ── IG Accounts (multi-account) ──
+-- One row per Instagram business account managed by this deployment.
+-- app_secret / verify_token are NULL when the account lives under the same
+-- Meta App as the env-configured one; set them only for accounts connected
+-- through a different Meta App.
+CREATE TABLE IF NOT EXISTS ig_accounts (
+  id TEXT PRIMARY KEY,
+  ig_user_id TEXT NOT NULL UNIQUE,
+  username TEXT,
+  access_token TEXT NOT NULL,
+  token_expires_at INTEGER,
+  token_refreshed_at INTEGER,
+  app_secret TEXT,
+  verify_token TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );

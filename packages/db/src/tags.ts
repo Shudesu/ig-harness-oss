@@ -12,16 +12,29 @@ export interface FriendTag {
   assigned_at: string;
 }
 
-export async function getTags(db: D1Database): Promise<Tag[]> {
-  const result = await db
-    .prepare(`SELECT * FROM tags ORDER BY name ASC`)
-    .all<Tag>();
+export async function getTags(
+  db: D1Database,
+  opts: { accountId?: string } = {},
+): Promise<Tag[]> {
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.accountId) {
+    conditions.push('account_id = ?');
+    binds.push(opts.accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`SELECT * FROM tags ${where} ORDER BY name ASC`);
+  const result = binds.length > 0
+    ? await stmt.bind(...binds).all<Tag>()
+    : await stmt.all<Tag>();
   return result.results;
 }
 
 export interface CreateTagInput {
   name: string;
   color?: string;
+  /** Owning IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function createTag(
@@ -32,9 +45,9 @@ export async function createTag(
 
   const result = await db
     .prepare(
-      `INSERT INTO tags (name, color) VALUES (?, ?) RETURNING *`,
+      `INSERT INTO tags (name, color, account_id) VALUES (?, ?, ?) RETURNING *`,
     )
-    .bind(input.name, color)
+    .bind(input.name, color, input.accountId ?? null)
     .first<Tag>();
 
   return result!;
@@ -74,9 +87,7 @@ export async function removeTagFromFriend(
 
 export async function getFriendTags(
   db: D1Database,
-  // followers.id is numeric in SQLite; route params arrive as string. Both
-  // bind cleanly through D1.
-  friendId: string | number,
+  friendId: string,
 ): Promise<Tag[]> {
   const result = await db
     .prepare(
@@ -96,16 +107,18 @@ import type { Friend } from './friends';
 export async function getFriendsByTag(
   db: D1Database,
   tagId: string,
+  opts: { accountId?: string } = {},
 ): Promise<Friend[]> {
-  const result = await db
-    .prepare(
-      `SELECT f.*
-       FROM followers f
-       INNER JOIN follower_tags ft ON ft.follower_id = f.id
-       WHERE ft.tag_id = ?
-       ORDER BY f.first_seen_at DESC`,
-    )
-    .bind(tagId)
-    .all<Friend>();
+  const accountFilter = opts.accountId ? 'AND f.account_id = ?' : '';
+  const stmt = db.prepare(
+    `SELECT f.*
+     FROM followers f
+     INNER JOIN follower_tags ft ON ft.follower_id = f.id
+     WHERE ft.tag_id = ? ${accountFilter}
+     ORDER BY f.first_seen_at DESC`,
+  );
+  const result = opts.accountId
+    ? await stmt.bind(tagId, opts.accountId).all<Friend>()
+    : await stmt.bind(tagId).all<Friend>();
   return result.results;
 }

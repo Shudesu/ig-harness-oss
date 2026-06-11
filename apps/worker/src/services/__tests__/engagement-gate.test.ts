@@ -14,11 +14,6 @@ function createMockDb() {
         if (sql.includes('FROM engagement_gates') && sql.includes('WHERE id = ?')) {
           return gates.find((g) => g.id === params[0]) ?? null;
         }
-        // packages/db createGateDelivery does INSERT then SELECT-by-id to
-        // return the new row; mock must handle that lookup too.
-        if (sql.includes('FROM gate_deliveries') && sql.includes('WHERE id = ?')) {
-          return deliveries.find((d) => d.id === params[0]) ?? null;
-        }
         if (sql.includes('FROM gate_deliveries') && sql.includes('WHERE gate_id = ? AND follower_id = ?')) {
           return deliveries.find((d) => d.gate_id === params[0] && d.follower_id === params[1]) ?? null;
         }

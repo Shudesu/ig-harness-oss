@@ -3,12 +3,10 @@ export { InstagramHarnessError } from './errors.js'
 export { parseDelay } from './delay.js'
 
 // Resource classes (for advanced usage / type narrowing)
-export { FriendsResource } from './resources/friends.js'
 export { FollowersResource } from './resources/followers.js'
 export { TagsResource } from './resources/tags.js'
 export { ScenariosResource } from './resources/scenarios.js'
 export { BroadcastsResource } from './resources/broadcasts.js'
-export { RichMenusResource } from './resources/rich-menus.js'
 export { CommentRulesResource } from './resources/comment-rules.js'
 export { TrackedLinksResource } from './resources/tracked-links.js'
 export { FormsResource } from './resources/forms.js'
@@ -16,7 +14,6 @@ export { StaffResource } from './resources/staff.js'
 export { ImagesResource } from './resources/images.js'
 export { EngagementGatesResource } from './resources/engagement-gates.js'
 export { LineConnectionsResource } from './resources/line-connections.js'
-export { AdPlatformsResource } from './resources/ad-platforms.js'
 
 // All types
 export type {
@@ -26,8 +23,6 @@ export type {
   ScenarioTriggerType,
   MessageType,
   BroadcastStatus,
-  Friend,
-  FriendListParams,
   Follower,
   FollowerListParams,
   Tag,
@@ -44,17 +39,6 @@ export type {
   Broadcast,
   CreateBroadcastInput,
   UpdateBroadcastInput,
-  RichMenu,
-  CreateRichMenuInput,
-  RichMenuAction,
-  RichMenuArea,
-  RichMenuBounds,
-  AdPlatform,
-  AdPlatformName,
-  ConversionLog,
-  ConversionLogStatus,
-  CreateAdPlatformInput,
-  UpdateAdPlatformInput,
   SegmentRule,
   SegmentCondition,
   StepDefinition,

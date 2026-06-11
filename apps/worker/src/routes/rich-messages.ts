@@ -10,8 +10,7 @@ import {
 } from '@ig-harness/db';
 import type { RichMessageKind } from '@ig-harness/db';
 import type { RichMessageBlock } from '@ig-harness/ig-sdk';
-import { InstagramClient } from '@ig-harness/ig-sdk';
-import { getIGAccessToken } from '../lib/ig-token.js';
+import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const VALID_KINDS: readonly RichMessageKind[] = ['cta', 'reward', 'reminder', 'generic'];
@@ -126,16 +125,20 @@ function validateBlocks(blocks: unknown): { ok: true; blocks: RichMessageBlock[]
 const richMessages = new Hono<Env>();
 
 richMessages.get('/api/rich-messages', async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const kind = c.req.query('kind') as RichMessageKind | undefined;
   const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined;
   if (kind && !VALID_KINDS.includes(kind)) {
     return c.json({ success: false, error: `invalid kind: ${kind}` }, 400);
   }
-  const messages = await listRichMessages(c.env.DB, { kind, limit });
+  const messages = await listRichMessages(c.env.DB, { kind, limit, accountId: account.id });
   return c.json({ success: true, data: messages });
 });
 
 richMessages.post('/api/rich-messages', async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const body = await c.req.json<{ name?: string; kind?: RichMessageKind; blocks?: unknown }>();
   if (!body.name || !body.kind) {
     return c.json({ success: false, error: 'name and kind required' }, 400);
@@ -150,6 +153,7 @@ richMessages.post('/api/rich-messages', async (c) => {
     name: body.name,
     kind: body.kind,
     blocks: v.blocks,
+    accountId: account.id,
   });
   return c.json({ success: true, data: rm });
 });
@@ -239,10 +243,9 @@ richMessages.post('/api/rich-messages/:id/test-send', async (c) => {
   const rm = await getRichMessage(c.env.DB, id);
   if (!rm) return c.json({ success: false, error: 'not found' }, 404);
 
-  const igClient = new InstagramClient({
-    accessToken: await getIGAccessToken(c.env),
-    igUserId: c.env.IG_USER_ID,
-  });
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const igClient = await getAccountClient(c.env, c.env.DB, account);
 
   try {
     const res = await igClient.sendRichMessage(body.to_igsid, rm.blocks, {

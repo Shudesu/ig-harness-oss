@@ -1,7 +1,7 @@
 import { listEngagementGates, createGateDelivery, updateGateDelivery, getGateDelivery, getEngagementGate, getRichMessage, parseFollowupSequence } from '@ig-harness/db';
 import type { EngagementGate, GateDelivery } from '@ig-harness/db';
 import type { UserProfile, RichMessageBlock, RichMessageContext } from '@ig-harness/ig-sdk';
-import { resolveLineCrossLinkUrl } from './line-cross-link.js';
+import { resolveLineCrossLinkUrl, type IgAccountRef } from './line-cross-link.js';
 
 /**
  * Compute the outbound reward URL for one recipient, optionally rewritten
@@ -14,8 +14,9 @@ async function effectiveRewardUrl(
   db: D1Database,
   gate: EngagementGate,
   igsid: string,
+  igAccount?: IgAccountRef,
 ): Promise<string | null> {
-  const crossLink = await resolveLineCrossLinkUrl(db, gate, igsid);
+  const crossLink = await resolveLineCrossLinkUrl(db, gate, igsid, { account: igAccount });
   return crossLink ?? gate.reward_url;
 }
 
@@ -80,9 +81,14 @@ export async function triggerGateForComment(
      *  Required for reward-URL click tracking. When omitted we fall through
      *  to the raw destination URL. */
     workerBaseUrl?: string;
+    /** Which IG business account fired this gate — forwarded to LINE Harness
+     *  via iga/igan params so the friend's origin account is attributable. */
+    igAccount?: IgAccountRef;
+    /** Owning account row id (ig_accounts.id) — scopes gate matching. */
+    accountId?: string;
   },
 ): Promise<boolean> {
-  const all = await listEngagementGates(db, { activeOnly: true });
+  const all = await listEngagementGates(db, { activeOnly: true, accountId: args.accountId });
 
   // Score + filter candidates so a post-specific campaign always beats a
   // "全投稿" fallback, regardless of creation order. Precedence:
@@ -136,7 +142,7 @@ export async function triggerGateForComment(
       return true;
     }
 
-    await sendCtaDm(db, igClient, gate, delivery);
+    await sendCtaDm(db, igClient, gate, delivery, args.igAccount);
     await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
 
     // Optional public comment. Posted after the DM so a failure doesn't
@@ -176,9 +182,9 @@ export async function triggerGateForComment(
 export async function triggerGateForDmKeyword(
   db: D1Database,
   igClient: IgClientLike,
-  args: { text: string; follower: FollowerRef },
+  args: { text: string; follower: FollowerRef; igAccount?: IgAccountRef; accountId?: string },
 ): Promise<boolean> {
-  const gates = await listEngagementGates(db, { activeOnly: true });
+  const gates = await listEngagementGates(db, { activeOnly: true, accountId: args.accountId });
   for (const gate of gates) {
     if (gate.trigger_type !== 'dm_keyword') continue;
     if (!gate.trigger_keyword || !args.text.includes(gate.trigger_keyword)) continue;
@@ -197,7 +203,7 @@ export async function triggerGateForDmKeyword(
       return true;
     }
 
-    await sendCtaDm(db, igClient, gate, delivery);
+    await sendCtaDm(db, igClient, gate, delivery, args.igAccount);
     await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
     return true;
   }
@@ -207,9 +213,9 @@ export async function triggerGateForDmKeyword(
 export async function triggerGateForStoryMention(
   db: D1Database,
   igClient: IgClientLike,
-  args: { follower: FollowerRef },
+  args: { follower: FollowerRef; igAccount?: IgAccountRef; accountId?: string },
 ): Promise<boolean> {
-  const gates = await listEngagementGates(db, { activeOnly: true });
+  const gates = await listEngagementGates(db, { activeOnly: true, accountId: args.accountId });
   for (const gate of gates) {
     if (gate.trigger_type !== 'story_mention') continue;
 
@@ -227,7 +233,7 @@ export async function triggerGateForStoryMention(
       return true;
     }
 
-    await sendCtaDm(db, igClient, gate, delivery);
+    await sendCtaDm(db, igClient, gate, delivery, args.igAccount);
     await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
     return true;
   }
@@ -265,13 +271,14 @@ async function sendCtaDm(
   igClient: IgClientLike,
   gate: EngagementGate,
   delivery: GateDelivery,
+  igAccount?: IgAccountRef,
 ): Promise<void> {
   const payload = `CHECK_FOLLOW:${gate.id}:${delivery.id}`;
 
   if (gate.initial_dm_rich_message_id) {
     const rm = await getRichMessage(db, gate.initial_dm_rich_message_id);
     if (rm) {
-      const rewardUrl = await effectiveRewardUrl(db, gate, delivery.igsid);
+      const rewardUrl = await effectiveRewardUrl(db, gate, delivery.igsid, igAccount);
       await igClient.sendRichMessage(delivery.igsid, rm.blocks, {
         gateId: gate.id,
         deliveryId: delivery.id,
@@ -296,7 +303,7 @@ async function sendCtaDm(
 export async function handleFollowCheckPostback(
   db: D1Database,
   igClient: IgClientLike,
-  args: { gateId: string; deliveryId: string; igsid: string; workerBaseUrl?: string },
+  args: { gateId: string; deliveryId: string; igsid: string; workerBaseUrl?: string; igAccount?: IgAccountRef },
 ): Promise<void> {
   const [gate, delivery] = await Promise.all([
     getEngagementGate(db, args.gateId),
@@ -312,7 +319,7 @@ export async function handleFollowCheckPostback(
   // Skip Graph API entirely when follow is not required so a transient
   // profile lookup failure can't block reward delivery.
   if (gate.require_follow === 0) {
-    await deliverReward(db, igClient, gate, delivery, args.workerBaseUrl);
+    await deliverReward(db, igClient, gate, delivery, args.workerBaseUrl, args.igAccount);
     const patch: Parameters<typeof updateGateDelivery>[2] = {
       status: 'delivered',
       delivered_at: now,
@@ -329,7 +336,7 @@ export async function handleFollowCheckPostback(
   const isFollowing = profile.is_user_follow_business === true;
 
   if (isFollowing) {
-    await deliverReward(db, igClient, gate, delivery, args.workerBaseUrl);
+    await deliverReward(db, igClient, gate, delivery, args.workerBaseUrl, args.igAccount);
     const patch: Parameters<typeof updateGateDelivery>[2] = {
       status: 'delivered',
       delivered_at: now,
@@ -354,7 +361,7 @@ export async function handleFollowCheckPostback(
   }
 
   // Send reminder + same button (loop)
-  await sendReminderDm(db, igClient, gate, delivery);
+  await sendReminderDm(db, igClient, gate, delivery, args.igAccount);
   await updateGateDelivery(db, delivery.id, {
     status: 'pending_follow',
     loop_count: nextLoopCount,
@@ -367,13 +374,14 @@ async function sendReminderDm(
   igClient: IgClientLike,
   gate: EngagementGate,
   delivery: GateDelivery,
+  igAccount?: IgAccountRef,
 ): Promise<void> {
   const payload = `CHECK_FOLLOW:${gate.id}:${delivery.id}`;
 
   if (gate.follow_reminder_dm_rich_message_id) {
     const rm = await getRichMessage(db, gate.follow_reminder_dm_rich_message_id);
     if (rm) {
-      const rewardUrl = await effectiveRewardUrl(db, gate, delivery.igsid);
+      const rewardUrl = await effectiveRewardUrl(db, gate, delivery.igsid, igAccount);
       await igClient.sendRichMessage(delivery.igsid, rm.blocks, {
         gateId: gate.id,
         deliveryId: delivery.id,
@@ -410,6 +418,7 @@ async function deliverReward(
   gate: EngagementGate,
   delivery: GateDelivery,
   workerBaseUrl?: string,
+  igAccount?: IgAccountRef,
 ): Promise<void> {
   // Two-layer URL rewriting, outer-in:
   //   1. LINE Harness tracked link: captures IG↔LINE userId pair on click.
@@ -417,7 +426,7 @@ async function deliverReward(
   //      campaign analytics before 302'ing to the LINE Harness redirect.
   // Either layer can be skipped independently (no line_connection_id on
   // the gate, or no workerBaseUrl in env) — raw reward_url is the fallback.
-  const baseUrl = await effectiveRewardUrl(db, gate, delivery.igsid);
+  const baseUrl = await effectiveRewardUrl(db, gate, delivery.igsid, igAccount);
   const trackedRewardUrl =
     workerBaseUrl && baseUrl
       ? wrapClickTracking(workerBaseUrl, gate.id, baseUrl, delivery.igsid)
@@ -498,19 +507,36 @@ export async function processFollowupDrip(
   igClient: IgClientLike,
   workerBaseUrl?: string,
   maxPerTick = 50,
+  igAccount?: IgAccountRef,
+  accountId?: string,
 ): Promise<{ sent: number; skipped: number }> {
   const now = new Date().toISOString().slice(0, 19) + 'Z';
-  const due = await db
-    .prepare(
-      `SELECT * FROM gate_deliveries
-       WHERE status = 'delivered'
-         AND next_followup_at IS NOT NULL
-         AND next_followup_at <= ?
-       ORDER BY next_followup_at ASC
-       LIMIT ?`,
-    )
-    .bind(now, maxPerTick)
-    .all<GateDelivery>();
+  // When accountId is given, scope the due extraction to deliveries whose
+  // gate belongs to that IG account (multi-account cron loop).
+  const due = accountId
+    ? await db
+        .prepare(
+          `SELECT gd.* FROM gate_deliveries gd
+           JOIN engagement_gates g ON g.id = gd.gate_id AND g.account_id = ?
+           WHERE gd.status = 'delivered'
+             AND gd.next_followup_at IS NOT NULL
+             AND gd.next_followup_at <= ?
+           ORDER BY gd.next_followup_at ASC
+           LIMIT ?`,
+        )
+        .bind(accountId, now, maxPerTick)
+        .all<GateDelivery>()
+    : await db
+        .prepare(
+          `SELECT * FROM gate_deliveries
+           WHERE status = 'delivered'
+             AND next_followup_at IS NOT NULL
+             AND next_followup_at <= ?
+           ORDER BY next_followup_at ASC
+           LIMIT ?`,
+        )
+        .bind(now, maxPerTick)
+        .all<GateDelivery>();
 
   let sent = 0;
   let skipped = 0;
@@ -541,7 +567,7 @@ export async function processFollowupDrip(
     }
 
     try {
-      await sendFollowupStep(db, igClient, d.igsid, step, gate, workerBaseUrl);
+      await sendFollowupStep(db, igClient, d.igsid, step, gate, workerBaseUrl, igAccount);
     } catch (err) {
       console.error('[followup] send failed:', err);
       // Skip forward — don't retry indefinitely on the same step.
@@ -565,10 +591,11 @@ async function sendFollowupStep(
   step: { text: string; image_url?: string; button_label?: string; button_url?: string },
   gate: EngagementGate,
   workerBaseUrl?: string,
+  igAccount?: IgAccountRef,
 ): Promise<void> {
   // Same two-layer wrap as deliverReward — follow-up taps also flow
   // through both LINE Harness cross-link and IG Harness click tracking.
-  const baseUrl = await effectiveRewardUrl(db, gate, igsid);
+  const baseUrl = await effectiveRewardUrl(db, gate, igsid, igAccount);
   const trackedRewardUrl =
     workerBaseUrl && baseUrl
       ? wrapClickTracking(workerBaseUrl, gate.id, baseUrl, igsid)

@@ -9,6 +9,16 @@ import type { EngagementGate } from '@ig-harness/db';
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 
 /**
+ * Identifies which IG business account generated the link. Today the values
+ * come from env (single-account deploy); a future multi-account refactor
+ * swaps the supplier to an accounts table without touching this service.
+ */
+export interface IgAccountRef {
+  id?: string;
+  username?: string;
+}
+
+/**
  * Rewrite an outbound reward/CTA URL through a LINE Harness tracked link so
  * the recipient's IG↔LINE userId pair is captured on first click.
  *
@@ -32,7 +42,7 @@ export async function resolveLineCrossLinkUrl(
   db: D1Database,
   gate: EngagementGate,
   igsid: string,
-  options: { fetchImpl?: FetchFn } = {},
+  options: { fetchImpl?: FetchFn; account?: IgAccountRef } = {},
 ): Promise<string | null> {
   if (!gate.line_connection_id) return null;
   if (!gate.reward_url) return null;
@@ -111,6 +121,9 @@ export async function resolveLineCrossLinkUrl(
 
   const params = new URLSearchParams();
   params.set('ig', igsid);
+  if (options.account?.id) params.set('iga', options.account.id);
+  const accountUsername = options.account?.username?.replace(/^@/, '');
+  if (accountUsername) params.set('igan', accountUsername);
   if (gate.line_pool_slug) params.set('pool', gate.line_pool_slug);
   return `${workerUrl}/r/${encodeURIComponent(short)}?${params.toString()}`;
 }

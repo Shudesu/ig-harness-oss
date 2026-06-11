@@ -6,9 +6,11 @@ import {
   deleteTrackedLink,
   recordLinkClick,
   getLinkClicks,
+  getFriendByLineUserId,
 } from '@ig-harness/db';
 import { addTagToFriend, enrollFriendInScenario } from '@ig-harness/db';
 import type { TrackedLink } from '@ig-harness/db';
+import { resolveAccount } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const trackedLinks = new Hono<Env>();
@@ -37,7 +39,9 @@ function getBaseUrl(c: { req: { url: string } }): string {
 // GET /api/tracked-links — list all
 trackedLinks.get('/api/tracked-links', async (c) => {
   try {
-    const items = await getTrackedLinks(c.env.DB);
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+    const items = await getTrackedLinks(c.env.DB, { accountId: account.id });
     const base = getBaseUrl(c);
     return c.json({ success: true, data: items.map((item) => serializeTrackedLink(item, base)) });
   } catch (err) {
@@ -77,6 +81,8 @@ trackedLinks.get('/api/tracked-links/:id', async (c) => {
 // POST /api/tracked-links — create
 trackedLinks.post('/api/tracked-links', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const body = await c.req.json<{
       name: string;
       originalUrl: string;
@@ -93,6 +99,7 @@ trackedLinks.post('/api/tracked-links', async (c) => {
       originalUrl: body.originalUrl,
       tagId: body.tagId ?? null,
       scenarioId: body.scenarioId ?? null,
+      accountId: account.id,
     });
 
     const base = getBaseUrl(c);
@@ -195,7 +202,7 @@ function buildAppRedirectHtml(destinationUrl: string): string {
 // GET /t/:linkId — click tracking redirect (no auth, fast redirect)
 trackedLinks.get('/t/:linkId', async (c) => {
   const linkId = c.req.param('linkId');
-  const igsid = c.req.query('ig') ?? c.req.query('lu') ?? null;
+  const lineUserId = c.req.query('lu') ?? null;
   let friendId = c.req.query('f') ?? null;
 
   // Look up the link first
@@ -208,12 +215,11 @@ trackedLinks.get('/t/:linkId', async (c) => {
   const useAppRedirect = isAppLinkDomain(link.original_url);
 
   // Resolve friendId from IGSID if provided
-  if (!friendId && igsid) {
+  if (!friendId && lineUserId) {
     const { getFriendByIgsid } = await import('@ig-harness/db');
-    const friend = await getFriendByIgsid(c.env.DB, igsid);
+    const friend = await getFriendByIgsid(c.env.DB, lineUserId);
     if (friend) {
-      // followers.id is numeric — coerce so it matches the string-typed slot.
-      friendId = String(friend.id);
+      friendId = friend.id;
     }
   }
 

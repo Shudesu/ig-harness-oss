@@ -88,7 +88,6 @@ function makeGate(overrides: Partial<EngagementGate> = {}): EngagementGate {
     follow_reminder_dm_rich_message_id: null,
     comment_reply_text: null,
     followup_dm_sequence: null,
-    allow_repeat: 0,
     line_connection_id: null,
     line_pool_slug: null,
     line_tracked_link_short: null,
@@ -262,5 +261,34 @@ describe('resolveLineCrossLinkUrl', () => {
       { fetchImpl: vi.fn() },
     );
     expect(url).toBe('https://lh.example.com/r/tl1?ig=IG');
+  });
+
+  it('appends iga/igan when an IG account ref is provided', async () => {
+    const db = createMockDb({
+      connections: [{ id: 'conn-1', worker_url: 'https://lh.example.com', api_key: 'k1' }],
+    });
+    const gate = makeGate({ line_connection_id: 'conn-1', line_tracked_link_short: 'tl_x' });
+    const url = await resolveLineCrossLinkUrl(db, gate, 'IG1', {
+      fetchImpl: vi.fn(),
+      account: { id: '17841400000000000', username: '@himosapiens' },
+    });
+    // Leading @ is stripped so LINE Harness stores a bare username.
+    expect(url).toBe(
+      'https://lh.example.com/r/tl_x?ig=IG1&iga=17841400000000000&igan=himosapiens',
+    );
+  });
+
+  it('omits igan when username is absent, omits both when account is absent', async () => {
+    const db = createMockDb({
+      connections: [{ id: 'conn-1', worker_url: 'https://lh.example.com', api_key: 'k1' }],
+    });
+    const gate = makeGate({ line_connection_id: 'conn-1', line_tracked_link_short: 'tl_x' });
+    const idOnly = await resolveLineCrossLinkUrl(db, gate, 'IG1', {
+      fetchImpl: vi.fn(),
+      account: { id: '17841400000000000' },
+    });
+    expect(idOnly).toBe('https://lh.example.com/r/tl_x?ig=IG1&iga=17841400000000000');
+    const none = await resolveLineCrossLinkUrl(db, gate, 'IG1', { fetchImpl: vi.fn() });
+    expect(none).toBe('https://lh.example.com/r/tl_x?ig=IG1');
   });
 });

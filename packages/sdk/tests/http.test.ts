@@ -35,6 +35,48 @@ describe('HttpClient', () => {
     vi.unstubAllGlobals()
   })
 
+  it('appends account_id to every request when accountId is configured', async () => {
+    const scoped = new HttpClient({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'test-key',
+      timeout: 5000,
+      accountId: 'acc-123',
+    })
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: [] }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    await scoped.get('/api/friends')
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/api/friends?account_id=acc-123',
+      expect.anything(),
+    )
+
+    // Paths that already carry a query string get & instead of ?
+    await scoped.get('/api/friends?limit=10')
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      'https://api.example.com/api/friends?limit=10&account_id=acc-123',
+      expect.anything(),
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('leaves URLs untouched when accountId is not configured', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, data: [] }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    await http.get('/api/friends')
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.example.com/api/friends',
+      expect.anything(),
+    )
+    vi.unstubAllGlobals()
+  })
+
   it('sends POST with JSON body', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,

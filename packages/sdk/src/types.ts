@@ -10,6 +10,8 @@ export interface InstagramHarnessConfig {
   apiUrl: string
   apiKey: string
   timeout?: number  // default: 30000ms
+  /** Scope all SDK calls to this IG account (multi-account deploys). Omit for the default account. */
+  accountId?: string
 }
 
 // ─── API Response ───────────────────────────────────────
@@ -240,45 +242,6 @@ export interface CreateRichMenuInput {
   name: string
   chatBarText: string
   areas: RichMenuArea[]
-}
-
-// ─── Ad Platforms ──────────────────────────────────────
-export type AdPlatformName = 'meta' | 'x' | 'google' | 'tiktok'
-
-export interface AdPlatform {
-  id: string
-  name: AdPlatformName
-  displayName: string | null
-  config: Record<string, unknown>
-  isActive: boolean
-  createdAt: string
-  updatedAt: string
-}
-
-export interface CreateAdPlatformInput {
-  name: AdPlatformName
-  displayName?: string
-  config: Record<string, unknown>
-}
-
-export interface UpdateAdPlatformInput {
-  name?: AdPlatformName
-  displayName?: string
-  config?: Record<string, unknown>
-  isActive?: boolean
-}
-
-export type ConversionLogStatus = 'sent' | 'failed'
-
-export interface ConversionLog {
-  id: string
-  platformId: string
-  eventName: string
-  friendId: string | null
-  status: ConversionLogStatus
-  error: string | null
-  sentAt: string | null
-  createdAt: string
 }
 
 // ─── Segment ─────────────────────────────────────────────

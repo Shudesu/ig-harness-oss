@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { InstagramClient } from '@ig-harness/ig-sdk';
+import { listIgAccounts } from '@ig-harness/db';
 import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processFollowupDrip } from './services/engagement-gate.js';
@@ -23,16 +23,14 @@ import { posts } from './routes/posts.js';
 import { richMessages } from './routes/rich-messages.js';
 import { integrations } from './routes/integrations.js';
 import { lineConnections } from './routes/line-connections.js';
-import { capabilities } from './routes/capabilities.js';
-import { getIGAccessToken, refreshIGAccessTokenIfNeeded } from './lib/ig-token.js';
+import { accounts } from './routes/accounts.js';
+import { ensureDefaultAccount, getAccountClient, toIgAccountRef } from './lib/accounts.js';
 
 export type Env = {
   Bindings: {
     DB: D1Database;
     IMAGES: R2Bucket;
-    // ASSETS is optional: create-ig-harness deploys without an [assets] binding,
-    // so callers MUST guard `env.ASSETS` before invoking `.fetch` (see notFound below).
-    ASSETS?: Fetcher;
+    ASSETS: Fetcher;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
     IG_USER_ID: string;
@@ -79,7 +77,7 @@ app.route('/', posts);
 app.route('/', richMessages);
 app.route('/', integrations);
 app.route('/', lineConnections);
-app.route('/', capabilities);
+app.route('/', accounts);
 
 // LINE Harness UUID linkage endpoint
 app.get('/connect', (c) => {
@@ -238,24 +236,14 @@ app.get('/terms-of-service', (c) => {
 });
 
 // 404 fallback — API paths return JSON 404, everything else serves from static assets (admin)
-export async function handleNotFound(
-  request: Request,
-  assets: Fetcher | undefined,
-): Promise<Response> {
-  const path = new URL(request.url).pathname;
+app.notFound(async (c) => {
+  const path = new URL(c.req.url).pathname;
   if (path.startsWith('/api/') || path === '/webhook' || path === '/docs' || path === '/openapi.json') {
-    return Response.json({ success: false, error: 'Not found' }, { status: 404 });
+    return c.json({ success: false, error: 'Not found' }, 404);
   }
-  // Serve static assets (admin dashboard) when the [assets] binding is configured.
-  // create-ig-harness quickstart deploys without it — fall back to JSON 404 so we
-  // never invoke `.fetch` on an undefined binding (was logging TypeError on every /).
-  if (assets) {
-    return assets.fetch(request);
-  }
-  return Response.json({ success: false, error: 'Not found' }, { status: 404 });
-}
-
-app.notFound((c) => handleNotFound(c.req.raw, c.env.ASSETS));
+  // Serve static assets (admin dashboard)
+  return c.env.ASSETS.fetch(c.req.raw);
+});
 
 // Scheduled handler for cron triggers
 async function scheduled(
@@ -263,27 +251,26 @@ async function scheduled(
   env: Env['Bindings'],
   _ctx: ExecutionContext,
 ): Promise<void> {
-  try {
-    const result = await refreshIGAccessTokenIfNeeded(env);
-    if (result.refreshed) {
-      console.log(`IG token refreshed, new expiry: ${new Date(result.expiresAt! * 1000).toISOString()}`);
+  await ensureDefaultAccount(env, env.DB);
+  // `accounts` is the route module above — use a distinct name here.
+  const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });
+
+  for (const account of igAccounts) {
+    let igClient;
+    try {
+      // Includes a pre-expiry token refresh per account.
+      igClient = await getAccountClient(env, env.DB, account);
+    } catch (err) {
+      console.error(`[cron] client init failed for ${account.ig_user_id}; skipping:`, err);
+      continue;
     }
-  } catch (err) {
-    console.error('IG token refresh attempt failed:', err);
+    const ref = toIgAccountRef(account);
+    await Promise.allSettled([
+      processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id),
+      processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL, account.id),
+      processFollowupDrip(env.DB, igClient, env.WORKER_URL, undefined, ref, account.id),
+    ]);
   }
-
-  const igClient = new InstagramClient({
-    accessToken: await getIGAccessToken(env),
-    igUserId: env.IG_USER_ID,
-  });
-
-  const jobs = [
-    processStepDeliveries(env.DB, igClient, env.WORKER_URL),
-    processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL),
-    processFollowupDrip(env.DB, igClient, env.WORKER_URL),
-  ];
-
-  await Promise.allSettled(jobs);
 }
 
 export default {

@@ -1,3 +1,5 @@
+import { updateIgAccountToken, type IgAccount } from '@ig-harness/db';
+
 const REFRESH_WINDOW_SECONDS = 14 * 24 * 60 * 60;
 
 type TokenEnv = {
@@ -54,6 +56,52 @@ async function callRefresh(
     throw new Error(`IG token refresh returned invalid payload: ${JSON.stringify(data)}`);
   }
   return { access_token: data.access_token, expires_in: data.expires_in };
+}
+
+/**
+ * Per-account variant of the refresh flow. Stores the result on the
+ * ig_accounts row (the legacy ig_token_state singleton stays untouched —
+ * it only serves as a seed source for ensureDefaultAccount now).
+ *
+ * A NULL token_expires_at (fresh registration or manual token replacement)
+ * counts as "needs refresh" so the expiry gets learned from Meta on the
+ * next cron tick.
+ */
+export async function refreshAccountTokenIfNeeded(
+  env: { IG_ACCESS_TOKEN: string },
+  db: D1Database,
+  account: IgAccount,
+): Promise<{ refreshed: boolean; token?: string; reason: string }> {
+  const now = Math.floor(Date.now() / 1000);
+  if (account.token_expires_at && account.token_expires_at > now + REFRESH_WINDOW_SECONDS) {
+    return { refreshed: false, reason: 'token still fresh' };
+  }
+  // Candidates: the stored per-account token, plus the env secret as a
+  // recovery path for the default account only (the env token belongs to it).
+  const candidates: string[] = [account.access_token];
+  if (account.is_default === 1 && env.IG_ACCESS_TOKEN && !candidates.includes(env.IG_ACCESS_TOKEN)) {
+    candidates.push(env.IG_ACCESS_TOKEN);
+  }
+  let data: { access_token: string; expires_in: number } | null = null;
+  let lastErr: unknown;
+  for (const tok of candidates) {
+    try {
+      data = await callRefresh(tok);
+      break;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`IG refresh failed for account ${account.ig_user_id}, trying next candidate:`, err);
+    }
+  }
+  if (!data) throw lastErr ?? new Error('IG token refresh: no candidate tokens available');
+
+  const expiresAt = now + data.expires_in;
+  await updateIgAccountToken(db, account.id, data.access_token, expiresAt, now);
+  // Mutate the in-memory row so the caller's client uses the new token.
+  account.access_token = data.access_token;
+  account.token_expires_at = expiresAt;
+  account.token_refreshed_at = now;
+  return { refreshed: true, token: data.access_token, reason: 'ok' };
 }
 
 export async function refreshIGAccessTokenIfNeeded(

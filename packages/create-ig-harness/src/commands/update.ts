@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { existsSync, readFileSync } from "node:fs";
 import { ensureAuth } from "../steps/auth.js";
-import { setAccountId, wrangler } from "../lib/wrangler.js";
+import { wrangler } from "../lib/wrangler.js";
 import { deployWorker } from "../steps/deploy-worker.js";
 import { join } from "node:path";
 import { execa } from "execa";
@@ -37,16 +37,6 @@ export async function runUpdate(repoDir: string): Promise<void> {
   await ensureAuth();
 
   const deployedState = loadDeployedState(repoDir);
-  if (!deployedState) {
-    p.log.warn(
-      [
-        ".ig-harness-deployed.json が見つかりません。",
-        "初回セットアップ済みの repo で `create-ig-harness update --repo-dir <path>` を実行するか、",
-        "~/.ig-harness/.ig-harness-deployed.json に deployed state を配置してください。",
-      ].join("\n"),
-    );
-  }
-  if (deployedState?.accountId) setAccountId(deployedState.accountId);
   const s = p.spinner();
 
   // Run pending migrations against the user's actual D1 (use saved name)

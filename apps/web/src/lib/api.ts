@@ -30,8 +30,21 @@ export class ApiError extends Error {
   }
 }
 
+// --- account scoping ---------------------------------------------------
+let currentAccountId: string | null = null
+export function setApiAccountId(id: string | null) { currentAccountId = id }
+
+// Shared resources are account-agnostic; everything else gets ?account_id=.
+const ACCOUNT_AGNOSTIC = ['/api/accounts', '/api/staff', '/api/images', '/api/line-connections', '/api/integrations', '/api/health']
+
+function withAccount(path: string): string {
+  if (!currentAccountId) return path
+  if (ACCOUNT_AGNOSTIC.some((p) => path.startsWith(p))) return path
+  return `${path}${path.includes('?') ? '&' : '?'}account_id=${encodeURIComponent(currentAccountId)}`
+}
+
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${API_URL}${withAccount(path)}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -271,6 +284,62 @@ export const postsApi = {
       `/api/posts/my-media${qs.toString() ? `?${qs.toString()}` : ''}`,
     )
     return res.data ?? []
+  },
+}
+
+// ── Instagram accounts (multi-account management) ──
+
+export interface IgAccountSummary {
+  id: string
+  igUserId: string
+  username: string | null
+  /** Masked by the worker (`****` + last 4 chars) — never the full token. */
+  accessToken: string
+  /** Epoch seconds, or null when the expiry has not been fetched yet. */
+  tokenExpiresAt: number | null
+  hasAppSecret: boolean
+  hasVerifyToken: boolean
+  isActive: boolean
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export const accountsApi = {
+  list: async (): Promise<IgAccountSummary[]> => {
+    const res = await fetchApi<ApiResponse<IgAccountSummary[]>>('/api/accounts')
+    return res.data ?? []
+  },
+  create: async (input: {
+    igUserId: string
+    accessToken: string
+    username?: string
+    appSecret?: string
+    verifyToken?: string
+  }): Promise<IgAccountSummary> => {
+    const res = await fetchApi<ApiResponse<IgAccountSummary>>('/api/accounts', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+    if (!res.data) throw new Error(res.error || 'アカウントの追加に失敗しました')
+    return res.data
+  },
+  update: async (
+    id: string,
+    patch: Partial<{
+      username: string
+      accessToken: string
+      appSecret: string
+      verifyToken: string
+      isActive: boolean
+    }>,
+  ): Promise<IgAccountSummary> => {
+    const res = await fetchApi<ApiResponse<IgAccountSummary>>(`/api/accounts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    })
+    if (!res.data) throw new Error(res.error || 'アカウントの更新に失敗しました')
+    return res.data
   },
 }
 

@@ -12,14 +12,26 @@ export interface Broadcast {
   scheduled_at: string | null;
   sent_at: string | null;
   total_sent: number;
+  account_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export async function getBroadcasts(db: D1Database): Promise<Broadcast[]> {
-  const result = await db
-    .prepare(`SELECT * FROM broadcasts ORDER BY created_at DESC`)
-    .all<Broadcast>();
+export async function getBroadcasts(
+  db: D1Database,
+  opts: { accountId?: string } = {},
+): Promise<Broadcast[]> {
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.accountId) {
+    conditions.push('account_id = ?');
+    binds.push(opts.accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`SELECT * FROM broadcasts ${where} ORDER BY created_at DESC`);
+  const result = binds.length > 0
+    ? await stmt.bind(...binds).all<Broadcast>()
+    : await stmt.all<Broadcast>();
   return result.results;
 }
 
@@ -39,6 +51,8 @@ export interface CreateBroadcastInput {
   body: string;
   tagFilter?: string | null;
   scheduledAt?: string | null;
+  /** Owning IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function createBroadcast(
@@ -51,8 +65,8 @@ export async function createBroadcast(
   const result = await db
     .prepare(
       `INSERT INTO broadcasts
-         (name, message_type, body, tag_filter, status, scheduled_at, sent_at, total_sent, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)
+         (name, message_type, body, tag_filter, status, scheduled_at, sent_at, total_sent, account_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?, ?, ?)
        RETURNING *`,
     )
     .bind(
@@ -62,6 +76,7 @@ export async function createBroadcast(
       input.tagFilter ?? null,
       initialStatus,
       input.scheduledAt ?? null,
+      input.accountId ?? null,
       now,
       now,
     )

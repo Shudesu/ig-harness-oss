@@ -19,16 +19,12 @@ import { jitterDeliveryTime, addJitter, sleep } from './stealth.js';
  */
 export function expandVariables(
   content: string,
-  // `Friend.id` from packages/db is `number` (followers.id INTEGER PRIMARY KEY),
-  // but other callers (e.g., enrollment paths from JSON-decoded API bodies)
-  // pass it as a string. Accept either and coerce — `replace()`'s second arg
-  // must be a string.
-  friend: { id: string | number; display_name: string | null; username?: string | null },
+  friend: { id: string; display_name: string | null; username?: string | null },
 ): string {
   let result = content;
   result = result.replace(/\{\{name\}\}/g, friend.display_name || friend.username || '');
   result = result.replace(/\{\{username\}\}/g, (friend as unknown as Record<string, unknown>).username as string || '');
-  result = result.replace(/\{\{friend_id\}\}/g, String(friend.id));
+  result = result.replace(/\{\{friend_id\}\}/g, friend.id);
   return result;
 }
 
@@ -55,13 +51,14 @@ export async function processStepDeliveries(
   db: D1Database,
   igClient: InstagramClient,
   workerUrl?: string,
+  accountId?: string,
 ): Promise<void> {
   // Skip delivery outside 9:00-23:00 JST window
   const jstHour = new Date(Date.now() + 9 * 60 * 60_000).getUTCHours();
   if (jstHour < DEFAULT_START_HOUR || jstHour >= DEFAULT_END_HOUR) return;
 
   const now = jstNow();
-  const dueFriendScenarios = await getFriendScenariosDueForDelivery(db, now);
+  const dueFriendScenarios = await getFriendScenariosDueForDelivery(db, now, accountId);
 
   for (let i = 0; i < dueFriendScenarios.length; i++) {
     const fs = dueFriendScenarios[i];

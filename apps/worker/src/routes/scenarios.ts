@@ -19,6 +19,7 @@ import type {
   ScenarioTriggerType,
   MessageType,
 } from '@ig-harness/db';
+import { resolveAccount } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const scenarios = new Hono<Env>();
@@ -45,7 +46,7 @@ function serializeStep(row: DbScenarioStep) {
     stepOrder: row.step_order,
     delayMinutes: row.delay_minutes,
     messageType: row.message_type,
-    messageContent: row.body,
+    messageContent: row.message_content,
     conditionType: row.condition_type ?? null,
     conditionValue: row.condition_value ?? null,
     nextStepOnFalse: row.next_step_on_false ?? null,
@@ -57,12 +58,12 @@ function serializeStep(row: DbScenarioStep) {
 function serializeFriendScenario(row: DbFriendScenario) {
   return {
     id: row.id,
-    friendId: row.follower_id,
+    friendId: row.friend_id,
     scenarioId: row.scenario_id,
-    currentStepOrder: row.current_step,
+    currentStepOrder: row.current_step_order,
     status: row.status,
-    startedAt: row.enrolled_at,
-    nextDeliveryAt: row.next_step_at,
+    startedAt: row.started_at,
+    nextDeliveryAt: row.next_delivery_at,
     updatedAt: row.updated_at,
   };
 }
@@ -70,6 +71,8 @@ function serializeFriendScenario(row: DbFriendScenario) {
 // GET /api/scenarios - list all
 scenarios.get('/api/scenarios', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const lineAccountId = c.req.query('lineAccountId');
     let items: DbScenarioWithStepCount[];
     if (lineAccountId) {
@@ -78,15 +81,15 @@ scenarios.get('/api/scenarios', async (c) => {
           `SELECT s.*, COUNT(ss.id) as step_count
            FROM scenarios s
            LEFT JOIN scenario_steps ss ON s.id = ss.scenario_id
-           WHERE s.line_account_id = ?
+           WHERE s.line_account_id = ? AND s.account_id = ?
            GROUP BY s.id
            ORDER BY s.created_at DESC`,
         )
-        .bind(lineAccountId)
+        .bind(lineAccountId, account.id)
         .all<DbScenarioWithStepCount>();
       items = result.results;
     } else {
-      items = await getScenarios(c.env.DB);
+      items = await getScenarios(c.env.DB, { accountId: account.id });
     }
     return c.json({
       success: true,
@@ -127,6 +130,8 @@ scenarios.get('/api/scenarios/:id', async (c) => {
 // POST /api/scenarios - create
 scenarios.post('/api/scenarios', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const body = await c.req.json<{
       name: string;
       description?: string | null;
@@ -145,6 +150,7 @@ scenarios.post('/api/scenarios', async (c) => {
       description: body.description ?? null,
       triggerType: body.triggerType,
       triggerTagId: body.triggerTagId ?? null,
+      accountId: account.id,
     });
 
     // Save line_account_id if provided
@@ -266,7 +272,7 @@ scenarios.put('/api/scenarios/:id/steps/:stepId', async (c) => {
       step_order: body.stepOrder,
       delay_minutes: body.delayMinutes,
       message_type: body.messageType,
-      body: body.messageContent,
+      message_content: body.messageContent,
       condition_type: body.conditionType,
       condition_value: body.conditionValue,
       next_step_on_false: body.nextStepOnFalse,

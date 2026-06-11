@@ -29,10 +29,13 @@ export async function processBroadcastSend(
 
   try {
     if (!broadcast.tag_filter) {
-      // No tag filter — send to all followers
-      const followers = await db
-        .prepare(`SELECT id, igsid FROM followers`)
-        .all<{ id: number; igsid: string }>();
+      // No tag filter — send to all of the owning account's followers.
+      // account_id NULL (legacy pre-backfill rows / single-account deploys
+      // before seed) keeps the unscoped behavior.
+      const stmt = broadcast.account_id
+        ? db.prepare(`SELECT id, igsid FROM followers WHERE account_id = ?`).bind(broadcast.account_id)
+        : db.prepare(`SELECT id, igsid FROM followers`);
+      const followers = await stmt.all<{ id: number; igsid: string }>();
       const allFollowers = followers.results;
 
       for (let i = 0; i < allFollowers.length; i += BATCH_SIZE) {
@@ -68,7 +71,9 @@ export async function processBroadcastSend(
         throw new Error('tag_filter must contain tagId');
       }
 
-      const friends = await getFriendsByTag(db, tagFilter.tagId);
+      const friends = await getFriendsByTag(db, tagFilter.tagId, {
+        accountId: broadcast.account_id ?? undefined,
+      });
 
       for (let i = 0; i < friends.length; i += BATCH_SIZE) {
         const batch = friends.slice(i, i + BATCH_SIZE);
@@ -111,8 +116,11 @@ export async function processScheduledBroadcasts(
   db: D1Database,
   igClient: InstagramClient,
   workerUrl?: string,
+  accountId?: string,
 ): Promise<void> {
-  const allBroadcasts = await getBroadcasts(db);
+  // When an accountId is given, the due extraction is scoped at the SQL level
+  // so each account's cron tick only picks up its own scheduled broadcasts.
+  const allBroadcasts = await getBroadcasts(db, accountId ? { accountId } : {});
   const nowMs = Date.now();
 
   const scheduled = allBroadcasts.filter(

@@ -24,10 +24,21 @@ export interface LinkClick {
 
 // ── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function getTrackedLinks(db: D1Database): Promise<TrackedLink[]> {
-  const result = await db
-    .prepare(`SELECT * FROM tracked_links ORDER BY created_at DESC`)
-    .all<TrackedLink>();
+export async function getTrackedLinks(
+  db: D1Database,
+  opts: { accountId?: string } = {},
+): Promise<TrackedLink[]> {
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.accountId) {
+    conditions.push('account_id = ?');
+    binds.push(opts.accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`SELECT * FROM tracked_links ${where} ORDER BY created_at DESC`);
+  const result = binds.length > 0
+    ? await stmt.bind(...binds).all<TrackedLink>()
+    : await stmt.all<TrackedLink>();
   return result.results;
 }
 
@@ -46,6 +57,8 @@ export interface CreateTrackedLinkInput {
   originalUrl: string;
   tagId?: string | null;
   scenarioId?: string | null;
+  /** Owning IG business account (ig_accounts.id). */
+  accountId?: string;
 }
 
 export async function createTrackedLink(
@@ -57,10 +70,10 @@ export async function createTrackedLink(
 
   await db
     .prepare(
-      `INSERT INTO tracked_links (id, name, original_url, tag_id, scenario_id, is_active, click_count, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?)`,
+      `INSERT INTO tracked_links (id, name, original_url, tag_id, scenario_id, is_active, click_count, account_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
     )
-    .bind(id, input.name, input.originalUrl, input.tagId ?? null, input.scenarioId ?? null, now, now)
+    .bind(id, input.name, input.originalUrl, input.tagId ?? null, input.scenarioId ?? null, input.accountId ?? null, now, now)
     .run();
 
   return (await getTrackedLinkById(db, id))!;

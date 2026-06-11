@@ -4,17 +4,21 @@ interface HttpClientConfig {
   baseUrl: string
   apiKey: string
   timeout: number
+  /** Scope every request to this IG account (multi-account deploys). */
+  accountId?: string
 }
 
 export class HttpClient {
   private readonly baseUrl: string
   private readonly apiKey: string
   private readonly timeout: number
+  private readonly accountId?: string
 
   constructor(config: HttpClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '')
     this.apiKey = config.apiKey
     this.timeout = config.timeout
+    this.accountId = config.accountId
   }
 
   async get<T = unknown>(path: string): Promise<T> {
@@ -38,7 +42,10 @@ export class HttpClient {
   }
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const url = `${this.baseUrl}${path}`
+    const scopedPath = this.accountId
+      ? `${path}${path.includes('?') ? '&' : '?'}account_id=${encodeURIComponent(this.accountId)}`
+      : path
+    const url = `${this.baseUrl}${scopedPath}`
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',

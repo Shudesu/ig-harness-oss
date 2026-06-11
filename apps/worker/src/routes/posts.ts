@@ -1,12 +1,11 @@
 import { Hono } from 'hono';
-import { InstagramClient } from '@ig-harness/ig-sdk';
 import {
   listEngagementGates,
   createEngagementGate,
   getRichMessage,
   hasCheckFollowPostback,
 } from '@ig-harness/db';
-import { getIGAccessToken } from '../lib/ig-token.js';
+import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const posts = new Hono<Env>();
@@ -14,10 +13,9 @@ const posts = new Hono<Env>();
 posts.get('/api/posts/:id/commenters', async (c) => {
   const mediaId = c.req.param('id');
   const limit = Number(c.req.query('limit') ?? '50');
-  const igClient = new InstagramClient({
-    accessToken: await getIGAccessToken(c.env),
-    igUserId: c.env.IG_USER_ID,
-  });
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const igClient = await getAccountClient(c.env, c.env.DB, account);
   try {
     const comments = await igClient.getMediaComments(mediaId, limit);
     return c.json({ success: true, data: comments });
@@ -34,10 +32,9 @@ posts.get('/api/posts/:id/commenters', async (c) => {
  */
 posts.get('/api/posts/my-reels', async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? '50'), 1), 100);
-  const igClient = new InstagramClient({
-    accessToken: await getIGAccessToken(c.env),
-    igUserId: c.env.IG_USER_ID,
-  });
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const igClient = await getAccountClient(c.env, c.env.DB, account);
   try {
     // `limit` applies BEFORE filtering at the Graph API side, so feed posts
     // can crowd out reels. Fetch the max page (100) and filter locally, then
@@ -62,10 +59,9 @@ posts.get('/api/posts/my-reels', async (c) => {
 posts.get('/api/posts/my-media', async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query('limit') ?? '100'), 1), 100);
   const productType = (c.req.query('product_type') ?? 'all').toUpperCase();
-  const igClient = new InstagramClient({
-    accessToken: await getIGAccessToken(c.env),
-    igUserId: c.env.IG_USER_ID,
-  });
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const igClient = await getAccountClient(c.env, c.env.DB, account);
   try {
     const media = await igClient.getMyMedia(limit);
     const filtered =
@@ -96,6 +92,8 @@ posts.get('/api/posts/my-media', async (c) => {
  *   max_loops?: number (default 3)
  */
 posts.post('/api/posts/bulk-apply-gates', async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const body = await c.req.json<{
     reel_ids?: string[];
     name_prefix?: string;
@@ -182,7 +180,7 @@ posts.post('/api/posts/bulk-apply-gates', async (c) => {
   }
 
   // Existing non-archived gates keyed by target_post_id.
-  const existingGates = await listEngagementGates(c.env.DB);
+  const existingGates = await listEngagementGates(c.env.DB, { accountId: account.id });
   const existingByPost = new Set(
     existingGates
       .filter((g) => g.status !== 'archived' && g.target_post_id)
@@ -221,6 +219,7 @@ posts.post('/api/posts/bulk-apply-gates', async (c) => {
       line_pool_slug: null,
       line_tracked_link_short: null,
       allow_repeat: 0,
+      accountId: account.id,
     });
     created.push({ id: gate.id, reel_id: reelId, status: 'created' });
   }

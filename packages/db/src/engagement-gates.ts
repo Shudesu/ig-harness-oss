@@ -91,7 +91,10 @@ export interface GateDelivery {
 
 export async function createEngagementGate(
   db: D1Database,
-  gate: Omit<EngagementGate, 'id' | 'created_at' | 'updated_at'>,
+  gate: Omit<EngagementGate, 'id' | 'created_at' | 'updated_at'> & {
+    /** Owning IG business account (ig_accounts.id). */
+    accountId?: string;
+  },
 ): Promise<EngagementGate> {
   const id = crypto.randomUUID();
   await db
@@ -104,8 +107,8 @@ export async function createEngagementGate(
         initial_dm_rich_message_id, reward_dm_rich_message_id,
         follow_reminder_dm_rich_message_id, comment_reply_text,
         followup_dm_sequence,
-        line_connection_id, line_pool_slug, allow_repeat)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        line_connection_id, line_pool_slug, allow_repeat, account_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id, gate.name, gate.status, gate.trigger_type, gate.target_post_id,
@@ -121,6 +124,7 @@ export async function createEngagementGate(
       gate.line_connection_id ?? null,
       gate.line_pool_slug ?? null,
       gate.allow_repeat ?? 0,
+      gate.accountId ?? null,
     )
     .run();
   const row = await db
@@ -133,12 +137,20 @@ export async function createEngagementGate(
 
 export async function listEngagementGates(
   db: D1Database,
-  opts: { activeOnly?: boolean } = {},
+  opts: { activeOnly?: boolean; accountId?: string } = {},
 ): Promise<EngagementGate[]> {
-  const where = opts.activeOnly ? "WHERE status = 'active'" : '';
-  const result = await db
-    .prepare(`SELECT * FROM engagement_gates ${where} ORDER BY created_at DESC`)
-    .all<EngagementGate>();
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (opts.activeOnly) conditions.push("status = 'active'");
+  if (opts.accountId) {
+    conditions.push('account_id = ?');
+    binds.push(opts.accountId);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const stmt = db.prepare(`SELECT * FROM engagement_gates ${where} ORDER BY created_at DESC`);
+  const result = binds.length > 0
+    ? await stmt.bind(...binds).all<EngagementGate>()
+    : await stmt.all<EngagementGate>();
   const gates = result.results;
 
   // Hydrate target_post_ids in a single roundtrip.

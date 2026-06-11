@@ -5,11 +5,11 @@ import {
   createBroadcast,
   updateBroadcast,
   deleteBroadcast,
+  getIgAccountById,
 } from '@ig-harness/db';
 import type { Broadcast as DbBroadcast, BroadcastMessageType } from '@ig-harness/db';
-import { InstagramClient } from '@ig-harness/ig-sdk';
 import { processBroadcastSend } from '../services/broadcast.js';
-import { getIGAccessToken } from '../lib/ig-token.js';
+import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const broadcasts = new Hono<Env>();
@@ -33,7 +33,9 @@ function serializeBroadcast(row: DbBroadcast) {
 // GET /api/broadcasts - list all
 broadcasts.get('/api/broadcasts', async (c) => {
   try {
-    const items = await getBroadcasts(c.env.DB);
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+    const items = await getBroadcasts(c.env.DB, { accountId: account.id });
     return c.json({ success: true, data: items.map(serializeBroadcast) });
   } catch (err) {
     console.error('GET /api/broadcasts error:', err);
@@ -61,6 +63,8 @@ broadcasts.get('/api/broadcasts/:id', async (c) => {
 // POST /api/broadcasts - create
 broadcasts.post('/api/broadcasts', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const reqBody = await c.req.json<{
       name: string;
       messageType: BroadcastMessageType;
@@ -82,6 +86,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
       body: reqBody.body,
       tagFilter: reqBody.tagFilter ?? null,
       scheduledAt: reqBody.scheduledAt ?? null,
+      accountId: account.id,
     });
 
     return c.json({ success: true, data: serializeBroadcast(broadcast) }, 201);
@@ -161,7 +166,14 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       return c.json({ success: false, error: 'Broadcast is already sent or sending' }, 400);
     }
 
-    const igClient = new InstagramClient({ accessToken: await getIGAccessToken(c.env), igUserId: c.env.IG_USER_ID });
+    // The broadcast's owning account must do the sending — a client built
+    // from ?account_id/default could DM another account's audience with the
+    // wrong token when the ids diverge.
+    const account = existing.account_id
+      ? await getIgAccountById(c.env.DB, existing.account_id)
+      : await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+    const igClient = await getAccountClient(c.env, c.env.DB, account);
     await processBroadcastSend(c.env.DB, igClient, existing.id, c.env.WORKER_URL);
 
     const result = await getBroadcastById(c.env.DB, existing.id);
