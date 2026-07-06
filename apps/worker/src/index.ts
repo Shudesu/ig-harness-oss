@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { listIgAccounts } from '@ig-harness/db';
+import { listIgAccounts, updateIgAccount } from '@ig-harness/db';
 import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processFollowupDrip } from './services/engagement-gate.js';
@@ -282,11 +282,18 @@ async function scheduled(
       continue;
     }
     // Liveness probe: a real Graph call catches checkpoint/freeze-dead
-    // tokens (code 190) that expiry math reports as healthy.
+    // tokens (code 190) that expiry math reports as healthy. The same
+    // response self-heals the display username (admin shows @username
+    // instead of a raw ig_user_id) and keeps it fresh after renames.
     ctx.waitUntil(
       igClient
         .getMe()
-        .then(() => recordTokenValidity(env.DB, account.id, true))
+        .then(async (me) => {
+          await recordTokenValidity(env.DB, account.id, true);
+          if (me.username && me.username !== account.username) {
+            await updateIgAccount(env.DB, account.id, { username: me.username });
+          }
+        })
         .catch(() => recordTokenValidity(env.DB, account.id, false).catch(() => {})),
     );
     const ref = toIgAccountRef(account);
