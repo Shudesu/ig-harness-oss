@@ -5,6 +5,7 @@ import type { Tag } from '@ig-harness/shared'
 import { api } from '@/lib/api'
 import type { FollowerApi } from '@/lib/api'
 import Header from '@/components/layout/header'
+import { FollowerAvatar } from '@/components/follower-avatar'
 
 const PAGE_SIZE = 20
 
@@ -41,13 +42,7 @@ function FollowerDetailModal({ follower, onClose }: FollowerDetailModalProps) {
         </div>
         <div className="px-6 py-5 space-y-4">
           <div className="flex items-center gap-3">
-            {follower.pictureUrl ? (
-              <img src={follower.pictureUrl} alt={follower.username || ''} className="w-14 h-14 rounded-full object-cover" />
-            ) : (
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white font-bold text-xl">
-                {(follower.username || follower.displayName || '?').charAt(0).toUpperCase()}
-              </div>
-            )}
+            <FollowerAvatar igsid={follower.igsid} username={follower.username} displayName={follower.displayName} size="lg" />
             <div>
               <p className="font-semibold text-gray-900">{follower.displayName || follower.username || 'Unknown'}</p>
               {follower.username && <p className="text-sm text-gray-500">@{follower.username}</p>}
@@ -228,13 +223,7 @@ export default function FollowersPage() {
               onClick={() => setSelectedFollower(follower)}
               className={`w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors ${idx !== followers.length - 1 ? 'border-b border-gray-100' : ''}`}
             >
-              {follower.pictureUrl ? (
-                <img src={follower.pictureUrl} alt={follower.username || ''} className="w-9 h-9 rounded-full object-cover shrink-0" />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                  {(follower.username || follower.displayName || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
+              <FollowerAvatar igsid={follower.igsid} username={follower.username} displayName={follower.displayName} size="md" className="shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {follower.displayName || follower.username || 'Unknown'}

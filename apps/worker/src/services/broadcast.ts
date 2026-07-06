@@ -8,6 +8,7 @@ import {
 import type { Broadcast } from '@ig-harness/db';
 import type { InstagramClient } from '@ig-harness/ig-sdk';
 import { calculateStaggerDelay, sleep } from './stealth.js';
+import { recordDmFailure } from '../lib/health.js';
 
 const BATCH_SIZE = 50; // IG API is more conservative than LINE
 
@@ -16,6 +17,7 @@ export async function processBroadcastSend(
   igClient: InstagramClient,
   broadcastId: number | string,
   _workerUrl?: string,
+  accountId?: string,
 ): Promise<Broadcast> {
   await updateBroadcastStatus(db, broadcastId, 'sending');
 
@@ -61,6 +63,7 @@ export async function processBroadcastSend(
               .run();
           } catch (err) {
             console.error(`Broadcast send failed for follower ${follower.id}:`, err);
+            await recordDmFailure(db, accountId ?? broadcast.account_id ?? 'unknown').catch(() => {});
           }
         }
       }
@@ -98,6 +101,7 @@ export async function processBroadcastSend(
               .run();
           } catch (err) {
             console.error(`Broadcast send failed for friend ${friend.id}:`, err);
+            await recordDmFailure(db, accountId ?? broadcast.account_id ?? 'unknown').catch(() => {});
           }
         }
       }
@@ -132,7 +136,7 @@ export async function processScheduledBroadcasts(
 
   for (const broadcast of scheduled) {
     try {
-      await processBroadcastSend(db, igClient, broadcast.id, workerUrl);
+      await processBroadcastSend(db, igClient, broadcast.id, workerUrl, accountId);
     } catch (err) {
       console.error(`Failed to send scheduled broadcast ${broadcast.id}:`, err);
     }

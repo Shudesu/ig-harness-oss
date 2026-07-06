@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { BrandMark } from '@/components/brand'
 import { usePathname } from 'next/navigation'
 import { useAccount } from '@/contexts/account-context'
 
@@ -33,12 +34,12 @@ const menuItems = [
   {
     href: '/rich-messages',
     label: 'DMテンプレート',
-    icon: 'M4 4h16v12H5.17L4 17.17V4m0-2a2 2 0 00-2 2v18l4-4h14a2 2 0 002-2V4a2 2 0 00-2-2H4zm2 10h12v-2H6v2zm0-3h12V7H6v2z',
+    icon: 'M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z',
   },
   {
     href: '/images',
     label: '画像ギャラリー',
-    icon: 'M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
+    icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z',
   },
   {
     href: '/settings',
@@ -81,14 +82,9 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-gray-200">
         <div className="flex items-center gap-2">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-            style={{ background: 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' }}
-          >
-            IG
-          </div>
+          <BrandMark size={32} />
           <div>
-            <p className="text-sm font-bold text-gray-900 leading-tight">Instagram Harness</p>
+            <p className="text-sm font-bold text-gray-900 leading-tight">IG Harness</p>
             <p className="text-xs text-gray-400">管理画面</p>
           </div>
         </div>
@@ -149,7 +145,7 @@ export default function Sidebar() {
           </div>
         )}
         <div className="px-6 py-4 space-y-3">
-          <p className="text-xs text-gray-400">Instagram Harness v{process.env.APP_VERSION || '0.1.0'}</p>
+          <p className="text-xs text-gray-400">IG Harness v{process.env.APP_VERSION || '0.0.0'}</p>
           <a
             href="https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide"
             target="_blank"
@@ -197,13 +193,8 @@ export default function Sidebar() {
           </svg>
         </button>
         <div className="flex items-center gap-2">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs"
-            style={{ background: 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' }}
-          >
-            IG
-          </div>
-          <p className="text-sm font-bold text-gray-900">Instagram Harness</p>
+          <BrandMark size={28} />
+          <p className="text-sm font-bold text-gray-900">IG Harness</p>
         </div>
       </div>
 

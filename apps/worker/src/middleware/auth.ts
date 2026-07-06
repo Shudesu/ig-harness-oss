@@ -36,16 +36,16 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
 
   const token = authHeader.slice('Bearer '.length);
 
-  // Check staff_members table first
-  const staff = await getStaffByApiKey(c.env.DB, token);
-  if (staff) {
-    c.set('staff', { id: staff.id, name: staff.name, role: staff.role });
+  // Check env API_KEY first — it needs no DB round-trip, so the health
+  // monitor can still authenticate while D1 is down (and report db_ok=false).
+  if (token === c.env.API_KEY) {
+    c.set('staff', { id: 'env-owner', name: 'Owner', role: 'owner' as const });
     return next();
   }
 
-  // Fallback: env API_KEY acts as owner
-  if (token === c.env.API_KEY) {
-    c.set('staff', { id: 'env-owner', name: 'Owner', role: 'owner' as const });
+  const staff = await getStaffByApiKey(c.env.DB, token);
+  if (staff) {
+    c.set('staff', { id: staff.id, name: staff.name, role: staff.role });
     return next();
   }
 

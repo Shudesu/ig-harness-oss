@@ -7,6 +7,7 @@ export interface Friend {
   name: string | null;
   profile_pic_url: string | null;
   external_user_id: string | null;
+  account_id: string | null;
   is_following: number;
   follower_count: number | null;
   is_verified: number;

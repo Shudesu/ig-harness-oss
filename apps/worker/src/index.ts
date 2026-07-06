@@ -25,6 +25,7 @@ import { integrations } from './routes/integrations.js';
 import { lineConnections } from './routes/line-connections.js';
 import { accounts } from './routes/accounts.js';
 import { ensureDefaultAccount, getAccountClient, toIgAccountRef } from './lib/accounts.js';
+import { recordCronRun, recordTokenValidity } from './lib/health.js';
 
 export type Env = {
   Bindings: {
@@ -249,9 +250,11 @@ app.notFound(async (c) => {
 async function scheduled(
   _event: ScheduledEvent,
   env: Env['Bindings'],
-  _ctx: ExecutionContext,
+  ctx: ExecutionContext,
 ): Promise<void> {
   await ensureDefaultAccount(env, env.DB);
+  // waitUntil keeps the write alive even if scheduled() resolves early.
+  ctx.waitUntil(recordCronRun(env.DB).catch(() => {}));
   // `accounts` is the route module above — use a distinct name here.
   const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });
 
@@ -264,6 +267,14 @@ async function scheduled(
       console.error(`[cron] client init failed for ${account.ig_user_id}; skipping:`, err);
       continue;
     }
+    // Liveness probe: a real Graph call catches checkpoint/freeze-dead
+    // tokens (code 190) that expiry math reports as healthy.
+    ctx.waitUntil(
+      igClient
+        .getMe()
+        .then(() => recordTokenValidity(env.DB, account.id, true))
+        .catch(() => recordTokenValidity(env.DB, account.id, false).catch(() => {})),
+    );
     const ref = toIgAccountRef(account);
     await Promise.allSettled([
       processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id),

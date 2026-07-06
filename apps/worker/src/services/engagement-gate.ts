@@ -1,7 +1,8 @@
-import { listEngagementGates, createGateDelivery, updateGateDelivery, getGateDelivery, getEngagementGate, getRichMessage, parseFollowupSequence } from '@ig-harness/db';
+import { listEngagementGates, createGateDelivery, updateGateDelivery, getGateDelivery, getEngagementGate, getRichMessage, parseFollowupSequence, logMessage } from '@ig-harness/db';
 import type { EngagementGate, GateDelivery } from '@ig-harness/db';
 import type { UserProfile, RichMessageBlock, RichMessageContext } from '@ig-harness/ig-sdk';
 import { resolveLineCrossLinkUrl, type IgAccountRef } from './line-cross-link.js';
+import { recordDmFailure } from '../lib/health.js';
 
 /**
  * Compute the outbound reward URL for one recipient, optionally rewritten
@@ -266,6 +267,18 @@ function parseCommentReplyPatterns(raw: string): string[] {
   return [trimmed];
 }
 
+/**
+ * Produce a readable operator label for a rich-message block array.
+ * Shows the first text content found, or a block-count summary.
+ */
+function richMessageLabel(blocks: RichMessageBlock[]): string {
+  for (const block of blocks) {
+    if (block.type === 'text' && block.text) return `[リッチメッセージ] ${block.text.slice(0, 100)}`;
+    if (block.type === 'card' && block.title) return `[リッチメッセージ] ${block.title}`;
+  }
+  return `[リッチメッセージ] ${blocks.length}ブロック`;
+}
+
 async function sendCtaDm(
   db: D1Database,
   igClient: IgClientLike,
@@ -284,6 +297,13 @@ async function sendCtaDm(
         deliveryId: delivery.id,
         rewardUrl,
       });
+      await logMessage(db, {
+        followerId: delivery.follower_id,
+        direction: 'out',
+        messageType: 'template',
+        body: richMessageLabel(rm.blocks),
+        triggerSource: 'gate',
+      });
       return;
     }
     // fall through to legacy text path on missing reference
@@ -298,6 +318,13 @@ async function sendCtaDm(
       ],
     },
   ]);
+  await logMessage(db, {
+    followerId: delivery.follower_id,
+    direction: 'out',
+    messageType: 'template',
+    body: gate.initial_dm_text,
+    triggerSource: 'gate',
+  });
 }
 
 export async function handleFollowCheckPostback(
@@ -387,6 +414,13 @@ async function sendReminderDm(
         deliveryId: delivery.id,
         rewardUrl,
       });
+      await logMessage(db, {
+        followerId: delivery.follower_id,
+        direction: 'out',
+        messageType: 'template',
+        body: richMessageLabel(rm.blocks),
+        triggerSource: 'gate',
+      });
       return;
     }
   }
@@ -402,6 +436,13 @@ async function sendReminderDm(
       ],
     },
   ]);
+  await logMessage(db, {
+    followerId: delivery.follower_id,
+    direction: 'out',
+    messageType: 'template',
+    body: gate.follow_reminder_dm_text,
+    triggerSource: 'gate',
+  });
 }
 
 function expandIgsidPlaceholder(template: string, igsid: string): string {
@@ -449,6 +490,13 @@ async function deliverReward(
         deliveryId: delivery.id,
         rewardUrl: trackedRewardUrl,
       });
+      await logMessage(db, {
+        followerId: delivery.follower_id,
+        direction: 'out',
+        messageType: 'template',
+        body: richMessageLabel(rm.blocks),
+        triggerSource: 'gate',
+      });
       return;
     }
   }
@@ -458,6 +506,13 @@ async function deliverReward(
     text = `${text}\n\n${trackedRewardUrl}`;
   }
   await igClient.sendText(delivery.igsid, text);
+  await logMessage(db, {
+    followerId: delivery.follower_id,
+    direction: 'out',
+    messageType: 'text',
+    body: text,
+    triggerSource: 'gate',
+  });
 }
 
 /**
@@ -567,9 +622,10 @@ export async function processFollowupDrip(
     }
 
     try {
-      await sendFollowupStep(db, igClient, d.igsid, step, gate, workerBaseUrl, igAccount);
+      await sendFollowupStep(db, igClient, d.igsid, step, gate, workerBaseUrl, igAccount, d.follower_id);
     } catch (err) {
       console.error('[followup] send failed:', err);
+      await recordDmFailure(db, accountId ?? 'unknown').catch(() => {});
       // Skip forward — don't retry indefinitely on the same step.
     }
 
@@ -592,6 +648,7 @@ async function sendFollowupStep(
   gate: EngagementGate,
   workerBaseUrl?: string,
   igAccount?: IgAccountRef,
+  followerId?: number,
 ): Promise<void> {
   // Same two-layer wrap as deliverReward — follow-up taps also flow
   // through both LINE Harness cross-link and IG Harness click tracking.
@@ -608,6 +665,15 @@ async function sendFollowupStep(
 
   if (step.image_url) {
     await igClient.sendImage(igsid, step.image_url);
+    if (followerId !== undefined) {
+      await logMessage(db, {
+        followerId,
+        direction: 'out',
+        messageType: 'text',
+        body: `[画像] ${step.image_url}`,
+        triggerSource: 'gate',
+      });
+    }
   }
 
   if (step.button_label && step.button_url) {
@@ -627,7 +693,13 @@ async function sendFollowupStep(
         ],
       },
     ]);
+    if (followerId !== undefined) {
+      await logMessage(db, { followerId, direction: 'out', messageType: 'template', body: expandedText, triggerSource: 'gate' });
+    }
   } else {
     await igClient.sendText(igsid, expandedText);
+    if (followerId !== undefined) {
+      await logMessage(db, { followerId, direction: 'out', messageType: 'text', body: expandedText, triggerSource: 'gate' });
+    }
   }
 }

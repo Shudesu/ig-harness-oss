@@ -14,12 +14,14 @@ import {
   advanceFriendScenario,
   completeFriendScenario,
   jstNow,
+  logMessage,
 } from '@ig-harness/db';
 import { buildIgMessage, expandVariables } from '../services/step-delivery.js';
 import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention } from '../services/engagement-gate.js';
 import type { IgAccountRef } from '../services/line-cross-link.js';
 import { listIgAccounts } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
+import { recordWebhookReceived } from '../lib/health.js';
 import type { Env } from '../index.js';
 
 export type PostbackPayload =
@@ -113,6 +115,9 @@ webhook.post('/webhook', async (c) => {
         console.warn(`[webhook] no account matches entry.id=${entry.id} (accounts=${accounts.length}); skipping entry`);
         continue;
       }
+      // Register on waitUntil: the enclosing promise can settle before this
+      // D1 write completes (e.g. entries with no messaging work).
+      c.executionCtx.waitUntil(recordWebhookReceived(db, account.id).catch(() => {}));
       const igClient = await getAccountClient(c.env, db, account);
       const igAccount: IgAccountRef = toIgAccountRef(account);
 
@@ -310,6 +315,15 @@ async function handleMessagingEvent(
           igsid: senderId,
           workerBaseUrl: workerUrl,
           igAccount,
+        });
+        // Log button press as inbound gate message
+        const postbackTitle = event.postback.title ?? event.postback.payload ?? '';
+        await logMessage(db, {
+          followerId: follower.id,
+          direction: 'in',
+          messageType: 'quick_reply',
+          body: `[ボタン] ${postbackTitle}`,
+          triggerSource: 'gate',
         });
       } catch (err) {
         console.error('Follow check postback failed:', err);

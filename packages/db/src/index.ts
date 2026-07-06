@@ -10,6 +10,7 @@ export * from './health';
 export * from './engagement-gates.js';
 export * from './rich-messages.js';
 export * from './accounts.js';
+export * from './messages-log.js';
 
 /**
  * Thin wrapper around D1Database.

@@ -98,7 +98,7 @@ export default function DashboardPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">ダッシュボード</h1>
-        <p className="text-sm text-gray-500 mt-1">Instagram Harness 管理画面</p>
+        <p className="text-sm text-gray-500 mt-1">IG Harness 管理画面</p>
       </div>
 
       {error && (

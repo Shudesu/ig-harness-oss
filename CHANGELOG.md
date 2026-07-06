@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.9.0] - 2026-07-07
+
+### Added
+- **運用監視基盤**
+  - `GET /api/health`（Bearer 認証）: アカウント毎のトークン残日数・**API 実叩きの生死
+    （`token_api_ok`、cron が 5 分毎に `GET /me` でプローブ）**・最終 webhook 受信・
+    当日 DM 配信失敗数、cron 最終実行、db_ok を返す。D1 障害時も 200 + `db_ok:false`
+  - 認証は env `API_KEY` 照合を DB 照合より先に（D1 が死んでいても監視可能）
+  - 計測は `integration_settings` の `health:*` キー（新テーブルなし）
+- **プロフィール画像の永続キャッシュ**: `GET /images/profile-pics/:igsid` が
+  R2 にオンデマンドキャッシュ（30日 TTL、失敗時は stale 供給）。IG CDN の署名切れ
+  403 を解消。admin は `FollowerAvatar`（イニシャルフォールバック付き）で表示
+- **ゲート DM の会話ログ**: エンゲージメントゲートの CTA / リマインダー / 特典 /
+  フォローアップ送信と、ユーザーのボタン押下を `messages_log` に記録
+  （`trigger_source='gate'`、migration `0016` で CHECK 制約拡張）。/chats で
+  ユーザーの進行度が見えるように
+
+### Changed
+- Admin のブランド刷新: SVG ブランドマーク（旧・太字テキストバッジ廃止）、
+  名称を IG Harness に統一、フッターに実バージョン表示、塗りつぶし系
+  ナビアイコン 2 個を線画に統一
+
+### Fixed
+- CF Workers の fire-and-forget が drop され得る問題: cron 記録 / webhook 受信記録は
+  `waitUntil` 登録、DM 失敗カウンタは await（いずれも失敗しても本処理を壊さない）
+- 未シードのデプロイが `ok:true` を返す問題（0 アカウント = unhealthy）
+- 残り 24h 未満の有効トークンが `ok:false` になる floor バグ
+
 ## [0.6.0] - 2026-06-11
 
 ### Added

@@ -174,7 +174,7 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
       : await resolveAccount(c);
     if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const igClient = await getAccountClient(c.env, c.env.DB, account);
-    await processBroadcastSend(c.env.DB, igClient, existing.id, c.env.WORKER_URL);
+    await processBroadcastSend(c.env.DB, igClient, existing.id, c.env.WORKER_URL, account.id);
 
     const result = await getBroadcastById(c.env.DB, existing.id);
     return c.json({ success: true, data: result ? serializeBroadcast(result) : null });

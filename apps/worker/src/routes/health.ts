@@ -7,9 +7,20 @@ import {
   createAccountMigration,
   updateAccountMigration,
 } from '@ig-harness/db';
+import { getHealthSnapshot } from '../lib/health.js';
 import type { Env } from '../index.js';
 
 const health = new Hono<Env>();
+
+// ========== Aggregate health snapshot ==========
+
+// GET /api/health — returns a point-in-time health snapshot.
+// Always returns HTTP 200 even when db_ok=false so monitoring probes always
+// get a parseable response. Bearer auth is enforced by the global authMiddleware.
+health.get('/api/health', async (c) => {
+  const snapshot = await getHealthSnapshot(c.env.DB);
+  return c.json({ success: true, data: snapshot });
+});
 
 // ========== アカウントヘルス ==========
 

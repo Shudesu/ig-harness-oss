@@ -8,6 +8,7 @@ import {
 } from '@ig-harness/db';
 import type { InstagramClient } from '@ig-harness/ig-sdk';
 import { jitterDeliveryTime, addJitter, sleep } from './stealth.js';
+import { recordDmFailure } from '../lib/health.js';
 
 /**
  * Replace template variables in message content.
@@ -70,6 +71,7 @@ export async function processStepDeliveries(
       await processSingleDelivery(db, igClient, fs, workerUrl);
     } catch (err) {
       console.error(`Error processing friend_scenario ${fs.id}:`, err);
+      await recordDmFailure(db, accountId ?? 'unknown').catch(() => {});
     }
   }
 }

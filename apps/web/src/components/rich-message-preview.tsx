@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { BrandMark } from '@/components/brand'
 import type { RichMessageBlock } from '@/lib/api'
 
 /**
@@ -140,12 +141,7 @@ export default function RichMessagePreview({ blocks }: { blocks: RichMessageBloc
     <div className="space-y-3">
       {/* Simulated DM header */}
       <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold"
-          style={{ background: 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' }}
-        >
-          IG
-        </div>
+        <BrandMark size={32} shape="circle" />
         <div className="text-sm font-medium text-gray-700">Instagram DM プレビュー</div>
       </div>
       {blocks.map((b, i) => renderBlock(b, i))}

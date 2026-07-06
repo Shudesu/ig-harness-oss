@@ -11,12 +11,12 @@ account_id = "YOUR_ACCOUNT_ID"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "instagram-harness"
+database_name = "YOUR_WORKER_NAME"
 database_id = "YOUR_D1_DATABASE_ID"
 
 [[r2_buckets]]
 binding = "IMAGES"
-bucket_name = "instagram-harness-images"
+bucket_name = "YOUR_R2_BUCKET"
 
 [triggers]
 crons = ["*/5 * * * *"]

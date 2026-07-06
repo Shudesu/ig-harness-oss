@@ -1,5 +1,9 @@
 import { Hono } from 'hono';
+import { getFriendByIgsid, getIgAccountById, getDefaultIgAccount } from '@ig-harness/db';
+import { getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
+
+const PROFILE_PIC_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
 
 const images = new Hono<Env>();
 
@@ -98,6 +102,112 @@ images.get('/api/images', async (c) => {
       cursor: listed.truncated ? listed.cursor : null,
     },
   });
+});
+
+// GET /images/profile-pics/:igsid — on-demand profile picture cache (public, no auth)
+images.get('/images/profile-pics/:igsid', async (c) => {
+  const igsid = c.req.param('igsid');
+  const r2Key = `profile-pics/${igsid}`;
+  const db = c.env.DB;
+  const env = c.env;
+
+  const notAvailable = () =>
+    c.json({ success: false, error: 'Profile picture not available' }, 404);
+
+  const serveCached = (obj: R2ObjectBody) =>
+    new Response(obj.body, {
+      headers: {
+        'Content-Type': obj.httpMetadata?.contentType ?? 'image/jpeg',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
+
+  // Step 1 — check R2 cache
+  let r2Object: R2ObjectBody | null = null;
+  try {
+    r2Object = await c.env.IMAGES.get(r2Key);
+  } catch (err) {
+    console.error('[profile-pics] R2 get error:', err);
+  }
+
+  const isFresh = (obj: R2ObjectBody): boolean => {
+    const cachedAt = obj.customMetadata?.cachedAt;
+    if (!cachedAt) return false;
+    return Date.now() - new Date(cachedAt).getTime() < PROFILE_PIC_TTL_MS;
+  };
+
+  if (r2Object && isFresh(r2Object)) {
+    // Fresh cache hit — serve without any DB/Graph call
+    return serveCached(r2Object);
+  }
+
+  // Step 2 — cache miss or stale: fetch fresh from IG Graph
+  try {
+    // Resolve account: try follower's account_id first, else default
+    const follower = await getFriendByIgsid(db, igsid);
+    if (!follower) {
+      // Unknown IGSID: this endpoint is public, so don't let arbitrary
+      // probes spend Graph API calls. Serve stale if we have it.
+      return r2Object ? serveCached(r2Object) : notAvailable();
+    }
+
+    let account = null;
+    const accountId = follower?.account_id ?? null;
+
+    if (accountId) {
+      account = await getIgAccountById(db, accountId);
+    }
+    if (!account) {
+      account = await getDefaultIgAccount(db);
+    }
+
+    if (!account) {
+      // No account available — fall back to stale or 404
+      return r2Object ? serveCached(r2Object) : notAvailable();
+    }
+
+    const igClient = await getAccountClient(env, db, account);
+    const profile = await igClient.getUserProfile(igsid);
+
+    if (!profile.profile_pic) {
+      // No profile_pic on profile
+      return r2Object ? serveCached(r2Object) : notAvailable();
+    }
+
+    // Fetch CDN URL
+    let cdnRes: Response;
+    try {
+      cdnRes = await fetch(profile.profile_pic);
+    } catch (err) {
+      console.error('[profile-pics] CDN fetch error:', err);
+      return r2Object ? serveCached(r2Object) : notAvailable();
+    }
+
+    if (!cdnRes.ok) {
+      console.error('[profile-pics] CDN returned non-ok status:', cdnRes.status);
+      return r2Object ? serveCached(r2Object) : notAvailable();
+    }
+
+    const contentType = cdnRes.headers.get('Content-Type') ?? 'image/jpeg';
+    const imageBuffer = await cdnRes.arrayBuffer();
+
+    // Store to R2
+    await c.env.IMAGES.put(r2Key, imageBuffer, {
+      httpMetadata: { contentType },
+      customMetadata: { cachedAt: new Date().toISOString() },
+    });
+
+    return new Response(imageBuffer, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
+  } catch (err) {
+    console.error('[profile-pics] graph error:', err);
+    // Graceful degradation: serve stale if available
+    return r2Object ? serveCached(r2Object) : notAvailable();
+  }
 });
 
 // GET /images/:key — serve image (public, no auth)

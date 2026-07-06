@@ -99,6 +99,15 @@ export class InstagramClient {
     return this.request("POST", `/${this.igUserId}/messages`, payload);
   }
 
+  /**
+   * Cheapest possible token liveness probe. Succeeds only when the token is
+   * actually usable — expiry alone misses checkpoint/freeze invalidation
+   * (OAuthException code 190), which is exactly what monitoring must catch.
+   */
+  async getMe(): Promise<{ user_id?: string; username?: string; id?: string }> {
+    return this.request("GET", `/me?fields=user_id,username`);
+  }
+
   async getUserProfile(igsid: string): Promise<UserProfile> {
     return this.request("GET", `/${igsid}?fields=id,username,name,profile_pic,is_user_follow_business,is_business_follow_user,follower_count,is_verified_user`);
   }

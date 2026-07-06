@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchApi, type FollowerApi, type FollowerListResponse } from '@/lib/api'
 import type { ApiResponse } from '@ig-harness/shared'
+import { FollowerAvatar } from '@/components/follower-avatar'
 
 interface MessageLog {
   id: string
@@ -38,9 +39,7 @@ function DetailPanel({ friend }: { friend: FollowerApi }) {
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-            <span className="text-gray-500 text-lg font-medium">{(friend.username ?? '?')[0].toUpperCase()}</span>
-          </div>
+          <FollowerAvatar igsid={friend.igsid} username={friend.username} displayName={friend.displayName} size="lg" />
           <div>
             <p className="text-sm font-bold text-gray-900">{friend.displayName || friend.username}</p>
             {friend.username && <p className="text-xs text-gray-400">@{friend.username}</p>}
@@ -276,9 +275,7 @@ export default function ChatsPage() {
                     className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors border-b border-gray-50 ${
                       active ? 'bg-pink-50' : 'hover:bg-gray-50'
                     }`}>
-                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                      <span className="text-gray-500 text-[11px]">{(f.username ?? '?')[0].toUpperCase()}</span>
-                    </div>
+                    <FollowerAvatar igsid={f.igsid} username={f.username} displayName={f.displayName} size="sm" className="shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className={`text-[13px] font-medium truncate ${active ? 'text-pink-700' : 'text-gray-900'}`}>
                         {f.displayName || f.username || f.igsid}

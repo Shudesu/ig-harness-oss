@@ -3,7 +3,7 @@ import './globals.css'
 import AppShell from '@/components/app-shell'
 
 export const metadata: Metadata = {
-  title: 'Instagram Harness 管理画面',
+  title: 'IG Harness 管理画面',
   description: 'Instagram DM オートメーション管理画面',
 }
 
