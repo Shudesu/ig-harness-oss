@@ -1,14 +1,42 @@
 {
   "name": "@ig-harness/mcp-server",
   "version": "0.6.0",
+  "description": "MCP server for IG Harness — operate an Instagram account from AI agents over MCP",
   "type": "module",
   "bin": {
     "instagram-harness-mcp": "./dist/index.js"
   },
   "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "instagram",
+    "crm",
+    "mcp",
+    "model-context-protocol",
+    "ai-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Shudesu/ig-harness-oss.git",
+    "directory": "packages/mcp-server"
+  },
+  "homepage": "https://github.com/Shudesu/ig-harness-oss#readme",
+  "bugs": {
+    "url": "https://github.com/Shudesu/ig-harness-oss/issues"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@ig-harness/sdk": "workspace:*",
@@ -16,6 +44,7 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3"
   }

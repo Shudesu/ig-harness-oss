@@ -6,7 +6,6 @@ import {
   deleteTrackedLink,
   recordLinkClick,
   getLinkClicks,
-  getFriendByLineUserId,
 } from '@ig-harness/db';
 import { addTagToFriend, enrollFriendInScenario } from '@ig-harness/db';
 import type { TrackedLink } from '@ig-harness/db';
@@ -202,7 +201,7 @@ function buildAppRedirectHtml(destinationUrl: string): string {
 // GET /t/:linkId — click tracking redirect (no auth, fast redirect)
 trackedLinks.get('/t/:linkId', async (c) => {
   const linkId = c.req.param('linkId');
-  const lineUserId = c.req.query('lu') ?? null;
+  const igsid = c.req.query('ig') ?? c.req.query('lu') ?? null;
   let friendId = c.req.query('f') ?? null;
 
   // Look up the link first
@@ -215,11 +214,12 @@ trackedLinks.get('/t/:linkId', async (c) => {
   const useAppRedirect = isAppLinkDomain(link.original_url);
 
   // Resolve friendId from IGSID if provided
-  if (!friendId && lineUserId) {
+  if (!friendId && igsid) {
     const { getFriendByIgsid } = await import('@ig-harness/db');
-    const friend = await getFriendByIgsid(c.env.DB, lineUserId);
+    const friend = await getFriendByIgsid(c.env.DB, igsid);
     if (friend) {
-      friendId = friend.id;
+      // followers.id is numeric — coerce so it matches the string-typed slot.
+      friendId = String(friend.id);
     }
   }
 

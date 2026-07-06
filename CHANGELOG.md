@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.1] - 2026-07-07
+
+### Fixed（OSS コミュニティ PR の逆マージ — 6/11 の sync で消えていた分を復旧）
+- OSS PR #4: create CLI とパッケージメタデータの堅牢化
+- OSS PR #5: tracked-link クリックの `?ig=` アトリビューション修正
+- OSS PR #7: engagement gate テストベースライン復旧（既知の1件失敗が解消）
+- OSS PR #9: assets binding 欠落時のガード
+- OSS PR #10: MCP / worker の typecheck ベースライン復旧（16件のエラーが解消）
+- OSS PR #11: create-ig-harness update / wrangler フローの堅牢化
+
+### Added
+- OSS PR #12: `GET /api/capabilities` — IG コネクタ能力の公開エンドポイント
+
+### Changed
+- sync-oss.sh: canonical スタックの識別子を placeholder 化リストに追加
+
 ## [0.9.0] - 2026-07-07
 
 ### Added

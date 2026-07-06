@@ -24,6 +24,7 @@ import { richMessages } from './routes/rich-messages.js';
 import { integrations } from './routes/integrations.js';
 import { lineConnections } from './routes/line-connections.js';
 import { accounts } from './routes/accounts.js';
+import { capabilities } from './routes/capabilities.js';
 import { ensureDefaultAccount, getAccountClient, toIgAccountRef } from './lib/accounts.js';
 import { recordCronRun, recordTokenValidity } from './lib/health.js';
 
@@ -31,7 +32,9 @@ export type Env = {
   Bindings: {
     DB: D1Database;
     IMAGES: R2Bucket;
-    ASSETS: Fetcher;
+    // ASSETS is optional: create-ig-harness deploys without an [assets] binding,
+    // so callers MUST guard `env.ASSETS` before invoking `.fetch` (see notFound below).
+    ASSETS?: Fetcher;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
     IG_USER_ID: string;
@@ -79,6 +82,7 @@ app.route('/', richMessages);
 app.route('/', integrations);
 app.route('/', lineConnections);
 app.route('/', accounts);
+app.route('/', capabilities);
 
 // LINE Harness UUID linkage endpoint
 app.get('/connect', (c) => {
@@ -237,14 +241,24 @@ app.get('/terms-of-service', (c) => {
 });
 
 // 404 fallback — API paths return JSON 404, everything else serves from static assets (admin)
-app.notFound(async (c) => {
-  const path = new URL(c.req.url).pathname;
+export async function handleNotFound(
+  request: Request,
+  assets: Fetcher | undefined,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
   if (path.startsWith('/api/') || path === '/webhook' || path === '/docs' || path === '/openapi.json') {
-    return c.json({ success: false, error: 'Not found' }, 404);
+    return Response.json({ success: false, error: 'Not found' }, { status: 404 });
   }
-  // Serve static assets (admin dashboard)
-  return c.env.ASSETS.fetch(c.req.raw);
-});
+  // Serve static assets (admin dashboard) when the [assets] binding is configured.
+  // create-ig-harness quickstart deploys without it — fall back to JSON 404 so we
+  // never invoke `.fetch` on an undefined binding (was logging TypeError on every /).
+  if (assets) {
+    return assets.fetch(request);
+  }
+  return Response.json({ success: false, error: 'Not found' }, { status: 404 });
+}
+
+app.notFound((c) => handleNotFound(c.req.raw, c.env.ASSETS));
 
 // Scheduled handler for cron triggers
 async function scheduled(

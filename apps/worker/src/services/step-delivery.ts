@@ -20,12 +20,16 @@ import { recordDmFailure } from '../lib/health.js';
  */
 export function expandVariables(
   content: string,
-  friend: { id: string; display_name: string | null; username?: string | null },
+  // `Friend.id` from packages/db is `number` (followers.id INTEGER PRIMARY KEY),
+  // but other callers (e.g., enrollment paths from JSON-decoded API bodies)
+  // pass it as a string. Accept either and coerce — `replace()`'s second arg
+  // must be a string.
+  friend: { id: string | number; display_name: string | null; username?: string | null },
 ): string {
   let result = content;
   result = result.replace(/\{\{name\}\}/g, friend.display_name || friend.username || '');
   result = result.replace(/\{\{username\}\}/g, (friend as unknown as Record<string, unknown>).username as string || '');
-  result = result.replace(/\{\{friend_id\}\}/g, friend.id);
+  result = result.replace(/\{\{friend_id\}\}/g, String(friend.id));
   return result;
 }
 

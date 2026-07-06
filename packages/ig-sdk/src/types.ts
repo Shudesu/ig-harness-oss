@@ -40,11 +40,10 @@ export interface Postback {
   payload: string;
 }
 
-// ── Change Events (Comments) ──
-export interface ChangeEvent {
-  field: "comments" | "mentions" | "story_insights";
-  value: CommentValue;
-}
+// ── Change Events (Comments / Mentions / Story Insights) ──
+// Discriminated union on `field` so consumers can narrow `value` after
+// checking `field`. Previously `value` was always typed as `CommentValue`,
+// which broke `handleMentionEvent` whose payload shape is different.
 
 export interface CommentValue {
   id: string;
@@ -53,6 +52,21 @@ export interface CommentValue {
   media: { id: string; media_product_type: string };
   created_time: string;
 }
+
+export interface MentionValue {
+  media_id?: string;
+  comment_id?: string;
+  mentioned_user_id?: string;
+}
+
+export interface StoryInsightsValue {
+  [key: string]: unknown;
+}
+
+export type ChangeEvent =
+  | { field: "comments"; value: CommentValue }
+  | { field: "mentions"; value: MentionValue }
+  | { field: "story_insights"; value: StoryInsightsValue };
 
 // ── Send API Types ──
 export interface SendTextPayload {

@@ -229,7 +229,9 @@ forms.post('/api/forms/:id/submit', async (c) => {
     if (!friendId && body.lineUserId) {
       const friend = await getFriendByLineUserId(c.env.DB, body.lineUserId);
       if (friend) {
-        friendId = friend.id;
+        // followers.id is numeric in SQLite — coerce so downstream string-typed
+        // helpers (createFormSubmission, addTagToFriend, ...) get a consistent shape.
+        friendId = String(friend.id);
       }
     }
 
