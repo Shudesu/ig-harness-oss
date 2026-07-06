@@ -260,7 +260,7 @@ export default function ChatsPage() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    fetchApi<ApiResponse<FollowerListResponse>>('/api/friends?limit=100')
+    fetchApi<ApiResponse<FollowerListResponse>>('/api/friends?limit=100&sort=recent')
       .then((res) => setFollowers(res.data?.items ?? []))
       .finally(() => setLoading(false))
   }, [])

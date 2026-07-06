@@ -85,8 +85,14 @@ friends.get('/api/friends', async (c) => {
     const totalRow = await (binds.length > 0 ? countStmt.bind(...binds) : countStmt).first<{ count: number }>();
     const total = totalRow?.count ?? 0;
 
+    // sort=recent orders like a chat inbox: threads with the newest
+    // message first (followers with no messages sink to the bottom).
+    const orderBy =
+      c.req.query('sort') === 'recent'
+        ? `ORDER BY (SELECT MAX(m.created_at) FROM messages_log m WHERE m.follower_id = f.id) DESC NULLS LAST, f.first_seen_at DESC`
+        : 'ORDER BY f.first_seen_at DESC';
     const listStmt = db.prepare(
-      `SELECT f.* FROM followers f ${where} ORDER BY f.first_seen_at DESC LIMIT ? OFFSET ?`,
+      `SELECT f.* FROM followers f ${where} ${orderBy} LIMIT ? OFFSET ?`,
     );
     const listBinds = [...binds, limit, offset];
     const listResult = await listStmt.bind(...listBinds).all<DbFriend>();
