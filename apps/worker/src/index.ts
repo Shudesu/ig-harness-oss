@@ -297,11 +297,20 @@ async function scheduled(
         .catch(() => recordTokenValidity(env.DB, account.id, false).catch(() => {})),
     );
     const ref = toIgAccountRef(account);
-    await Promise.allSettled([
+    const taskNames = ['processStepDeliveries', 'processScheduledBroadcasts', 'processFollowupDrip'] as const;
+    const results = await Promise.allSettled([
       processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id),
       processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL, account.id),
       processFollowupDrip(env.DB, igClient, env.WORKER_URL, undefined, ref, account.id),
     ]);
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        console.error(
+          `[cron] ${taskNames[i]} failed for account=${account.id}:`,
+          result.reason,
+        );
+      }
+    });
   }
 }
 

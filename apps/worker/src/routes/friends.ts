@@ -173,6 +173,9 @@ friends.get('/api/friends/ref-stats', async (c) => {
 // GET /api/friends/:id - get single friend with tags
 friends.get('/api/friends/:id', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const id = c.req.param('id');
     const db = c.env.DB;
 
@@ -181,8 +184,9 @@ friends.get('/api/friends/:id', async (c) => {
       getFriendTags(db, id),
     ]);
 
-    if (!friend) {
-      return c.json({ success: false, error: 'Friend not found' }, 404);
+    // 404 (not 403) to avoid leaking cross-account existence
+    if (!friend || friend.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
     }
 
     return c.json({
@@ -201,6 +205,9 @@ friends.get('/api/friends/:id', async (c) => {
 // POST /api/friends/:id/tags - add tag
 friends.post('/api/friends/:id/tags', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const friendId = c.req.param('id');
     const body = await c.req.json<{ tagId: string }>();
 
@@ -209,6 +216,15 @@ friends.post('/api/friends/:id/tags', async (c) => {
     }
 
     const db = c.env.DB;
+
+    // Lightweight ownership check — 404 to avoid leaking cross-account existence
+    const ownerRow = await db
+      .prepare('SELECT account_id FROM followers WHERE id = ?')
+      .bind(friendId)
+      .first<{ account_id: string | null }>();
+    if (!ownerRow || ownerRow.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
+    }
     await addTagToFriend(db, friendId, body.tagId);
 
     // Enroll in tag_added scenarios that match this tag
@@ -235,8 +251,20 @@ friends.post('/api/friends/:id/tags', async (c) => {
 // DELETE /api/friends/:id/tags/:tagId - remove tag
 friends.delete('/api/friends/:id/tags/:tagId', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const friendId = c.req.param('id');
     const tagId = c.req.param('tagId');
+
+    // Lightweight ownership check — 404 to avoid leaking cross-account existence
+    const ownerRow = await c.env.DB
+      .prepare('SELECT account_id FROM followers WHERE id = ?')
+      .bind(friendId)
+      .first<{ account_id: string | null }>();
+    if (!ownerRow || ownerRow.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
+    }
 
     await removeTagFromFriend(c.env.DB, friendId, tagId);
 
@@ -250,12 +278,16 @@ friends.delete('/api/friends/:id/tags/:tagId', async (c) => {
 // PUT /api/friends/:id/metadata - merge metadata fields
 friends.put('/api/friends/:id/metadata', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const friendId = c.req.param('id');
     const db = c.env.DB;
 
     const friend = await getFriendById(db, friendId);
-    if (!friend) {
-      return c.json({ success: false, error: 'Friend not found' }, 404);
+    // 404 (not 403) to avoid leaking cross-account existence
+    if (!friend || friend.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
     }
 
     const body = await c.req.json<Record<string, unknown>>();
@@ -287,8 +319,22 @@ friends.put('/api/friends/:id/metadata', async (c) => {
 // GET /api/friends/:id/messages - get message history
 friends.get('/api/friends/:id/messages', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const friendId = c.req.param('id');
-    const result = await c.env.DB
+    const db = c.env.DB;
+
+    // Ownership check — 404 to avoid leaking cross-account existence
+    const ownerRow = await db
+      .prepare('SELECT account_id FROM followers WHERE id = ?')
+      .bind(friendId)
+      .first<{ account_id: string | null }>();
+    if (!ownerRow || ownerRow.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
+    }
+
+    const result = await db
       .prepare(
         `SELECT id, direction, message_type as messageType, body as content, created_at as createdAt
          FROM messages_log WHERE follower_id = ? ORDER BY created_at ASC LIMIT 200`,
@@ -305,6 +351,9 @@ friends.get('/api/friends/:id/messages', async (c) => {
 // POST /api/friends/:id/messages - send message to friend
 friends.post('/api/friends/:id/messages', async (c) => {
   try {
+    const actingAccount = await resolveAccount(c);
+    if (!actingAccount) return c.json({ success: false, error: 'account not found' }, 404);
+
     const friendId = c.req.param('id');
     const body = await c.req.json<{
       messageType?: string;
@@ -318,16 +367,16 @@ friends.post('/api/friends/:id/messages', async (c) => {
 
     const db = c.env.DB;
     const friend = await getFriendById(db, friendId);
-    if (!friend) {
-      return c.json({ success: false, error: 'Friend not found' }, 404);
+    // 404 (not 403) to avoid leaking cross-account existence
+    if (!friend || friend.account_id !== actingAccount.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
     }
 
-    // Message with the friend's owning account — the request's selected
-    // account may not even be able to reach this IGSID (IGSIDs are scoped
-    // per business account on Meta's side).
-    const account = (friend as { account_id?: string | null }).account_id
-      ? await getIgAccountById(db, (friend as { account_id?: string | null }).account_id!)
-      : await resolveAccount(c);
+    // Message with the friend's owning account — IGSIDs are scoped per
+    // business account on Meta's side, so use the owning account's credentials.
+    const account = friend.account_id
+      ? await getIgAccountById(db, friend.account_id)
+      : actingAccount;
     if (!account) return c.json({ success: false, error: 'account not found' }, 404);
     const igClient = await getAccountClient(c.env, c.env.DB, account);
     const messageType = body.messageType ?? 'text';

@@ -11,6 +11,7 @@ export interface TrackedLink {
   scenario_id: string | null;
   is_active: number;
   click_count: number;
+  account_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.0] - 2026-07-07
+
+### Security
+セキュリティ監査（Critical 2 / Important 7）を実施し、修正を適用。
+- **Critical: Webhook 署名検証の強制** — 署名不一致・ヘッダ欠落を 403 で拒否
+  （従来は検証失敗しても処理を続行 = 偽装 webhook で DM 送信・ゲート発火が可能だった）
+- **Critical: /click オープンリダイレクト封鎖** — リダイレクト先の origin を
+  ゲートの reward_url / LINE 接続 worker_url に限定（フィッシング踏み台・
+  Meta Safe Browsing フラグ防止）
+- Webhook HMAC 比較を定数時間化（タイミングサイドチャネル対策）
+- **IDOR 封鎖**: 単一フレンド系エンドポイント（GET/POST messages, tags,
+  metadata）とトラッキングリンク GET/DELETE にアカウントスコープの 404 ガード
+- `GET /api/accounts` に owner/admin ロールガード追加
+- cron の Promise.allSettled 拒否をログ出力、followup drip は送信失敗時に
+  ステップを進めない（次 cron で再試行）
+
+### 既知の残課題（インフラ/マイグレーション要・別途対応）
+- 公開エンドポイントの分散レート制限（現状はアイソレート内メモリのみ）
+- `CONNECT:` DM トークンの単回使用化（現状は無期限・リプレイ余地）
+
 ## [0.10.2] - 2026-07-07
 
 ### Fixed

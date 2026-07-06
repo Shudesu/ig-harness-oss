@@ -52,10 +52,14 @@ trackedLinks.get('/api/tracked-links', async (c) => {
 // GET /api/tracked-links/:id — get single with click details
 trackedLinks.get('/api/tracked-links/:id', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const id = c.req.param('id');
     const link = await getTrackedLinkById(c.env.DB, id);
-    if (!link) {
-      return c.json({ success: false, error: 'Tracked link not found' }, 404);
+    // 404 (not 403) to avoid leaking cross-account existence
+    if (!link || link.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
     }
     const clicks = await getLinkClicks(c.env.DB, id);
     const base = getBaseUrl(c);
@@ -112,10 +116,14 @@ trackedLinks.post('/api/tracked-links', async (c) => {
 // DELETE /api/tracked-links/:id
 trackedLinks.delete('/api/tracked-links/:id', async (c) => {
   try {
+    const account = await resolveAccount(c);
+    if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+
     const id = c.req.param('id');
     const link = await getTrackedLinkById(c.env.DB, id);
-    if (!link) {
-      return c.json({ success: false, error: 'Tracked link not found' }, 404);
+    // 404 (not 403) to avoid leaking cross-account existence
+    if (!link || link.account_id !== account.id) {
+      return c.json({ success: false, error: 'not found' }, 404);
     }
     await deleteTrackedLink(c.env.DB, id);
     return c.json({ success: true, data: null });

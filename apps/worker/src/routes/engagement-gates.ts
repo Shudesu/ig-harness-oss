@@ -19,9 +19,13 @@ const engagementGates = new Hono<Env>();
 /**
  * GET /click/:gateId?u=<base64url-encoded destination>[&ig=<igsid>]
  *
- * Records a click and 302s to the decoded destination. Mounted here so
- * the engagement gate route module owns both the definition + the
- * redirect; auth middleware exempts /click/ for public access.
+ * Records a click and 302s to the decoded destination.
+ *
+ * SECURITY: the destination's ORIGIN (protocol + host) must match one of
+ * the operator-configured allowed origins:
+ *   1. The gate's reward_url origin  (always checked)
+ *   2. The gate's LINE connection worker_url origin (when line_connection_id is set)
+ * Any other host → 400, preventing open-redirect abuse.
  */
 engagementGates.get('/click/:gateId', async (c) => {
   const gateId = c.req.param('gateId');
@@ -37,6 +41,41 @@ engagementGates.get('/click/:gateId', async (c) => {
     return c.text('Invalid destination', 400);
   }
   if (!destination || !/^https?:\/\//.test(destination)) {
+    return c.text('Invalid destination', 400);
+  }
+
+  // Load gate to validate the destination origin.
+  const gate = await getEngagementGate(c.env.DB, gateId);
+  if (!gate) {
+    return c.text('Invalid destination', 400);
+  }
+
+  let destOrigin: string;
+  try {
+    destOrigin = new URL(destination).origin;
+  } catch {
+    return c.text('Invalid destination', 400);
+  }
+
+  // Build the set of allowed origins from operator-configured values.
+  const allowedOrigins = new Set<string>();
+  if (gate.reward_url) {
+    try { allowedOrigins.add(new URL(gate.reward_url).origin); } catch { /* ignore malformed */ }
+  }
+  if (gate.line_connection_id) {
+    try {
+      const conn = await c.env.DB
+        .prepare('SELECT worker_url FROM line_harness_connections WHERE id = ?')
+        .bind(gate.line_connection_id)
+        .first<{ worker_url: string }>();
+      if (conn?.worker_url) {
+        allowedOrigins.add(new URL(conn.worker_url).origin);
+      }
+    } catch { /* ignore DB/parse errors */ }
+  }
+
+  if (!allowedOrigins.has(destOrigin)) {
+    console.warn(`[gate-click] blocked redirect to disallowed origin: ${destOrigin}`);
     return c.text('Invalid destination', 400);
   }
 

@@ -36,7 +36,7 @@ function serializeAccount(row: IgAccount) {
 }
 
 // GET /api/accounts - list all IG accounts (tokens masked)
-accounts.get('/api/accounts', async (c) => {
+accounts.get('/api/accounts', requireRole('owner', 'admin'), async (c) => {
   try {
     await ensureDefaultAccount(c.env, c.env.DB);
     const items = await listIgAccounts(c.env.DB);

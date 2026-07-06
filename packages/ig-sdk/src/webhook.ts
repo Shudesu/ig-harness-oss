@@ -3,6 +3,8 @@ export async function verifyWebhookSignature(
   signature: string,
   appSecret: string,
 ): Promise<boolean> {
+  if (!signature) return false;
+
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -15,7 +17,17 @@ export async function verifyWebhookSignature(
   const computed = "sha256=" + Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return computed === signature;
+
+  // Constant-time compare to prevent timing side-channel attacks on the HMAC.
+  // Both strings are ASCII hex so encoding is 1:1 char-to-byte.
+  const aBytes = encoder.encode(computed);
+  const bBytes = encoder.encode(signature);
+  if (aBytes.length !== bBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i]! ^ bBytes[i]!;
+  }
+  return diff === 0;
 }
 
 export function verifyWebhookChallenge(

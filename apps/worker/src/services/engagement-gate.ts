@@ -611,12 +611,25 @@ export async function processFollowupDrip(
       }
     }
 
+    let sendOk = false;
     try {
       await sendFollowupStep(db, igClient, d.igsid, step, gate, workerBaseUrl, igAccount, d.follower_id);
+      sendOk = true;
     } catch (err) {
-      console.error('[followup] send failed:', err);
+      console.error(
+        `[followup] send failed for delivery=${d.id} account=${accountId ?? 'unknown'} step=${stepIdx}:`,
+        err,
+      );
       await recordDmFailure(db, accountId ?? 'unknown').catch(() => {});
-      // Skip forward — don't retry indefinitely on the same step.
+      // Do NOT advance the step — leave next_followup_at unchanged so the
+      // next cron tick retries the same step. This prevents silent message drops
+      // on transient IG API errors. If the error is permanent the 24h guard
+      // above will eventually clear the delivery.
+    }
+
+    if (!sendOk) {
+      skipped++;
+      continue;
     }
 
     const nextStep = stepIdx + 1;

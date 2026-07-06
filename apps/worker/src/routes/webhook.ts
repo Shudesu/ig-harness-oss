@@ -75,6 +75,11 @@ webhook.post('/webhook', async (c) => {
   const secrets = [c.env.IG_APP_SECRET, ...accounts.map((a) => a.app_secret)]
     .filter((sec): sec is string => !!sec)
     .filter((sec, i, arr) => arr.indexOf(sec) === i);
+  // Empty/missing header is immediately invalid — skip the secret loop.
+  if (!signature) {
+    return c.json({ error: 'invalid signature' }, 403);
+  }
+
   let valid = false;
   for (const secret of secrets) {
     if (await verifyWebhookSignature(rawBody, signature, secret)) {
@@ -83,22 +88,19 @@ webhook.post('/webhook', async (c) => {
     }
   }
   if (!valid) {
-    console.log('Signature verification failed, logging raw body for debug:', rawBody.substring(0, 200));
-    // Don't reject — process anyway during development mode
+    console.warn('[webhook] signature verification failed; rejecting request');
+    return c.json({ error: 'invalid signature' }, 403);
   }
-
-  // DEBUG: log raw webhook body
-  console.log('Webhook received, raw body:', rawBody.substring(0, 500));
 
   let body: WebhookPayload;
   try {
     body = JSON.parse(rawBody) as WebhookPayload;
   } catch {
-    console.error('Failed to parse webhook body');
+    console.error('[webhook] failed to parse body');
     return c.json({ status: 'ok' }, 200);
   }
 
-  console.log('Webhook object:', body.object, 'entries:', body.entry?.length ?? 0);
+  console.log('[webhook] object:', body.object, 'entries:', body.entry?.length ?? 0);
 
   if (body.object !== 'instagram') {
     console.log('Skipping non-instagram webhook, object:', body.object);
