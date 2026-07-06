@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { BrandMark } from '@/components/brand'
 import { usePathname } from 'next/navigation'
 import { useAccount } from '@/contexts/account-context'
+import type { AccountWithStats } from '@/contexts/account-context'
 
 // ─── Instagram Harness navigation (4 pages only) ───
 
@@ -50,6 +51,7 @@ const menuItems = [
 
 // Instagram gradient color
 const IG_COLOR = '#E1306C'
+const IG_GRADIENT = 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)'
 
 function NavIcon({ d }: { d: string }) {
   return (
@@ -59,11 +61,122 @@ function NavIcon({ d }: { d: string }) {
   )
 }
 
+function AccountAvatar({ account, size = 28 }: { account: AccountWithStats; size?: number }) {
+  const displayName = account.displayName || account.name
+  if (account.pictureUrl) {
+    return (
+      <img
+        src={account.pictureUrl}
+        alt={displayName}
+        className="rounded-full object-cover shrink-0"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
+  // No profile picture: brand-gradient circle with the account initial
+  // (skip the leading @ so "@ig_harness" shows "I", not "@").
+  const initial = displayName.replace(/^@/, '').charAt(0).toUpperCase() || '?'
+  return (
+    <div
+      className="rounded-full flex items-center justify-center text-white font-bold shrink-0"
+      style={{ width: size, height: size, background: IG_GRADIENT, fontSize: size * 0.4 }}
+    >
+      {initial}
+    </div>
+  )
+}
+
+// Mirrors the LINE Harness OSS sidebar AccountSwitcher: always-visible
+// current-account row that expands into a dropdown listing every account.
+function AccountSwitcher() {
+  const { accounts, selectedAccount, selectedAccountId, setSelectedAccountId, loading } = useAccount()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  if (loading || accounts.length === 0) return null
+
+  const displayName = selectedAccount?.displayName || selectedAccount?.name || ''
+
+  return (
+    <div ref={ref} className="mt-3">
+      <button
+        onClick={() => setOpen(!open)}
+        aria-label="アカウント切替"
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 transition-colors"
+      >
+        {selectedAccount && <AccountAvatar account={selectedAccount} size={28} />}
+        <div className="flex-1 text-left min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+          {selectedAccount && !selectedAccount.isActive && (
+            <p className="text-[10px] text-gray-400">停止中</p>
+          )}
+        </div>
+        <svg
+          className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          {accounts.map((account) => {
+            const isSelected = account.id === selectedAccountId
+            const name = account.displayName || account.name
+            return (
+              <button
+                key={account.id}
+                onClick={() => {
+                  setOpen(false)
+                  if (account.id === selectedAccountId) return
+                  setSelectedAccountId(account.id)
+                  // Land on the dashboard instead of reloading in place: detail
+                  // URLs like /campaigns/[id] belong to the previous account and
+                  // would render (or let you edit) cross-account data.
+                  window.location.href = '/'
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                  isSelected ? 'bg-pink-50' : 'hover:bg-gray-50'
+                }`}
+              >
+                <AccountAvatar account={account} size={24} />
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm truncate ${isSelected ? 'font-semibold text-[#E1306C]' : 'text-gray-700'}`}>
+                    {name}
+                  </p>
+                  {!account.isActive && (
+                    <p className="text-xs text-gray-400 truncate">停止中</p>
+                  )}
+                </div>
+                {isSelected && (
+                  <svg className="w-4 h-4 shrink-0" style={{ color: IG_COLOR }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
   const [staffName, setStaffName] = useState<string | null>(null)
-  const { accounts, selectedAccountId, setSelectedAccountId } = useAccount()
 
   useEffect(() => {
     setStaffName(localStorage.getItem('lh_staff_name'))
@@ -89,30 +202,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Account switcher — only shown when multiple IG accounts exist */}
-        {accounts.length >= 2 && (
-          <select
-            value={selectedAccountId ?? ''}
-            onChange={(e) => {
-              const id = e.target.value
-              if (!id || id === selectedAccountId) return
-              setSelectedAccountId(id)
-              // Land on the dashboard instead of reloading in place: detail
-              // URLs like /campaigns/[id] belong to the previous account and
-              // would render (or let you edit) cross-account data.
-              window.location.href = '/'
-            }}
-            aria-label="アカウント切替"
-            className="mt-3 w-full px-2 py-1.5 text-xs text-gray-700 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E1306C] cursor-pointer"
-          >
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-                {!account.isActive ? ' (停止中)' : ''}
-              </option>
-            ))}
-          </select>
-        )}
+        {/* Account switcher — always visible so the active account is obvious */}
+        <AccountSwitcher />
       </div>
 
       {/* Navigation */}

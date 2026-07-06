@@ -7,6 +7,7 @@ vi.mock('@ig-harness/db', async (importOriginal) => {
   return {
     ...original,
     logMessage: vi.fn().mockResolvedValue(undefined),
+    getRichMessage: vi.fn().mockResolvedValue({ id: 'rm-1', blocks: [{ type: 'text', text: 'Hello rich' }] }),
   };
 });
 
@@ -280,6 +281,116 @@ describe('logMessage integration', () => {
         triggerSource: 'gate',
         messageType: 'template',
         followerId: 99,
+      }),
+    );
+  });
+
+  it('logs JSON rich body convention when gate uses rich message', async () => {
+    const { logMessage } = await import('@ig-harness/db');
+    vi.clearAllMocks();
+
+    // Setup DB with a gate that references a rich message
+    const gates: any[] = [];
+    const deliveries: any[] = [];
+    const richMessages: any[] = [{ id: 'rm-1', blocks: [{ type: 'text', text: 'Hello rich' }] }];
+
+    function makeStatement(sql: string, params: unknown[]) {
+      return {
+        async first<T>() {
+          if (sql.includes('FROM engagement_gates') && sql.includes('WHERE id = ?'))
+            return (gates.find((g) => g.id === params[0]) ?? null) as T;
+          if (sql.includes('FROM gate_deliveries') && sql.includes('gate_id = ?') && sql.includes('follower_id = ?'))
+            return (deliveries.find((d) => d.gate_id === params[0] && d.follower_id === params[1]) ?? null) as T;
+          if (sql.includes('FROM gate_deliveries') && sql.includes('WHERE id = ?'))
+            return (deliveries.find((d) => d.id === params[0]) ?? null) as T;
+          if (sql.includes('FROM rich_messages') && sql.includes('WHERE id = ?'))
+            return (richMessages.find((r) => r.id === params[0]) ?? null) as T;
+          return null as T;
+        },
+        async all<T>() {
+          if (sql.includes("FROM engagement_gates") && sql.includes("status = 'active'"))
+            return { results: gates.filter((g) => g.status === 'active') as T[] };
+          if (sql.includes("FROM engagement_gates"))
+            return { results: gates as T[] };
+          return { results: [] as T[] };
+        },
+        async run() {
+          if (sql.startsWith('INSERT INTO gate_deliveries')) {
+            deliveries.push({
+              id: params[0], gate_id: params[1], follower_id: params[2],
+              igsid: params[3], metadata: params[4],
+              status: 'triggered', loop_count: 0,
+              last_check_at: null, delivered_at: null,
+              triggered_at: new Date().toISOString(),
+              followup_step_sent: 0, next_followup_at: null,
+            });
+          }
+          if (sql.startsWith('UPDATE gate_deliveries')) {
+            const id = params[params.length - 1];
+            const target = deliveries.find((d: any) => d.id === id);
+            if (target) {
+              const m = sql.match(/SET (.+) WHERE/);
+              if (m) {
+                const fields = m[1].split(',').map((s: string) => s.trim().split(' = ')[0]);
+                fields.forEach((f: string, i: number) => { (target as any)[f] = params[i]; });
+              }
+            }
+          }
+          return { meta: { changes: 1 } };
+        },
+      };
+    }
+
+    const db = {
+      gates, deliveries,
+      prepare(sql: string) {
+        const stmt = makeStatement(sql, []);
+        return { ...stmt, bind(...p: unknown[]) { return makeStatement(sql, p); } };
+      },
+    } as unknown as D1Database;
+
+    gates.push({
+      id: 'gate-rich',
+      status: 'active',
+      trigger_type: 'comment_on_post',
+      target_post_id: 'post-rich',
+      target_post_ids: [],
+      trigger_keyword: null,
+      require_follow: 1,
+      initial_dm_text: 'fallback text',
+      initial_dm_button_label: 'Tap',
+      initial_dm_rich_message_id: 'rm-1',  // triggers rich path
+      follow_reminder_dm_text: '',
+      follow_reminder_button_label: '',
+      reward_dm_text: '',
+      reward_url: null,
+      max_loops: 0,
+      allow_repeat: 0,
+      created_at: '2025-01-01T00:00:00Z',
+    });
+
+    const igClient = {
+      sendRichMessage: vi.fn(async () => ({})),
+      sendGenericTemplate: vi.fn(async () => ({})),
+      sendQuickReply: vi.fn(async () => ({})),
+      sendText: vi.fn(async () => ({})),
+      getUserProfile: vi.fn(async () => ({ is_user_follow_business: true })),
+    };
+
+    await triggerGateForComment(db, igClient as never, {
+      postId: 'post-rich',
+      commentText: 'anything',
+      follower: { id: 77, igsid: 'IGSID77' },
+    });
+
+    expect(logMessage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        direction: 'out',
+        triggerSource: 'gate',
+        messageType: 'template',
+        followerId: 77,
+        body: JSON.stringify({ kind: 'rich', blocks: [{ type: 'text', text: 'Hello rich' }] }),
       }),
     );
   });

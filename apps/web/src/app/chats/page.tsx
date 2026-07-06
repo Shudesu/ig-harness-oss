@@ -1,9 +1,11 @@
 'use client'
 
+import type { JSX } from 'react'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { fetchApi, type FollowerApi, type FollowerListResponse } from '@/lib/api'
 import type { ApiResponse } from '@ig-harness/shared'
 import { FollowerAvatar } from '@/components/follower-avatar'
+import { RichBlocksCompact } from '@/components/rich-message-preview'
 
 interface MessageLog {
   id: string
@@ -13,23 +15,53 @@ interface MessageLog {
   createdAt: string
 }
 
-function parseContent(msg: MessageLog): string {
-  if (msg.messageType === 'text') {
+function renderContent(msg: MessageLog): JSX.Element {
+  const { content, messageType } = msg
+
+  // 1. Try to parse as rich JSON: {kind:'rich', blocks:[...]}
+  if (messageType === 'template' || messageType === 'text') {
     try {
-      const parsed = JSON.parse(msg.content)
-      if (typeof parsed === 'object' && parsed !== null) return parsed.text ?? msg.content
-    } catch { /* raw */ }
-    return msg.content
+      const parsed = JSON.parse(content)
+      // Rich message convention: {kind:'rich', blocks:[...]}
+      if (parsed && typeof parsed === 'object' && parsed.kind === 'rich' && Array.isArray(parsed.blocks)) {
+        return <RichBlocksCompact blocks={parsed.blocks} />
+      }
+      // Incoming text JSON: {text: string}
+      if (parsed && typeof parsed === 'object' && typeof parsed.text === 'string') {
+        return <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">{parsed.text}</p>
+      }
+      // Legacy template: {elements:[...]} with no kind:'rich'
+      if (messageType === 'template') {
+        if (parsed?.elements?.[0]?.title) {
+          return <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">[テンプレート] {parsed.elements[0].title}</p>
+        }
+        return <span className="text-[11px] text-gray-400 italic">テンプレート送信（内容未記録）</span>
+      }
+    } catch { /* fall through */ }
   }
-  if (msg.messageType === 'template') {
-    try {
-      const parsed = JSON.parse(msg.content)
-      if (parsed.elements?.[0]?.title) return `[テンプレート] ${parsed.elements[0].title}`
-    } catch { /* */ }
-    return '[テンプレート]'
+
+  // 2. Postback rows: content starting with [ボタン] — IG shows the tapped
+  // button label as a user-side message bubble, so mirror that here.
+  if (content.startsWith('[ボタン]')) {
+    const label = content.replace('[ボタン]', '').trim()
+    return (
+      <div>
+        <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">{label || 'ボタン'}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">🔘 ボタン押下</p>
+      </div>
+    )
   }
-  if (msg.messageType === 'image') return '[画像]'
-  return `[${msg.messageType}]`
+
+  // 3. Legacy plain placeholder
+  if (content === '[テンプレート]') {
+    return <span className="text-[11px] text-gray-400 italic">テンプレート送信（内容未記録）</span>
+  }
+
+  // 4. Image / other
+  if (messageType === 'image') return <span className="text-[13px]">[画像]</span>
+
+  // 5. Fallback: plain text
+  return <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">{content}</p>
 }
 
 function DetailPanel({ friend }: { friend: FollowerApi }) {
@@ -187,7 +219,7 @@ function MessagePanel({ friendId, onBack }: {
                 <div className={`max-w-md rounded-2xl px-3 py-1.5 ${
                   isOut ? 'bg-pink-500 text-white' : 'bg-white border border-gray-200 text-gray-900'
                 }`}>
-                  <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">{parseContent(msg)}</p>
+                  {renderContent(msg)}
                   <p className={`text-[10px] mt-0.5 ${isOut ? 'text-pink-200' : 'text-gray-400'}`}>
                     {new Date(msg.createdAt).toLocaleString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
                   </p>

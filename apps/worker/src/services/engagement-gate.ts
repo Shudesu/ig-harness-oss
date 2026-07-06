@@ -267,17 +267,7 @@ function parseCommentReplyPatterns(raw: string): string[] {
   return [trimmed];
 }
 
-/**
- * Produce a readable operator label for a rich-message block array.
- * Shows the first text content found, or a block-count summary.
- */
-function richMessageLabel(blocks: RichMessageBlock[]): string {
-  for (const block of blocks) {
-    if (block.type === 'text' && block.text) return `[リッチメッセージ] ${block.text.slice(0, 100)}`;
-    if (block.type === 'card' && block.title) return `[リッチメッセージ] ${block.title}`;
-  }
-  return `[リッチメッセージ] ${blocks.length}ブロック`;
-}
+// richMessageLabel removed — body now stores full JSON for rich rendering in admin UI
 
 async function sendCtaDm(
   db: D1Database,
@@ -301,7 +291,7 @@ async function sendCtaDm(
         followerId: delivery.follower_id,
         direction: 'out',
         messageType: 'template',
-        body: richMessageLabel(rm.blocks),
+        body: JSON.stringify({ kind: 'rich', blocks: rm.blocks }),
         triggerSource: 'gate',
       });
       return;
@@ -418,7 +408,7 @@ async function sendReminderDm(
         followerId: delivery.follower_id,
         direction: 'out',
         messageType: 'template',
-        body: richMessageLabel(rm.blocks),
+        body: JSON.stringify({ kind: 'rich', blocks: rm.blocks }),
         triggerSource: 'gate',
       });
       return;
@@ -494,7 +484,7 @@ async function deliverReward(
         followerId: delivery.follower_id,
         direction: 'out',
         messageType: 'template',
-        body: richMessageLabel(rm.blocks),
+        body: JSON.stringify({ kind: 'rich', blocks: rm.blocks }),
         triggerSource: 'gate',
       });
       return;

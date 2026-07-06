@@ -1,5 +1,6 @@
 'use client'
 
+import type { JSX } from 'react'
 import Image from 'next/image'
 import { BrandMark } from '@/components/brand'
 import type { RichMessageBlock } from '@/lib/api'
@@ -126,6 +127,79 @@ function renderBlock(block: RichMessageBlock, idx: number) {
     default:
       return null
   }
+}
+
+/**
+ * Compact inline renderer for chat bubble context.
+ * - text block: plain text paragraph (caller wraps in bubble)
+ * - card block: bordered mini-card with optional image thumbnail, bold title, subtitle, button pill chips
+ * - image block: small thumbnail
+ * - other: muted "[type]" label
+ */
+export function RichBlocksCompact({ blocks }: { blocks: RichMessageBlock[] }): JSX.Element {
+  // Single text block — return p directly so caller bubble renders cleanly
+  if (blocks.length === 1 && blocks[0].type === 'text') {
+    return (
+      <p className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">
+        {blocks[0].text}
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {blocks.map((block, idx) => {
+        if (block.type === 'text') {
+          return (
+            <p key={idx} className="text-[13px] whitespace-pre-wrap break-words leading-relaxed">
+              {block.text}
+            </p>
+          )
+        }
+        if (block.type === 'card') {
+          return (
+            <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden bg-white text-[13px]">
+              {block.image_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={block.image_url} alt="" className="w-full h-12 object-cover" />
+              )}
+              <div className="px-2 py-1.5">
+                <p className="font-semibold text-gray-900 line-clamp-1">{block.title}</p>
+                {block.subtitle && (
+                  <p className="text-[11px] text-gray-500 line-clamp-1">{block.subtitle}</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1 px-2 pb-2">
+                {block.buttons.map((btn, i) => (
+                  <span
+                    key={i}
+                    className="text-[11px] px-2 py-0.5 rounded-full border"
+                    style={{ borderColor: '#0095F6', color: '#0095F6' }}
+                  >
+                    {btn.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        }
+        if (block.type === 'image') {
+          return (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={idx}
+              src={block.url}
+              alt={block.alt ?? ''}
+              className="max-w-[160px] rounded-xl border border-gray-200"
+            />
+          )
+        }
+        return (
+          <span key={idx} className="text-[11px] text-gray-400">[{block.type}]</span>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function RichMessagePreview({ blocks }: { blocks: RichMessageBlock[] }) {
