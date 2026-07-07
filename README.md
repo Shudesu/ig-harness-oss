@@ -2,6 +2,8 @@
 
 # IG Harness
 
+> ### **[ブラウザでデモを見る](https://shudesu.github.io/ig-harness-oss/)** 👈
+
 Instagram DM の完全オープンソース自動化 / マーケティングオートメーション。**ManyChat / iステップ の無料代替**。
 Cloudflare 無料枠で動く。サーバー代 **0 円**。Claude Code から全操作可能。
 

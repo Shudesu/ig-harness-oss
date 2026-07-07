@@ -2,6 +2,8 @@
 
 # IG Harness
 
+> ### **[Ver la demo en vivo](https://shudesu.github.io/ig-harness-oss/)** 👈
+
 Automatización de Instagram DM completamente open source / marketing automation. **Alternativa gratuita a ManyChat / i-step**.
 Funciona en el plan gratuito de Cloudflare. Costo de servidor: **$0**. Operable íntegramente desde Claude Code.
 
