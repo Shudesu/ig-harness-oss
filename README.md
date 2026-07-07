@@ -1,157 +1,164 @@
+🌐 **日本語** | [English](README.en.md) | [简体中文](README.zh-CN.md) | [한국어](README.ko.md) | [Español](README.es.md)
+
 # IG Harness
 
-IG DM 向けオープンソースの自動化 / マーケティングオートメーション。
-**ManyChat・iステップ の代替** として、Cloudflare 上でセルフホストし月額0円〜で運用できます。
+Instagram DM の完全オープンソース自動化 / マーケティングオートメーション。**ManyChat / iステップ の無料代替**。
+Cloudflare 無料枠で動く。サーバー代 **0 円**。Claude Code から全操作可能。
+
+### ▶️ [動画で見る (YouTube)](https://youtu.be/xzEanXQtlO0)
+
+[![クリックで YouTube を再生 — IG Harness 導入の全手順](https://img.youtube.com/vi/xzEanXQtlO0/maxresdefault.jpg)](https://youtu.be/xzEanXQtlO0)
 
 > 📖 **セットアップガイド (スクショ付き完全版)**: <https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide>
->
-> Cloudflare アカウント作成 → Meta App 設定 → Webhook 連携まで、つまずきやすいポイントを画像付きで解説しています。
 
-## 特徴
+**現バージョン**: v0.11.1 ・ MIT License ・ TypeScript / Cloudflare Workers + D1 + R2
 
-- **エンゲージメントゲート（NEW）** — ManyChat スタイルの「フォロー → コメント → DM 配布」ループ。フォロー未完了なら "フォローしてから戻ってきて" DMを送り、フォロー確認後に特典DMを自動配布
-- **LINE Harness との UUID クロスプラットフォーム連携（NEW）** — 共有シークレット webhook で IG ユーザーと LINE 友だちを同一UUIDに紐付け、IG → LINE の導線を1本化
-- **キャンペーンダッシュボード（NEW）** — `/campaigns` でゲートの CRUD + 実行分析（フォロー通過率 / DM配布数 / LINE紐付け数）
-- **コメント → DM 自動配布** — 特定投稿/リールへのコメントをトリガーに DM で特典配布
-- **コメント自動リプライ** — キーワードごとのコメント自動返信 *(@mention 付きトップレベル投下方式。本物のスレッド型 reply は Meta App Review / Advanced Access 必須)*
-- **ステップ配信** — キーワードトリガーで時間差 DM 連続送信
-- **リッチメッセージ** — ボタン付きカード、カルーセル、クイックリプライ
-- **一斉配信** — 全フォロワー or タグ絞り込みで DM 一斉送信
-- **フォーム** — DM 内でデータ収集
-- **トラッキングリンク** — クリック計測、流入経路分析
+---
+
+## なぜ IG Harness？
+
+| | ManyChat | iステップ | **IG Harness** |
+|---|---|---|---|
+| 月額 | $15〜 | 1〜3万円 | **0円** |
+| コメント → DM 自動配布 | ✅ | ✅ | ✅ |
+| フォローゲート（特典配布） | ✅ | ✅ | ✅ |
+| ステップ配信 | ✅ | ✅ | ✅ |
+| リッチメッセージ（カード/ボタン） | ✅ | ✅ | ✅ |
+| フォーム | ✅ | ✅ | ✅ |
+| トラッキングリンク | 一部 | ✅ | ✅ |
+| API 公開 | ❌ | ❌ | **全機能** |
+| Claude Code (AI) 対応 | ❌ | ❌ | **MCP server 同梱** |
+| LINE 公式アカウント連携 | ❌ | ❌ | **UUID クロスリンク** |
+| マルチアカウント | 別契約 | 別契約 | **標準搭載** |
+| Meta 審査 | 不要 | 不要 | **不要（Standard Access で動作）** |
+| ソースコード | 非公開 | 非公開 | **MIT (このリポ)** |
+
+---
+
+## クイックスタート
+
+### 1 コマンドで完全セットアップ
+
+```bash
+npx create-ig-harness
+```
+
+CLI が以下を全部やる:
+- Cloudflare アカウント認証 (wrangler login)
+- D1 データベース + R2 バケット作成、スキーマ・マイグレーション適用
+- Worker / 管理画面のデプロイ
+- Instagram プロアカウントの credentials 登録
+- Meta App の Webhook 連携設定の案内（Privacy Policy / Data Deletion / Terms URL を自動表示）
+- 管理画面初回ログイン用 Owner ユーザー作成
+
+所要時間: 約 5 分。完了すれば管理画面 (`https://<your-name>-admin.pages.dev`) で即運用開始。
+
+### 必要なもの
+
+- Cloudflare アカウント（無料枠で OK）
+- Instagram プロアカウント（ビジネス / クリエイター）+ Meta App
+- Node.js 22+ / pnpm
+
+---
+
+## 主要機能
+
+### エンゲージメント（集客の主力）
+- **エンゲージメントゲート** — ManyChat スタイルの「コメント → DM → フォロー確認 → 特典配布」ループ。フォロー未完了なら "フォローしてから戻ってきて" DM を送り、フォロー確認後に特典 DM を自動配布
+- **コメント → DM 自動配布** — 特定投稿 / リールへのコメントをトリガーに DM で特典配布（全投稿 or 個別指定）
+- **コメント自動リプライ** — キーワードごとのコメント自動返信（@mention 付きトップレベル投下方式、Standard Access で動作）
 - **ストーリーメンション → DM** — メンション検知で自動 DM
-- **SDK** — `@ig-harness/sdk` でプログラマティックに全機能を操作
-- **MCP Server** — `@ig-harness/mcp-server` で Claude Code から自然言語操作
-- **管理画面** — Next.js 15 ダッシュボード
+- **DM キーワードトリガー** — 特定キーワードの DM 受信でゲート発火
 
-## 競合比較
+### 配信
+- **ステップ配信** — キーワードトリガーで時間差 DM 連続送信
+- **追い DM（フォローアップドリップ）** — 特典配布後に分単位の遅延で最大 3 通まで
+- **一斉配信** — 全フォロワー or タグ絞り込みで DM 一斉送信、予約対応
+- **リッチメッセージ** — ボタン付きカード、カルーセル、クイックリプライ
 
-| 機能 | IG Harness | ManyChat | iステップ |
-|------|------------|----------|-----------|
-| 月額料金 | **$0〜** | $15〜 | ¥14,800〜 |
-| エンゲージメントゲート | ✅ | ✅ | ✅ |
-| フォロー check ループ | ✅ | ✅ (Pro) | ✅ |
-| LINE クロス連携 | ✅ | ❌ | ❌ |
-| コメント → DM | ✅ | ✅ | ✅ |
-| ストーリーメンション | ✅ | ✅ | ✅ |
-| SDK | ✅ | ❌ | ❌ |
-| MCP (AI連携) | ✅ | ❌ | ❌ |
-| セルフホスト | ✅ | ❌ | ❌ |
-| オープンソース | ✅ | ❌ | ❌ |
-| Standard Access で運用可 | ✅ (擬似コメント返信含む) | ❌ (Advanced 必須) | ❌ (Advanced 必須) |
-| 本物のスレッド型 reply | App Review 必須 | ✅ | ✅ |
+### CRM
+- **フォロワー管理** — Webhook 自動登録、プロフィール取得、カスタムメタデータ、タグ
+- **オペレーターチャット** — 管理画面から直接 1:1 返信。自動送信 DM / ボタン押下も会話ログに再現表示
+- **プロフィール画像キャッシュ** — Instagram CDN の署名切れを R2 で永続キャッシュ
+- **フォーム** — DM 内でデータ収集、回答 → メタデータ自動保存
+- **トラッキングリンク** — クリック計測、流入経路分析
 
-## 技術スタック
+### LINE Harness 連携
+- **UUID クロスプラットフォーム連携** — 共有シークレット webhook で IG フォロワーと LINE 友だちを同一 UUID に双方向リンク。1:1 のユニーク URL を送るだけで「この IG ユーザー = この LINE 友だち」が両 DB に自動記録
+- **流入元 IG アカウント記録** — マルチアカウント時、どの IG 垢経由で LINE 登録したかを追跡
 
-| レイヤー | 技術 |
-|---------|------|
-| API / Webhook | Cloudflare Workers + Hono |
-| データベース | Cloudflare D1 (SQLite) |
-| 画像ホスティング | Cloudflare R2 |
-| 定期実行 | Workers Cron Triggers |
-| 管理画面 | Next.js 15 (App Router) + Tailwind CSS |
-| SDK | TypeScript, ESM + CJS |
-| MCP Server | Model Context Protocol, `@ig-harness/sdk` ベース |
-| IG連携 | Instagram Graph API (Meta Dev Mode) |
+### マルチアカウント
+- **複数 Instagram アカウント** を 1 つの Worker / ダッシュボードで管理
+- **アカウント別スコープ** — フォロワー・ゲート・配信をアカウント単位で分離
+- **Webhook ルーティング** — `entry.id` で受信アカウントを自動判定、別 Meta App もマルチシークレット署名検証で対応
 
-## Meta App Review について
+### 運用監視
+- **`GET /api/health`** — アカウント毎のトークン残日数・API 実叩きの生死（チェックポイント / 凍結検知）・最終 webhook 受信・DM 配信失敗数・cron 死活
+- 外部プローブと組み合わせて異常時アラート（トークン失効・配信失敗急増・応答なし）
 
-| 機能 | 必要なアクセスレベル |
-|------|----------------------|
-| DM 自動配布、ステップ配信、一斉配信、フォーム、トラッキングリンク | **Standard Access** (App Review 不要) |
-| Webhook 受信 (コメント / DM / ストーリーメンション) | **Standard Access** |
-| エンゲージメントゲートのフォロー check / DM 配布 / LINE 連携 | **Standard Access** |
-| **コメント自動リプライ** (`comment_reply_text`) | **Standard Access** *(@mention 付きトップレベル投下、`POST /{media_id}/comments` 経由)* |
-| **本物のスレッド型 reply** (親コメント直下にネストされる返信) | **Advanced Access (Meta App Review 通過必須)** |
+### AI 統合
+- **MCP Server 同梱** (`@ig-harness/mcp-server`) — Claude Code から自然言語で全操作
+- **公式 SDK** (`@ig-harness/sdk`) — TypeScript の型付き SDK、ESM + CJS
 
-**実装ノート**: ig-harness は `comment_reply_text` 機能を `postCommentToMedia` (= `POST /{ig-media-id}/comments`) で実装しているため、Standard Access のままで動作します。投稿される位置は IG UI 上「投稿全体のコメント欄に新しいコメントとして並ぶ」形になり、親コメント直下の **スレッド返信ではない** 点だけ留意してください (UX 的には @mention 通知で commenter には届きます)。
+### iOS アプリ対応
+- **`GET /api/capabilities`** — iOS 公式アプリ (the-harness-ios) との互換判定エンドポイント
 
-`POST /{ig-comment-id}/replies` (本物のスレッド型 reply) を使いたい場合のみ Meta App Review を申請して `instagram_business_manage_comments` の **Advanced Access** を取得してください。Tester 追加 + token 再発行でも回避不可 (2026-04-26 検証済み)。
+---
 
 ## アーキテクチャ
 
 ```
-Instagram (Graph API) ←→ CF Workers (Hono) → D1
-          │                     │
-          ▼                     ▼
-     Webhook 受信          Cron Triggers
-     (comment/DM/          ・ゲートフォロー check
-      story mention)        ・ステップ配信
-                            ・スケジュール送信
-                                │
-                                ▼
-                               R2 (画像)
-
-Next.js 15 (Dashboard) → Workers API → D1
-@ig-harness/sdk → Workers API → D1
-@ig-harness/mcp-server → Workers API → D1
-
-         ┌────────────── UUID 共有 webhook ──────────────┐
-         ▼                                                ▼
-  IG Harness ←──────── 共有シークレット ────→ LINE Harness
-   (IG friend)                                  (LINE friend)
-         └──────────── 同一 UUID に紐付け ────────────────┘
+[ Instagram Platform ] ⇄ [ Cloudflare Worker (Hono) ] ⇄ [ D1 SQLite ] + [ R2 ]
+                                   ⇅
+                         [ Cloudflare Pages (Next.js 15) ]
+                                   ⇅
+                         [ MCP Server / SDK / Claude Code ]
 ```
 
-## クイックスタート
+- **Worker** (`apps/worker`): API + Webhook 受信 + 画像配信、cron（5 分毎）で配信処理・トークンリフレッシュ・生存プローブ
+- **Web** (`apps/web`): Next.js 15 ダッシュボード
+- **Packages**:
+  - `@ig-harness/sdk` — TypeScript SDK
+  - `@ig-harness/mcp-server` — Claude Code 用 MCP server
+  - `create-ig-harness` — セットアップ CLI
+  - `@ig-harness/ig-sdk` — Instagram Graph API 薄ラッパー
+  - `@ig-harness/db` — D1 マイグレーション + ヘルパー
+  - `@ig-harness/shared` — 型定義共有
 
-ワンコマンドで新規プロジェクトを生成できます。
+---
 
-```bash
-npx create-ig-harness my-ig-harness
-cd my-ig-harness
-pnpm install
-```
+## Standard Access の壁について
 
-その後、対話プロンプトに従って Cloudflare / Meta の認証情報を入力すれば、Worker + D1 + R2 + ダッシュボードが一括デプロイされます。
+Instagram Messaging API は、自分が所有・管理するプロアカウントであれば **Standard Access（Meta App Review 不要）** で DM 配信・エンゲージメントゲート・擬似コメント返信まで動作します。
 
-詳細は以下を参照してください:
+**Advanced Access（App Review 必須）が要るのは以下のみ**:
+- 親コメント直下にネストされる本物のスレッド型 reply
+- 自分が所有・管理しないアカウント（顧客のアカウント）をホストするマルチテナント運用
 
-- **セットアップ**: [`docs/QUICKSTART.md`](docs/QUICKSTART.md)
-- **詳細セットアップガイド**: [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md)
-- **API リファレンス**: [`docs/API.md`](docs/API.md)
-- **コントリビューション**: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- **変更履歴**: [`CHANGELOG.md`](CHANGELOG.md)
+IG Harness のコメント返信は `@mention` 付きトップレベル投下方式で実装されており、Standard Access のまま動きます。
 
-## エンゲージメントゲート（ManyChat スタイル）
+---
 
-IG Harness の目玉機能。投稿 / リールに特定キーワードでコメントしたユーザーをトリガーに、フォロー状態を確認 → 未フォローなら "フォローしてね" DM → フォロー後に特典 DM を自動配布します。
+## ドキュメント
 
-```
-[ユーザーがリールにコメント "欲しい"]
-            │
-            ▼
- [Harness Webhook 受信]
-            │
-            ▼
-  ┌─── follows me? ───┐
-  │                   │
-  NO                 YES
-  │                   │
-  ▼                   ▼
-[follow gate DM]   [reward DM + 特典リンク]
-  │                   │
-  ▼                   ▼
- Cron が定期的に     [LINE Harness に UUID 同期]
- 再 check して        → LINE でも同じ人として追跡可能
- フォロー済みに
- なったら reward DM
-```
+- [セットアップガイド (動画・YouTube)](https://youtu.be/xzEanXQtlO0)
+- [セットアップガイド (スクショ付き)](https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide)
+- [npm: @ig-harness/sdk](https://www.npmjs.com/package/@ig-harness/sdk)
+- [npm: @ig-harness/mcp-server](https://www.npmjs.com/package/@ig-harness/mcp-server)
+- [npm: create-ig-harness](https://www.npmjs.com/package/create-ig-harness)
 
-ダッシュボードの `/campaigns` からゲートの作成 / 編集 / 分析 / 削除ができます。
-
-## LINE Harness 連携
-
-[LINE Harness](https://github.com/Shudesu/line-harness-oss) と共有シークレット webhook で連携し、IG 経由で獲得したユーザーを LINE の友だち情報と同一 UUID で紐付けできます。これにより:
-
-- IG コメント → DM で LINE 登録リンク配布 → LINE 登録時に UUID 紐付け
-- クロスプラットフォームで "同一ユーザー" の行動分析
-- IG ゲート通過数と LINE 登録数の相関を dashboard で可視化
+---
 
 ## ライセンス
 
-MIT License — 商用利用可、再配布可。詳細は [`LICENSE`](LICENSE) を参照。
+MIT License. 商用利用・改変・再配布自由。
 
-## コントリビューション
+---
 
-Pull Request 歓迎です。開発環境のセットアップと PR ガイドラインは [`CONTRIBUTING.md`](CONTRIBUTING.md) を参照してください。
+## コントリビュート
+
+Issue / PR 歓迎。OSS リポへの PR は `Shudesu/ig-harness-oss` (このリポ) に投げてください。
+
+---
+
+> **IG Harness** by [@Shudesu](https://github.com/Shudesu) — AI ネイティブ時代の OSS Instagram DM 自動化
