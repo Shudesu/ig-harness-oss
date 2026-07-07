@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1] - 2026-07-07
+
+### Fixed
+- 画像ギャラリー（GET /api/images）にプロフィール画像キャッシュ
+  （`profile-pics/` 配下）が混入していた問題: R2 list に delimiter '/' を
+  使い、operator アップロード画像のみを列挙（ページネーションも維持）
+
 ## [0.11.0] - 2026-07-07
 
 ### Security

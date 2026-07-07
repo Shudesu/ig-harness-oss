@@ -82,7 +82,12 @@ images.get('/api/images', async (c) => {
   const rawLimit = Number(c.req.query('limit') ?? '50');
   const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1), 200);
 
-  const listed = await c.env.IMAGES.list({ limit, cursor });
+  // delimiter '/' keeps this gallery to operator-uploaded images only:
+  // profile-picture cache objects live under the `profile-pics/` prefix
+  // (written by GET /images/profile-pics/:igsid) and are rolled up into
+  // delimitedPrefixes instead of polluting `objects`. Pagination stays
+  // correct because the cache keys never enter the object listing.
+  const listed = await c.env.IMAGES.list({ limit, cursor, delimiter: '/' });
   const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
 
   const items = listed.objects.map((obj) => ({
