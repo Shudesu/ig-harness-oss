@@ -4,7 +4,7 @@
 
 > ### **[View the live demo](https://shudesu.github.io/ig-harness-oss/)** 👈
 
-A fully open-source Instagram DM automation and marketing platform — a **free alternative to ManyChat and i-step**.
+A fully open-source Instagram DM automation and marketing platform — a **free alternative to Vendor A and Vendor B**.
 Runs entirely on Cloudflare's free tier. Server cost: **$0**. Fully operable from Claude Code.
 
 ### ▶️ [Watch on YouTube](https://youtu.be/xzEanXQtlO0)
@@ -19,7 +19,7 @@ Runs entirely on Cloudflare's free tier. Server cost: **$0**. Fully operable fro
 
 ## Why IG Harness?
 
-| | ManyChat | i-step | **IG Harness** |
+| | Vendor A | Vendor B | **IG Harness** |
 |---|---|---|---|
 | Monthly cost | $15+ | ¥10,000–30,000/mo | **$0** |
 | Comment → DM automation | ✅ | ✅ | ✅ |
@@ -66,7 +66,7 @@ Setup time: ~5 minutes. Once complete, your admin dashboard (`https://<your-name
 ## Features
 
 ### Engagement (your primary growth engine)
-- **Engagement gate** — ManyChat-style "Comment → DM → Follow check → Reward delivery" loop. If the user hasn't followed, sends a "follow us and come back" DM; after follow confirmation, the reward DM is sent automatically.
+- **Engagement gate** — Vendor A-style "Comment → DM → Follow check → Reward delivery" loop. If the user hasn't followed, sends a "follow us and come back" DM; after follow confirmation, the reward DM is sent automatically.
 - **Comment → DM automation** — Trigger a DM reward delivery based on comments on specific posts or Reels (all posts or individually targeted).
 - **Auto comment reply** — Keyword-based automated comment replies (posted as top-level comments with @mention; works on Standard Access).
 - **Story mention → DM** — Automatically send a DM when your account is mentioned in a Story.

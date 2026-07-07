@@ -4,7 +4,7 @@
 
 > ### **[查看在线演示](https://shudesu.github.io/ig-harness-oss/)** 👈
 
-Instagram DM 完全开源自动化 / 营销自动化工具。**ManyChat / i-step 的免费替代方案**。
+Instagram DM 完全开源自动化 / 营销自动化工具。**A 厂商 / B 厂商 的免费替代方案**。
 运行于 Cloudflare 免费套餐，服务器费用 **¥0**。支持通过 Claude Code 进行全部操作。
 
 ### ▶️ [视频教程 (YouTube)](https://youtu.be/xzEanXQtlO0)
@@ -19,7 +19,7 @@ Instagram DM 完全开源自动化 / 营销自动化工具。**ManyChat / i-step
 
 ## 为什么选择 IG Harness？
 
-| | ManyChat | i-step | **IG Harness** |
+| | A 厂商 | B 厂商 | **IG Harness** |
 |---|---|---|---|
 | 月费 | $15+ | ¥10,000–30,000/月 | **¥0** |
 | 评论 → DM 自动分发 | ✅ | ✅ | ✅ |
@@ -66,7 +66,7 @@ CLI 将自动完成以下所有步骤：
 ## 核心功能
 
 ### 互动引流（主要获客手段）
-- **互动门控** — ManyChat 风格的「评论 → DM → 关注验证 → 福利分发」闭环。若用户尚未关注，自动发送"请先关注再回来"DM，确认关注后自动发送福利 DM
+- **互动门控** — A 厂商 风格的「评论 → DM → 关注验证 → 福利分发」闭环。若用户尚未关注，自动发送"请先关注再回来"DM，确认关注后自动发送福利 DM
 - **评论 → DM 自动分发** — 以特定帖子 / Reels 的评论为触发器，通过 DM 发放福利（支持全部帖子或单独指定）
 - **评论自动回复** — 按关键词自动回复评论（采用带 @mention 的顶层评论方式，Standard Access 下可用）
 - **Story 提及 → DM** — 检测到提及后自动发送 DM

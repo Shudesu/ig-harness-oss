@@ -4,7 +4,7 @@
 
 > ### **[Ver la demo en vivo](https://shudesu.github.io/ig-harness-oss/)** 👈
 
-Automatización de Instagram DM completamente open source / marketing automation. **Alternativa gratuita a ManyChat / i-step**.
+Automatización de Instagram DM completamente open source / marketing automation. **Alternativa gratuita a Proveedor A / Proveedor B**.
 Funciona en el plan gratuito de Cloudflare. Costo de servidor: **$0**. Operable íntegramente desde Claude Code.
 
 ### ▶️ [Ver en video (YouTube)](https://youtu.be/xzEanXQtlO0)
@@ -19,7 +19,7 @@ Funciona en el plan gratuito de Cloudflare. Costo de servidor: **$0**. Operable 
 
 ## ¿Por qué IG Harness?
 
-| | ManyChat | i-step | **IG Harness** |
+| | Proveedor A | Proveedor B | **IG Harness** |
 |---|---|---|---|
 | Mensual | $15+ | ¥10,000–30,000/mes | **$0** |
 | Comentario → DM automático | ✅ | ✅ | ✅ |
@@ -66,7 +66,7 @@ Tiempo estimado: ~5 minutos. Al finalizar, el panel (`https://<your-name>-admin.
 ## Funcionalidades principales
 
 ### Engagement (motor de captación)
-- **Engagement gate** — Flujo al estilo ManyChat: "Comentario → DM → verificación de seguimiento → entrega de bono". Si el usuario no ha seguido la cuenta, se le envía un DM de "síguenos primero" y, una vez confirmado el follow, el bono se entrega automáticamente por DM.
+- **Engagement gate** — Flujo al estilo Proveedor A: "Comentario → DM → verificación de seguimiento → entrega de bono". Si el usuario no ha seguido la cuenta, se le envía un DM de "síguenos primero" y, una vez confirmado el follow, el bono se entrega automáticamente por DM.
 - **Comentario → DM automático** — Entrega de contenido por DM activada por comentarios en publicaciones o reels específicos (opción global o por publicación individual).
 - **Respuesta automática a comentarios** — Respuestas automáticas a comentarios por palabra clave (publicación de nivel superior con @mention, funciona con Standard Access).
 - **Mención en Stories → DM** — Detección de menciones y envío automático de DM.
