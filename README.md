@@ -169,6 +169,7 @@ Issue / PR 歓迎。OSS リポへの PR は `Shudesu/ig-harness-oss` (このリ�
 
 - GitHub: [@Shudesu](https://github.com/Shudesu)
 - X: [@ai_shunoda](https://x.com/ai_shunoda)
+- YouTube: [野田 修一 | The Harnessで0円](https://www.youtube.com/@ai_nodashuichi)
 - 公式ドキュメント: [Harness Wiki](https://harness-wiki.pages.dev)
 - 商用ツールとの比較・料金データ: [The Harness Lab](https://the-harness.com)
 
