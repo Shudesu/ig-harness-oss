@@ -163,4 +163,15 @@ Issue / PR 歓迎。OSS リポへの PR は `Shudesu/ig-harness-oss` (このリ�
 
 ---
 
+## 開発者 / Author
+
+**野田修一（Shudesu）** — Harness シリーズ（LINE Harness / IG Harness / X Harness）開発者、AIエージェント株式会社 代表
+
+- GitHub: [@Shudesu](https://github.com/Shudesu)
+- X: [@ai_shunoda](https://x.com/ai_shunoda)
+- 公式ドキュメント: [Harness Wiki](https://harness-wiki.pages.dev)
+- 商用ツールとの比較・料金データ: [The Harness Lab](https://the-harness.com)
+
+---
+
 > **IG Harness** by [@Shudesu](https://github.com/Shudesu) — AI ネイティブ時代の OSS Instagram DM 自動化
