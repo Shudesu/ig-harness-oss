@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.2] - 2026-07-22
+
+### Fixed
+- **`create-ig-harness` セットアップが初回から必ず失敗する問題**: リポジトリ
+  取得直後の依存ビルドで `pnpm -r build`（全ワークスペース再帰）を実行して
+  おり、`.env.production` 生成前（deploy-admin ステップより手前）の段階で
+  `apps/web` の静的エクスポート（`output: 'export'`）がプリレンダされ、
+  `NEXT_PUBLIC_API_URL is not set` で停止していた。ビルド対象を
+  `pnpm --filter ./packages/*`（Worker バンドルに必要な `@ig-harness/*` の
+  dist のみ）に限定し、`apps/web` は従来どおり deploy-admin が
+  `.env.production` を書き込んだ後にビルドするよう修正。
+
 ## [0.11.1] - 2026-07-07
 
 ### Fixed

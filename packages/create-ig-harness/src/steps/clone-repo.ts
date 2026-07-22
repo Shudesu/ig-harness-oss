@@ -67,15 +67,22 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
   }
   s.stop("依存関係インストール完了");
 
-  // Build workspace packages — Worker bundling needs @ig-harness/* dist files
+  // Build the library packages only — Worker bundling needs the @ig-harness/*
+  // dist files. We must NOT build apps/* here: apps/web is a static export
+  // (`output: 'export'`) that reads NEXT_PUBLIC_API_URL at build time, and that
+  // env var isn't configured until the deploy-admin step writes .env.production.
+  // A blanket `pnpm -r build` would prerender apps/web now and crash with
+  // "NEXT_PUBLIC_API_URL is not set" before setup ever starts.
   s.start("ワークスペースパッケージをビルド中...");
   try {
-    await execa("npx", ["pnpm", "-r", "build"], { cwd: homeDir });
+    await execa("npx", ["pnpm", "--filter", "./packages/*", "build"], {
+      cwd: homeDir,
+    });
     s.stop("ビルド完了");
   } catch (error: any) {
     s.stop("ビルド失敗");
     throw new Error(
-      `pnpm -r build に失敗しました: ${error.stderr || error.message}`,
+      `パッケージのビルドに失敗しました: ${error.stderr || error.message}`,
     );
   }
 
