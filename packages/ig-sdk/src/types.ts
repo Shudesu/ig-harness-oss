@@ -205,3 +205,29 @@ export interface RichMessageContext {
   rewardUrl?: string | null;
   followerUsername?: string | null;
 }
+
+// ── Content Publishing ──
+export interface CreateContainerParams {
+  imageUrl?: string;
+  videoUrl?: string;
+  /**
+   * REELS = feed video (single video feed posts are reels on this API),
+   * STORIES = story, CAROUSEL = carousel parent,
+   * VIDEO = video child inside a carousel.
+   */
+  mediaType?: 'REELS' | 'STORIES' | 'CAROUSEL' | 'VIDEO';
+  caption?: string;
+  children?: string[];
+  isCarouselItem?: boolean;
+}
+
+export interface ContainerStatus {
+  id: string;
+  status_code: 'EXPIRED' | 'ERROR' | 'FINISHED' | 'IN_PROGRESS' | 'PUBLISHED';
+  status?: string;
+}
+
+export interface PublishingLimit {
+  quota_usage: number;
+  config?: { quota_total: number; quota_duration: number };
+}

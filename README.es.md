@@ -105,6 +105,9 @@ Tiempo estimado: ~5 minutos. Al finalizar, el panel (`https://<your-name>-admin.
 ### Soporte para app iOS
 - **`GET /api/capabilities`** — Endpoint de negociación de compatibilidad con la app iOS oficial (the-harness-ios).
 
+### Publicación de contenido
+- **Publicación de contenido** — imágenes de feed, carruseles, reels e historias (inmediata o programada)
+
 ---
 
 ## Arquitectura

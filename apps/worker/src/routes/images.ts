@@ -45,16 +45,31 @@ images.post('/api/images', async (c) => {
       mimeType = contentType.split(';')[0] || 'image/png';
     }
 
-    if (data.byteLength > 5 * 1024 * 1024) {
-      return c.json({ success: false, error: 'Image too large (max 5MB)' }, 400);
+    const allowedImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+    const allowedVideoTypes = ['video/mp4', 'video/quicktime'];
+    const isVideo = allowedVideoTypes.includes(mimeType);
+    if (!allowedImageTypes.includes(mimeType) && !isVideo) {
+      return c.json(
+        {
+          success: false,
+          error: `Unsupported media type: ${mimeType}. Allowed: ${[...allowedImageTypes, ...allowedVideoTypes].join(', ')}`,
+        },
+        400,
+      );
     }
 
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(mimeType)) {
-      return c.json({ success: false, error: `Unsupported image type: ${mimeType}. Allowed: ${allowedTypes.join(', ')}` }, 400);
+    // Videos (reels / video stories) are allowed up to 100MB — the Workers
+    // request body limit. Larger files must be hosted externally.
+    const maxBytes = isVideo ? 100 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (data.byteLength > maxBytes) {
+      return c.json(
+        { success: false, error: `File too large (max ${isVideo ? '100MB' : '5MB'})` },
+        400,
+      );
     }
 
-    const ext = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1];
+    const subtype = mimeType.split('/')[1];
+    const ext = subtype === 'jpeg' ? 'jpg' : subtype === 'quicktime' ? 'mov' : subtype;
     const id = crypto.randomUUID();
     const key = `${id}.${ext}`;
 
@@ -215,21 +230,91 @@ images.get('/images/profile-pics/:igsid', async (c) => {
   }
 });
 
+/**
+ * Parse a "Range: bytes=start-end" header against a known total size.
+ * Supports suffix ranges ("bytes=-500") and open-ended ranges
+ * ("bytes=500-"). Returns null when the header is malformed or the range
+ * is unsatisfiable for the given size (caller responds 416).
+ */
+export function parseByteRange(
+  header: string,
+  size: number,
+): { start: number; end: number } | null {
+  const match = header.match(/^bytes=(\d*)-(\d*)$/);
+  if (!match) return null;
+  const [, startStr, endStr] = match;
+  if (startStr === '' && endStr === '') return null;
+
+  let start: number;
+  let end: number;
+  if (startStr === '') {
+    // Suffix range: last N bytes.
+    const suffixLength = Number(endStr);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) return null;
+    start = Math.max(size - suffixLength, 0);
+    end = size - 1;
+  } else {
+    start = Number(startStr);
+    end = endStr === '' ? size - 1 : Number(endStr);
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= size) {
+    return null;
+  }
+  return { start, end: Math.min(end, size - 1) };
+}
+
 // GET /images/:key — serve image (public, no auth)
+// Always sets Content-Length + Accept-Ranges, and supports byte-range
+// requests: Meta's video fetcher probes hosted files (used for reels/video
+// stories) with range/length semantics before ingesting them.
 images.get('/images/:key', async (c) => {
   const key = c.req.param('key');
-  const object = await c.env.IMAGES.get(key);
+  const rangeHeader = c.req.header('Range');
 
+  if (!rangeHeader) {
+    const object = await c.env.IMAGES.get(key);
+    if (!object) {
+      return c.json({ success: false, error: 'Image not found' }, 404);
+    }
+    const headers = new Headers();
+    headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png');
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+    headers.set('ETag', object.etag);
+    headers.set('Content-Length', String(object.size));
+    headers.set('Accept-Ranges', 'bytes');
+    return new Response(object.body, { headers });
+  }
+
+  // Ranged request — need the full object size first; a ranged R2 get
+  // still reports object.size as the FULL size, not the slice, so the
+  // slice length must be computed from the parsed range.
+  const head = await c.env.IMAGES.head(key);
+  if (!head) {
+    return c.json({ success: false, error: 'Image not found' }, 404);
+  }
+  const total = head.size;
+  const range = parseByteRange(rangeHeader, total);
+  if (!range) {
+    const headers = new Headers();
+    headers.set('Content-Range', `bytes */${total}`);
+    return new Response(null, { status: 416, headers });
+  }
+
+  const { start, end } = range;
+  const length = end - start + 1;
+  const object = await c.env.IMAGES.get(key, { range: { offset: start, length } });
   if (!object) {
     return c.json({ success: false, error: 'Image not found' }, 404);
   }
-
   const headers = new Headers();
   headers.set('Content-Type', object.httpMetadata?.contentType || 'image/png');
   headers.set('Cache-Control', 'public, max-age=31536000, immutable');
   headers.set('ETag', object.etag);
-
-  return new Response(object.body, { headers });
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
+  headers.set('Content-Length', String(length));
+  return new Response(object.body, { status: 206, headers });
 });
 
 // DELETE /api/images/:key — delete image

@@ -10,6 +10,9 @@ import type {
   RichMessageBlock,
   CardBlock,
   RichMessageContext,
+  CreateContainerParams,
+  ContainerStatus,
+  PublishingLimit,
 } from "./types.js";
 
 const GRAPH_API_BASE = "https://graph.instagram.com/v21.0";
@@ -287,5 +290,43 @@ export class InstagramClient {
       if (i < blocks.length - 1) await new Promise((r) => setTimeout(r, 800));
     }
     return { sentBlocks: sent };
+  }
+
+  /**
+   * Create a media container (step 1 of Content Publishing).
+   * POST /{ig-user-id}/media — params go in the query string (Graph API style,
+   * same as postCommentToMedia).
+   */
+  async createMediaContainer(params: CreateContainerParams): Promise<{ id: string }> {
+    const qs = new URLSearchParams();
+    if (params.imageUrl) qs.set('image_url', params.imageUrl);
+    if (params.videoUrl) qs.set('video_url', params.videoUrl);
+    if (params.mediaType) qs.set('media_type', params.mediaType);
+    if (params.caption) qs.set('caption', params.caption);
+    if (params.children && params.children.length > 0) {
+      qs.set('children', params.children.join(','));
+    }
+    if (params.isCarouselItem) qs.set('is_carousel_item', 'true');
+    return this.request('POST', `/${this.igUserId}/media?${qs.toString()}`);
+  }
+
+  /** Check container processing status (videos are processed asynchronously). */
+  async getContainerStatus(creationId: string): Promise<ContainerStatus> {
+    return this.request('GET', `/${creationId}?fields=status_code,status`);
+  }
+
+  /** Publish a FINISHED container (step 2 of Content Publishing). */
+  async publishMedia(creationId: string): Promise<{ id: string }> {
+    const qs = new URLSearchParams({ creation_id: creationId });
+    return this.request('POST', `/${this.igUserId}/media_publish?${qs.toString()}`);
+  }
+
+  /** Content publishing rate limit (100 posts per 24h rolling window). */
+  async getPublishingLimit(): Promise<PublishingLimit> {
+    const res = await this.request<{ data?: PublishingLimit[] }>(
+      'GET',
+      `/${this.igUserId}/content_publishing_limit?fields=quota_usage,config`,
+    );
+    return res.data?.[0] ?? { quota_usage: 0 };
   }
 }

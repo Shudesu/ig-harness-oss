@@ -105,6 +105,9 @@ Setup time: ~5 minutes. Once complete, your admin dashboard (`https://<your-name
 ### iOS App Support
 - **`GET /api/capabilities`** — Compatibility endpoint for the iOS app (the-harness-ios).
 
+### Content Publishing
+- **Content publishing** — feed images, carousels, reels, and stories (immediate or scheduled)
+
 ---
 
 ## Architecture

@@ -486,6 +486,85 @@ export const imagesApi = {
   },
 }
 
+// ── Media Posts (feed_image / carousel / reel / story scheduling) ──
+
+export type MediaPostType = 'feed_image' | 'carousel' | 'reel' | 'story'
+export type MediaPostStatus = 'scheduled' | 'processing' | 'published' | 'failed' | 'canceled'
+
+export interface MediaPostMediaItem {
+  url: string
+  type: 'image' | 'video'
+}
+
+export interface MediaPostApi {
+  id: string
+  accountId: string
+  postType: MediaPostType
+  media: MediaPostMediaItem[]
+  caption: string | null
+  status: MediaPostStatus
+  scheduledAt: string
+  creationId: string | null
+  publishedMediaId: string | null
+  attemptCount: number
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const mediaPostsApi = {
+  list: async (status?: MediaPostStatus): Promise<MediaPostApi[]> => {
+    const qs = status ? `?status=${status}` : ''
+    const res = await fetchApi<ApiResponse<MediaPostApi[]>>(`/api/media-posts${qs}`)
+    return res.data ?? []
+  },
+  create: async (input: {
+    postType: MediaPostType
+    media: MediaPostMediaItem[]
+    caption?: string
+    scheduledAt?: string
+  }): Promise<MediaPostApi> => {
+    const res = await fetchApi<ApiResponse<MediaPostApi>>('/api/media-posts', {
+      method: 'POST',
+      body: JSON.stringify({
+        post_type: input.postType,
+        media: input.media,
+        caption: input.caption,
+        scheduled_at: input.scheduledAt,
+      }),
+    })
+    if (!res.data) throw new Error(res.error || '投稿の作成に失敗しました')
+    return res.data
+  },
+  cancel: async (id: string): Promise<void> => {
+    await fetchApi<ApiResponse<null>>(`/api/media-posts/${id}`, { method: 'DELETE' })
+  },
+  publishNow: async (id: string): Promise<MediaPostApi> => {
+    const res = await fetchApi<ApiResponse<MediaPostApi>>(`/api/media-posts/${id}/publish-now`, {
+      method: 'POST',
+    })
+    if (!res.data) throw new Error(res.error || '公開に失敗しました')
+    return res.data
+  },
+  publishingLimit: async (): Promise<{ quotaUsage: number; quotaTotal: number }> => {
+    const res = await fetchApi<ApiResponse<{ quotaUsage: number; quotaTotal: number }>>(
+      '/api/media-posts/publishing-limit',
+    )
+    if (!res.data) throw new Error(res.error || '投稿枠の取得に失敗しました')
+    return res.data
+  },
+  /** Binary upload (images AND videos) to /api/images — returns the public URL. */
+  uploadMedia: async (file: File): Promise<{ url: string; key: string }> => {
+    const res = await fetchApi<ApiResponse<{ url: string; key: string }>>('/api/images', {
+      method: 'POST',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    })
+    if (!res.data) throw new Error(res.error || 'アップロードに失敗しました')
+    return res.data
+  },
+}
+
 /** Shape returned by GET /api/engagement-gates/:id — analytics is guaranteed present. */
 export type EngagementGateWithAnalytics = EngagementGate & { analytics: GateAnalytics }
 

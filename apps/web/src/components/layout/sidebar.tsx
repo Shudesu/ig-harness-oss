@@ -33,6 +33,11 @@ const menuItems = [
     icon: 'M13 10V3L4 14h7v7l9-11h-7z',
   },
   {
+    href: '/posts',
+    label: '投稿',
+    icon: 'M12 4v16m8-8H4',
+  },
+  {
     href: '/rich-messages',
     label: 'DMテンプレート',
     icon: 'M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z',

@@ -15,6 +15,7 @@ import { LineConnectionsResource } from './resources/line-connections.js'
 import { RichMessagesResource } from './resources/rich-messages.js'
 import { PostsResource } from './resources/posts.js'
 import { AdPlatformsResource } from './resources/ad-platforms.js'
+import { MediaPostsResource } from './resources/media-posts.js'
 import type { InstagramHarnessConfig } from './types.js'
 
 export class InstagramHarness {
@@ -34,6 +35,7 @@ export class InstagramHarness {
   readonly richMessages: RichMessagesResource
   readonly posts: PostsResource
   readonly adPlatforms: AdPlatformsResource
+  readonly mediaPosts: MediaPostsResource
 
   constructor(config: InstagramHarnessConfig) {
     const apiUrl = config.apiUrl.replace(/\/$/, '')
@@ -61,5 +63,6 @@ export class InstagramHarness {
     this.richMessages = new RichMessagesResource(http)
     this.posts = new PostsResource(http)
     this.adPlatforms = new AdPlatformsResource(http)
+    this.mediaPosts = new MediaPostsResource(http)
   }
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.12.0] - 2026-07-23
+
+### Added
+- コンテンツ投稿機能: フィード画像 / カルーセル / リール / ストーリーの即時・予約投稿
+  - `media_posts` テーブル + 5分毎 cron の統一ステートマシン(scheduled → processing → published/failed)
+  - API: `POST/GET /api/media-posts`, `DELETE /:id`, `POST /:id/publish-now`, `GET /publishing-limit`
+  - SDK: `client.mediaPosts`(create/list/get/cancel/publishNow/publishingLimit)
+  - MCP: `create_media_post` / `manage_media_posts`
+  - admin UI: `/posts` ページ(アップロード → プレビュー → 即時/予約)
+  - `/api/images` が動画(mp4/mov, 100MB まで)を受理
+- 注意: トークンに `instagram_business_content_publish` スコープが必要
+
 ## [0.11.2] - 2026-07-22
 
 ### Fixed

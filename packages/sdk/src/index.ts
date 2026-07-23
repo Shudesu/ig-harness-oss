@@ -17,6 +17,7 @@ export { ImagesResource } from './resources/images.js'
 export { EngagementGatesResource } from './resources/engagement-gates.js'
 export { LineConnectionsResource } from './resources/line-connections.js'
 export { AdPlatformsResource } from './resources/ad-platforms.js'
+export { MediaPostsResource } from './resources/media-posts.js'
 
 // All types
 export type {
@@ -93,4 +94,10 @@ export type {
   UpdateLineConnectionInput,
   LineHarnessTrackedLink,
   LineHarnessPool,
+  MediaPostType,
+  MediaPostStatus,
+  MediaPostMediaItem,
+  MediaPost,
+  CreateMediaPostInput,
+  PublishingLimitInfo,
 } from './types.js'

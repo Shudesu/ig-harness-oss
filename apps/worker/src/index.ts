@@ -25,6 +25,8 @@ import { integrations } from './routes/integrations.js';
 import { lineConnections } from './routes/line-connections.js';
 import { accounts } from './routes/accounts.js';
 import { capabilities } from './routes/capabilities.js';
+import { mediaPosts } from './routes/media-posts.js';
+import { processMediaPosts } from './services/media-publish.js';
 import { ensureDefaultAccount, getAccountClient, toIgAccountRef } from './lib/accounts.js';
 import { recordCronRun, recordTokenValidity } from './lib/health.js';
 
@@ -83,6 +85,7 @@ app.route('/', integrations);
 app.route('/', lineConnections);
 app.route('/', accounts);
 app.route('/', capabilities);
+app.route('/', mediaPosts);
 
 // LINE Harness UUID linkage endpoint
 app.get('/connect', (c) => {
@@ -297,11 +300,12 @@ async function scheduled(
         .catch(() => recordTokenValidity(env.DB, account.id, false).catch(() => {})),
     );
     const ref = toIgAccountRef(account);
-    const taskNames = ['processStepDeliveries', 'processScheduledBroadcasts', 'processFollowupDrip'] as const;
+    const taskNames = ['processStepDeliveries', 'processScheduledBroadcasts', 'processFollowupDrip', 'processMediaPosts'] as const;
     const results = await Promise.allSettled([
       processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id),
       processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL, account.id),
       processFollowupDrip(env.DB, igClient, env.WORKER_URL, undefined, ref, account.id),
+      processMediaPosts(env.DB, igClient, account.id),
     ]);
     results.forEach((result, i) => {
       if (result.status === 'rejected') {

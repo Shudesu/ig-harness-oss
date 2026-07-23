@@ -1,6 +1,6 @@
 {
   "name": "@ig-harness/mcp-server",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "description": "MCP server for IG Harness — operate an Instagram account from AI agents over MCP",
   "type": "module",
   "bin": {

@@ -817,3 +817,41 @@ export interface LineHarnessPool {
   slug: string
   name: string
 }
+
+// ─── Media Post ─────────────────────────────────────────
+export type MediaPostType = 'feed_image' | 'carousel' | 'reel' | 'story'
+export type MediaPostStatus = 'scheduled' | 'processing' | 'published' | 'failed' | 'canceled'
+
+export interface MediaPostMediaItem {
+  url: string
+  type: 'image' | 'video'
+}
+
+export interface MediaPost {
+  id: string
+  accountId: string
+  postType: MediaPostType
+  media: MediaPostMediaItem[]
+  caption: string | null
+  status: MediaPostStatus
+  scheduledAt: string
+  creationId: string | null
+  publishedMediaId: string | null
+  attemptCount: number
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateMediaPostInput {
+  postType: MediaPostType
+  media: MediaPostMediaItem[]
+  caption?: string
+  /** ISO 8601。省略で即時投稿 */
+  scheduledAt?: string
+}
+
+export interface PublishingLimitInfo {
+  quotaUsage: number
+  quotaTotal: number
+}

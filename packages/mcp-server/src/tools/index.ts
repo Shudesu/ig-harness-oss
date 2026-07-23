@@ -26,6 +26,8 @@ import { registerManageLineConnections } from "./manage-line-connections.js";
 import { registerManageRichMessages } from "./manage-rich-messages.js";
 import { registerListRecentReels } from "./list-recent-reels.js";
 import { registerBulkApplyGatesToReels } from "./bulk-apply-gates.js";
+import { registerCreateMediaPost } from "./create-media-post.js";
+import { registerManageMediaPosts } from "./manage-media-posts.js";
 
 export function registerAllTools(server: McpServer): void {
   registerSendDm(server);
@@ -55,4 +57,6 @@ export function registerAllTools(server: McpServer): void {
   registerManageRichMessages(server);
   registerListRecentReels(server);
   registerBulkApplyGatesToReels(server);
+  registerCreateMediaPost(server);
+  registerManageMediaPosts(server);
 }
