@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   mediaPostsApi,
   type MediaPostApi,
@@ -30,6 +30,19 @@ function acceptForType(postType: MediaPostType): string {
   return 'image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime'
 }
 
+function pickerLabelForType(postType: MediaPostType): string {
+  if (postType === 'reel') return '動画を選択'
+  if (postType === 'carousel') return '画像・動画を選択(2〜10枚)'
+  if (postType === 'story') return '画像または動画を選択'
+  return '画像を選択'
+}
+
+function pickerHintForType(postType: MediaPostType): string {
+  if (postType === 'reel') return 'MP4 / MOV、100MBまで'
+  if (postType === 'feed_image') return 'PNG / JPG / GIF / WebP、5MBまで'
+  return '画像 5MBまで・動画 100MBまで(MP4/MOV)'
+}
+
 export default function PostsPage() {
   const [posts, setPosts] = useState<MediaPostApi[]>([])
   const [loading, setLoading] = useState(true)
@@ -38,6 +51,7 @@ export default function PostsPage() {
 
   // form state
   const [postType, setPostType] = useState<MediaPostType>('feed_image')
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [mediaItems, setMediaItems] = useState<MediaPostMediaItem[]>([])
   const [caption, setCaption] = useState('')
   const [mode, setMode] = useState<'now' | 'schedule'>('now')
@@ -174,13 +188,46 @@ export default function PostsPage() {
           </div>
 
           <input
+            ref={fileInputRef}
             type="file"
             accept={acceptForType(postType)}
             multiple={postType === 'carousel'}
-            onChange={(e) => void handleFiles(e.target.files)}
+            onChange={(e) => {
+              void handleFiles(e.target.files)
+              // allow re-selecting the same file after removal
+              e.target.value = ''
+            }}
             disabled={uploading}
+            style={{ display: 'none' }}
           />
-          {uploading && <p style={{ fontSize: 13 }}>アップロード中…</p>}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{
+              width: '100%',
+              padding: '20px 16px',
+              border: '2px dashed #D1D5DB',
+              borderRadius: 12,
+              background: '#FAFAFA',
+              color: '#374151',
+              fontSize: 14,
+              cursor: uploading ? 'default' : 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+              opacity: uploading ? 0.7 : 1,
+            }}
+          >
+            <span style={{ fontSize: 22 }} aria-hidden="true">{uploading ? '⏳' : '📁'}</span>
+            <span style={{ fontWeight: 600 }}>
+              {uploading ? 'アップロード中…' : pickerLabelForType(postType)}
+            </span>
+            {!uploading && (
+              <span style={{ fontSize: 12, color: '#9CA3AF' }}>{pickerHintForType(postType)}</span>
+            )}
+          </button>
 
           {mediaItems.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '12px 0' }}>
