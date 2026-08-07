@@ -162,6 +162,11 @@ async function handleMessagingEvent(
   igAccount?: IgAccountRef,
   accountId?: string,
 ): Promise<void> {
+  // Some IG messaging entries (read receipts, reactions, and other event types) arrive
+  // without a `sender`. Accessing event.sender.id on those throws
+  // "Cannot read properties of undefined (reading 'id')" and aborts the whole entry, so
+  // the real text message batched in the same entry never gets processed. Skip them.
+  if (!event?.sender?.id) return;
   const senderId = event.sender.id;
 
   // Skip echo messages (our own outgoing messages)
