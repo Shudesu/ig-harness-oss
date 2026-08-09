@@ -22,6 +22,7 @@ import type { IgAccountRef } from '../services/line-cross-link.js';
 import { listIgAccounts } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import { recordWebhookReceived } from '../lib/health.js';
+import { forwardLinkedInstagramEngagement } from '../services/line-mileage.js';
 import type { Env } from '../index.js';
 
 export type PostbackPayload =
@@ -140,7 +141,10 @@ webhook.post('/webhook', async (c) => {
             if (change.field === 'comments') {
               await handleCommentEvent(db, igClient, change.value, account.ig_user_id, c.env.WORKER_URL, igAccount, account.id);
             } else if (change.field === 'mentions') {
-              await handleMentionEvent(db, igClient, change.value, igAccount, account.id);
+              await handleMentionEvent(
+                db, igClient, change.value, igAccount, account.id,
+                `${entry.id}:${entry.time}:${change.value.media_id ?? change.value.comment_id ?? 'mention'}`,
+              );
             }
           } catch (err) {
             console.error('Error handling change event:', err);
@@ -185,6 +189,20 @@ async function handleMessagingEvent(
     isVerified: profile?.is_verified_user ?? false,
     accountId,
   });
+
+  const inboundId = event.message?.mid ?? event.postback?.mid;
+  if (inboundId) {
+    await forwardLinkedInstagramEngagement(db, {
+      followerId: follower.id,
+      eventType: 'instagram_dm_received',
+      sourceEventId: `${accountId ?? 'default'}:${inboundId}`,
+      subjectKey: accountId ?? 'default',
+      metadata: {
+        accountId: accountId ?? null,
+        kind: event.postback ? 'postback' : event.message?.attachments?.length ? 'attachment' : 'text',
+      },
+    });
+  }
 
   if (event.message?.text) {
     const incomingText = event.message.text;
@@ -376,6 +394,14 @@ async function handleCommentEvent(
     accountId,
   });
 
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_comment_created',
+    sourceEventId: `${accountId ?? 'default'}:${value.id}`,
+    subjectKey: mediaId,
+    metadata: { accountId: accountId ?? null, mediaId },
+  });
+
   // Engagement gate trigger — runs FIRST so a configured gate takes precedence
   // over the legacy comment-rule flow. If a gate fires, we skip the rule loop
   // and the gate-triggered scenarios below to avoid double DMs.
@@ -549,6 +575,7 @@ async function handleMentionEvent(
   value: { media_id?: string; comment_id?: string; mentioned_user_id?: string },
   igAccount?: IgAccountRef,
   accountId?: string,
+  sourceEventId?: string,
 ): Promise<void> {
   // When someone mentions us in their story, send them a DM
   const mentionerId = (value as any).from?.id ?? (value as any).mentioned_user_id;
@@ -563,6 +590,14 @@ async function handleMentionEvent(
     displayName: null,
     pictureUrl: null,
     accountId,
+  });
+
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_story_mentioned',
+    sourceEventId: sourceEventId ?? `${accountId ?? 'default'}:${mentionerId}:${value.media_id ?? 'mention'}`,
+    subjectKey: value.media_id ?? accountId ?? 'default',
+    metadata: { accountId: accountId ?? null, mediaId: value.media_id ?? null },
   });
 
   // Engagement gate trigger (story_mention) — fires before the legacy thank-you DM
