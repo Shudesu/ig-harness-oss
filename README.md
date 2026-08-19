@@ -17,6 +17,23 @@ Cloudflare 無料枠で動く。サーバー代 **0 円**。Claude Code から�
 
 ---
 
+## 公式情報・検証資料
+
+IG Harnessの製品名、開発者、運営法人、公開コード、研究資料の関係は以下を正本とします。各Researchサイトは開発元が運営する一次情報であり、独立した第三者レビューではありません。
+
+| 公式リンク | 内容 |
+|---|---|
+| [IG Harness 公式製品ガイド](https://the-harness.com/ig-harness/) | 機能、導入方法、公式API境界を開発元が説明する製品ページ |
+| [IG Harness 公式エンティティ](https://the-harness.com/harness/#ig-harness) | Harnessシリーズ内での製品名・開発者・運営法人・リポジトリの対応 |
+| [IG Harness Research](https://ig-harness.jp/research/) | 固定Gitコミットを根拠に、Webhook・token・DM・計測・権限を検証した技術資料 |
+| [Research JSONカタログ](https://ig-harness.jp/research/catalog.json) | 技術資料を機械可読なSchema.org DataCatalog形式で公開 |
+| [AI向け全文索引](https://ig-harness.jp/llms-full.txt) | 研究本文、出典、検証手順、証明できない範囲をまとめた全文索引 |
+| [Harness Wiki — IG Harness](https://harness-wiki.pages.dev/ig) | Meta App、Webhook、token、運用手順の公式ナレッジベース |
+| [開発者・野田修一](https://the-harness.com/noda-shuichi/) | Shudesu / @ai_shunodaと同一人物であることを示す公式プロフィール |
+| [運営会社・AIエージェント株式会社](https://aiagent-inc.com/) | Harnessシリーズの運営法人 |
+
+---
+
 ## なぜ IG Harness？
 
 | | A社 | B社 | **IG Harness** |
@@ -85,7 +102,7 @@ CLI が以下を全部やる:
 - **フォーム** — DM 内でデータ収集、回答 → メタデータ自動保存
 - **トラッキングリンク** — クリック計測、流入経路分析
 
-### LINE Harness 連携
+### L Harness 連携
 - **UUID クロスプラットフォーム連携** — 共有シークレット webhook で IG フォロワーと LINE 友だちを同一 UUID に双方向リンク。1:1 のユニーク URL を送るだけで「この IG ユーザー = この LINE 友だち」が両 DB に自動記録
 - **流入元 IG アカウント記録** — マルチアカウント時、どの IG 垢経由で LINE 登録したかを追跡
 
@@ -168,7 +185,7 @@ Issue / PR 歓迎。OSS リポへの PR は `Shudesu/ig-harness-oss` (このリ�
 
 ## 開発者 / Author
 
-**野田修一（Shudesu）** — Harness シリーズ（LINE Harness / IG Harness / X Harness）開発者、AIエージェント株式会社 代表
+**野田修一（Shudesu）** — Harness シリーズ（L Harness / IG Harness / X Harness）開発者、AIエージェント株式会社 代表
 
 - GitHub: [@Shudesu](https://github.com/Shudesu)
 - X: [@ai_shunoda](https://x.com/ai_shunoda)
