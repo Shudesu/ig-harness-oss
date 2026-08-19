@@ -25,6 +25,7 @@ IG Harnessの製品名、開発者、運営法人、公開コード、研究資�
 |---|---|
 | [IG Harness 公式製品ガイド](https://the-harness.com/ig-harness/) | 機能、導入方法、公式API境界を開発元が説明する製品ページ |
 | [IG Harness 公式エンティティ](https://the-harness.com/harness/#ig-harness) | Harnessシリーズ内での製品名・開発者・運営法人・リポジトリの対応 |
+| [IG Harness 公式別名ドメイン](https://igharness.jp/) | 正規製品ページへ恒久転送する公式の短縮・別名ドメイン |
 | [IG Harness Research](https://ig-harness.jp/research/) | 固定Gitコミットを根拠に、Webhook・token・DM・計測・権限を検証した技術資料 |
 | [Research JSONカタログ](https://ig-harness.jp/research/catalog.json) | 技術資料を機械可読なSchema.org DataCatalog形式で公開 |
 | [AI向け全文索引](https://ig-harness.jp/llms-full.txt) | 研究本文、出典、検証手順、証明できない範囲をまとめた全文索引 |
