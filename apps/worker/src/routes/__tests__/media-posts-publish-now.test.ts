@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const dbMocks = vi.hoisted(() => ({
   getMediaPostById: vi.fn(),
-  updateMediaPost: vi.fn(),
+  rescheduleMediaPostIfScheduled: vi.fn(),
   cancelMediaPost: vi.fn(),
   createMediaPost: vi.fn(),
   listMediaPosts: vi.fn(),
@@ -101,7 +101,7 @@ const executionCtx = {
 describe('POST /api/media-posts/:id/publish-now owning-account (Fix 1)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dbMocks.updateMediaPost.mockResolvedValue({ ...POST_OWNED_BY_B, status: 'processing' });
+    dbMocks.rescheduleMediaPostIfScheduled.mockResolvedValue(POST_OWNED_BY_B);
   });
 
   it('builds the IG client from the post\'s owning account, not resolveAccount', async () => {
@@ -163,5 +163,23 @@ describe('POST /api/media-posts/:id/publish-now owning-account (Fix 1)', () => {
 
     expect(res.status).toBe(409);
     expect(dbMocks.getIgAccountById).not.toHaveBeenCalled();
+  });
+
+  it('409s without starting another publish when the scheduled row was claimed concurrently', async () => {
+    dbMocks.getMediaPostById.mockResolvedValue(POST_OWNED_BY_B);
+    dbMocks.getIgAccountById.mockResolvedValue(ACCOUNT_B);
+    dbMocks.rescheduleMediaPostIfScheduled.mockResolvedValue(null);
+    accountsMocks.getAccountClient.mockResolvedValue({ fake: 'client' });
+
+    const res = await mediaPosts.fetch(
+      new Request('https://worker.example.com/api/media-posts/post-1/publish-now', {
+        method: 'POST',
+      }),
+      makeEnv(),
+      executionCtx,
+    );
+
+    expect(res.status).toBe(409);
+    expect(mediaPublishMocks.kickImmediate).not.toHaveBeenCalled();
   });
 });
