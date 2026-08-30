@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- ストーリーメンションをMessaging APIの`STORY_MENTION` referralおよび
+  `story_mention`添付から検出し、必要な`messaging_referral`購読を
+  セットアップ手順へ追加
+
 ## [0.12.0] - 2026-07-23
 
 ### Added

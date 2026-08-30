@@ -39,6 +39,14 @@ export function parsePostbackPayload(raw: string): PostbackPayload {
   return { kind: 'unknown' };
 }
 
+export function isStoryMentionMessagingEvent(event: MessagingEvent): boolean {
+  const referralSource = event.referral?.source?.toUpperCase();
+  const referralRef = event.referral?.ref?.toUpperCase();
+  return referralSource === 'STORY_MENTION'
+    || referralRef === 'STORY_MENTION'
+    || event.message?.attachments?.some((attachment) => attachment.type === 'story_mention') === true;
+}
+
 const webhook = new Hono<Env>();
 
 // GET /webhook — Meta verification challenge
@@ -140,7 +148,9 @@ webhook.post('/webhook', async (c) => {
             if (change.field === 'comments') {
               await handleCommentEvent(db, igClient, change.value, account.ig_user_id, c.env.WORKER_URL, igAccount, account.id);
             } else if (change.field === 'mentions') {
-              await handleMentionEvent(db, igClient, change.value, igAccount, account.id);
+              console.info(
+                '[mention] feed/comment mention ignored; story mentions arrive as messaging events',
+              );
             }
           } catch (err) {
             console.error('Error handling change event:', err);
@@ -185,6 +195,19 @@ async function handleMessagingEvent(
     isVerified: profile?.is_verified_user ?? false,
     accountId,
   });
+
+  if (isStoryMentionMessagingEvent(event)) {
+    await handleStoryMentionEvent(
+      db,
+      igClient,
+      follower.id,
+      senderId,
+      profile?.username ?? 'friend',
+      igAccount,
+      accountId,
+    );
+    return;
+  }
 
   if (event.message?.text) {
     const incomingText = event.message.text;
@@ -542,34 +565,21 @@ async function sendIgResponse(
   }
 }
 
-// ── Story/Post Mention Handler ──
-async function handleMentionEvent(
+// ── Story Mention Handler ──
+async function handleStoryMentionEvent(
   db: D1Database,
   igClient: InstagramClient,
-  value: { media_id?: string; comment_id?: string; mentioned_user_id?: string },
+  followerId: number,
+  mentionerId: string,
+  mentionerUsername: string,
   igAccount?: IgAccountRef,
   accountId?: string,
 ): Promise<void> {
-  // When someone mentions us in their story, send them a DM
-  const mentionerId = (value as any).from?.id ?? (value as any).mentioned_user_id;
-  if (!mentionerId) return;
-
-  const mentionerUsername = (value as any).from?.username ?? 'friend';
-
-  // Upsert follower
-  const follower = await upsertFriend(db, {
-    igsid: mentionerId,
-    username: mentionerUsername,
-    displayName: null,
-    pictureUrl: null,
-    accountId,
-  });
-
   // Engagement gate trigger (story_mention) — fires before the legacy thank-you DM
   // so a configured campaign takes precedence over the hard-coded reply.
   try {
     const triggered = await triggerGateForStoryMention(db, igClient, {
-      follower: { id: follower.id, igsid: mentionerId },
+      follower: { id: followerId, igsid: mentionerId },
       igAccount,
       accountId,
     });
@@ -590,7 +600,7 @@ async function handleMentionEvent(
         `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
          VALUES (?, 'out', 'text', ?, 'manual')`,
       )
-      .bind(follower.id, JSON.stringify({ text: `ストーリーズメンション自動返信 to @${mentionerUsername}` }))
+      .bind(followerId, JSON.stringify({ text: `ストーリーズメンション自動返信 to @${mentionerUsername}` }))
       .run();
   } catch (err) {
     console.error('Mention DM failed:', err);
