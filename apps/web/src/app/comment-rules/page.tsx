@@ -121,7 +121,8 @@ interface FormState {
   /** Remembered so the toggle can restore the user's previous choice. */
   previousMatchType: Exclude<MatchType, 'any_comment'>
   responseType: ResponseType
-  responseText: string
+  replyText: string
+  dmResponseText: string
   delaySeconds: number
   isActive: boolean
 }
@@ -133,7 +134,8 @@ const DEFAULT_FORM: FormState = {
   matchType: 'contains',
   previousMatchType: 'contains',
   responseType: 'text',
-  responseText: '',
+  replyText: '',
+  dmResponseText: '',
   delaySeconds: 0,
   isActive: true,
 }
@@ -186,7 +188,10 @@ export default function CommentRulesPage() {
           ? 'contains'
           : (rule.matchType as Exclude<MatchType, 'any_comment'>),
       responseType: rule.responseType,
-      responseText: (rule.responseBody as { text?: string }).text || '',
+      replyText: rule.replyText || '',
+      dmResponseText: rule.responseType === 'image'
+        ? (rule.responseBody as { url?: string }).url || ''
+        : (rule.responseBody as { text?: string }).text || '',
       delaySeconds: rule.delaySeconds,
       isActive: rule.isActive,
     })
@@ -205,6 +210,10 @@ export default function CommentRulesPage() {
       setFormError('キーワードを入力するか、「すべてのコメントに反応」を ON にしてください')
       return
     }
+    if (!form.dmResponseText.trim()) {
+      setFormError(form.responseType === 'image' ? 'DMで送る画像URLを入力してください' : 'DMで送るテキストを入力してください')
+      return
+    }
     setSaving(true)
     setFormError('')
 
@@ -212,14 +221,14 @@ export default function CommentRulesPage() {
     let responseBody: Record<string, unknown>
     switch (form.responseType) {
       case 'text':
-        responseBody = { text: form.responseText }
+        responseBody = { text: form.dmResponseText }
         break
       case 'image':
-        responseBody = { url: form.responseText }
+        responseBody = { url: form.dmResponseText }
         break
       default:
         // template / quick_reply: store raw text as placeholder
-        responseBody = { text: form.responseText }
+        responseBody = { text: form.dmResponseText }
     }
 
     const payload: Omit<CommentRule, 'id' | 'createdAt' | 'updatedAt'> = {
@@ -229,6 +238,7 @@ export default function CommentRulesPage() {
       matchType: form.matchType,
       responseType: form.responseType,
       responseBody,
+      replyText: form.replyText,
       delaySeconds: form.delaySeconds,
       isActive: form.isActive,
     }
@@ -383,6 +393,16 @@ export default function CommentRulesPage() {
               </div>
             )}
             <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">公開コメント返信 (省略可)</label>
+              <textarea
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+                rows={2}
+                placeholder="例: @{{username}} コメントありがとうございます"
+                value={form.replyText}
+                onChange={(e) => setForm({ ...form, replyText: e.target.value })}
+              />
+            </div>
+            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">レスポンスタイプ</label>
               <select
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
@@ -396,23 +416,23 @@ export default function CommentRulesPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">
-                {form.responseType === 'image' ? '画像URL' : '返信テキスト'}
+                {form.responseType === 'image' ? 'DMで送る画像URL' : 'DMで送るテキスト'}
               </label>
               {form.responseType === 'text' ? (
                 <textarea
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
                   rows={3}
-                  placeholder="自動返信するメッセージを入力"
-                  value={form.responseText}
-                  onChange={(e) => setForm({ ...form, responseText: e.target.value })}
+                  placeholder="DMで送信するメッセージを入力"
+                  value={form.dmResponseText}
+                  onChange={(e) => setForm({ ...form, dmResponseText: e.target.value })}
                 />
               ) : (
                 <input
                   type="url"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                   placeholder="https://example.com/image.jpg"
-                  value={form.responseText}
-                  onChange={(e) => setForm({ ...form, responseText: e.target.value })}
+                  value={form.dmResponseText}
+                  onChange={(e) => setForm({ ...form, dmResponseText: e.target.value })}
                 />
               )}
             </div>
