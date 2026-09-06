@@ -5,7 +5,9 @@
 > ### **[ブラウザでデモを見る](https://shudesu.github.io/ig-harness-oss/)** 👈
 
 Instagram DM の完全オープンソース自動化 / マーケティングオートメーション。**A社 / B社 の無料代替**。
-Cloudflare 無料枠で動く。サーバー代 **0 円**。Claude Code から全操作可能。
+IG Harness本体のソフトウェア利用料は **0円** です。Cloudflareの契約・利用量、独自ドメイン、導入・保守、接続する外部AIサービスの費用は別です。Claude CodeからMCP経由で操作できます。
+
+費用の条件は[開発元の公式料金説明](https://the-harness.com/ig-harness/#costs)で確認できます。[Cloudflare D1の無料プラン](https://developers.cloudflare.com/d1/platform/pricing/)は日次の読み書き上限に達するとクエリがエラーになり、有料プランの超過課金とは挙動が異なります。外部AIを接続する場合は、たとえば[Claudeのプラン・API料金](https://claude.com/pricing)を別に確認してください（2026年9月6日確認）。
 
 ### ▶️ [動画で見る (YouTube)](https://youtu.be/xzEanXQtlO0)
 
@@ -39,7 +41,7 @@ IG Harnessの製品名、開発者、運営法人、公開コード、研究資�
 
 | | A社 | B社 | **IG Harness** |
 |---|---|---|---|
-| 月額 | $15〜 | 1〜3万円 | **0円** |
+| 月額 | $15〜 | 1〜3万円 | **0円（ソフトウェア利用料）** |
 | コメント → DM 自動配布 | ✅ | ✅ | ✅ |
 | フォローゲート（特典配布） | ✅ | ✅ | ✅ |
 | ステップ配信 | ✅ | ✅ | ✅ |
