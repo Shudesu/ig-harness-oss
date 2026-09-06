@@ -14,6 +14,7 @@ interface CommentRuleRow {
   match_type: string;
   response_type: string;
   response_body: string;
+  reply_text: string | null;
   delay_seconds: number;
   is_active: number;
   created_at: string;
@@ -30,6 +31,7 @@ function serialize(row: CommentRuleRow) {
     matchType: row.match_type,
     responseType: row.response_type,
     responseBody: JSON.parse(row.response_body),
+    replyText: row.reply_text,
     delaySeconds: row.delay_seconds,
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
@@ -83,6 +85,7 @@ commentRules.post('/api/comment-rules', async (c) => {
       matchType?: string;
       responseType: string;
       responseBody: Record<string, unknown>;
+      replyText?: string | null;
       delaySeconds?: number;
     }>();
 
@@ -98,8 +101,8 @@ commentRules.post('/api/comment-rules', async (c) => {
 
     await c.env.DB
       .prepare(
-        `INSERT INTO comment_rules (id, name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, is_active, account_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        `INSERT INTO comment_rules (id, name, trigger_type, media_id, keyword, match_type, response_type, response_body, reply_text, delay_seconds, is_active, account_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       )
       .bind(
         id,
@@ -110,6 +113,7 @@ commentRules.post('/api/comment-rules', async (c) => {
         body.matchType || 'contains',
         body.responseType,
         JSON.stringify(body.responseBody),
+        body.replyText === undefined ? null : body.replyText?.trim() ?? '',
         body.delaySeconds || 0,
         account.id,
         now,
@@ -141,6 +145,7 @@ commentRules.put('/api/comment-rules/:id', async (c) => {
       matchType?: string;
       responseType?: string;
       responseBody?: Record<string, unknown>;
+      replyText?: string | null;
       delaySeconds?: number;
       isActive?: boolean;
     }>();
@@ -155,6 +160,7 @@ commentRules.put('/api/comment-rules/:id', async (c) => {
     if (body.matchType !== undefined) { fields.push('match_type = ?'); values.push(body.matchType); }
     if (body.responseType !== undefined) { fields.push('response_type = ?'); values.push(body.responseType); }
     if (body.responseBody !== undefined) { fields.push('response_body = ?'); values.push(JSON.stringify(body.responseBody)); }
+    if (body.replyText !== undefined) { fields.push('reply_text = ?'); values.push(body.replyText?.trim() ?? ''); }
     if (body.delaySeconds !== undefined) { fields.push('delay_seconds = ?'); values.push(body.delaySeconds); }
     if (body.isActive !== undefined) { fields.push('is_active = ?'); values.push(body.isActive ? 1 : 0); }
 

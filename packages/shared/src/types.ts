@@ -40,6 +40,7 @@ export interface CommentRule {
   matchType: MatchType;
   responseType: ResponseType;
   responseBody: Record<string, unknown>;
+  replyText: string | null;
   delaySeconds: number;
   isActive: boolean;
   createdAt: string;

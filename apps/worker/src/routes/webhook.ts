@@ -336,7 +336,7 @@ async function handleMessagingEvent(
   }
 }
 
-async function handleCommentEvent(
+export async function handleCommentEvent(
   db: D1Database,
   igClient: InstagramClient,
   value: { id: string; text: string; from: { id: string; username: string }; media: { id: string }; created_time: string },
@@ -404,6 +404,7 @@ async function handleCommentEvent(
         media_id: string | null;
         response_type: string;
         response_body: string;
+        reply_text: string | null;
         delay_seconds: number;
       }> }
     : await db
@@ -428,6 +429,7 @@ async function handleCommentEvent(
           media_id: string | null;
           response_type: string;
           response_body: string;
+          reply_text: string | null;
           delay_seconds: number;
         }>();
 
@@ -458,14 +460,18 @@ async function handleCommentEvent(
         await new Promise((resolve) => setTimeout(resolve, rule.delay_seconds * 1000));
       }
 
-      // Reply to the comment itself
-      try {
-        const replyText = (rule as any).reply_text
-          ? (rule as any).reply_text.replace('{{username}}', value.from.username)
-          : `@${value.from.username} コメントありがとう！📩 DMを送りました！`;
-        await igClient.replyToComment(value.id, replyText);
-      } catch (err) {
-        console.error('Comment reply failed:', err);
+      // Preserve the legacy fallback for existing NULL rows. The admin UI
+      // stores an empty string when the operator explicitly wants DM only.
+      const publicReply = rule.reply_text === null
+        ? `@${value.from.username} コメントありがとう！📩 DMを送りました！`
+        : rule.reply_text;
+      if (publicReply) {
+        try {
+          const replyText = publicReply.replace(/\{\{username\}\}/g, value.from.username);
+          await igClient.replyToComment(value.id, replyText);
+        } catch (err) {
+          console.error('Comment reply failed:', err);
+        }
       }
 
       // Send DM to commenter (expand variables in response body)
@@ -482,7 +488,7 @@ async function handleCommentEvent(
           `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
            VALUES (?, 'out', ?, ?, 'comment_rule')`,
         )
-        .bind(follower.id, rule.response_type, rule.response_body)
+        .bind(follower.id, rule.response_type, expandedBody)
         .run();
 
       break; // Only send first matching rule
