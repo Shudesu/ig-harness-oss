@@ -252,7 +252,7 @@ GET /webhook?hub.mode=subscribe&hub.verify_token=TOKEN&hub.challenge=CHALLENGE
 POST /webhook
 X-Hub-Signature-256: sha256=...
 ```
-Handles: `messages`, `messaging_postbacks`, `comments`, `mentions`
+Handles: `messages`, `messaging_postbacks`, `messaging_referral`, `comments`, `mentions`
 
 ---
 
