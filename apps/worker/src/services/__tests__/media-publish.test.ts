@@ -11,6 +11,9 @@ vi.mock('@ig-harness/db', async (importOriginal) => {
     getDueMediaPosts: vi.fn().mockResolvedValue([]),
     getProcessingMediaPosts: vi.fn().mockResolvedValue([]),
     getMediaPostById: vi.fn().mockResolvedValue(null),
+    claimScheduledMediaPost: vi.fn().mockResolvedValue(null),
+    claimProcessingMediaPost: vi.fn().mockResolvedValue(null),
+    recoverStalledMediaPostStarts: vi.fn().mockResolvedValue(0),
     updateMediaPost: vi.fn().mockResolvedValue(null),
   };
 });
@@ -19,6 +22,9 @@ import {
   getDueMediaPosts,
   getProcessingMediaPosts,
   getMediaPostById,
+  claimScheduledMediaPost,
+  claimProcessingMediaPost,
+  recoverStalledMediaPostStarts,
   updateMediaPost,
 } from '@ig-harness/db';
 import { processMediaPosts, kickImmediate } from '../media-publish.js';
@@ -57,6 +63,14 @@ function makeClient(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(claimScheduledMediaPost).mockImplementation(async (_db, id) =>
+    makePost({ id, status: 'processing' }) as any,
+  );
+  vi.mocked(claimProcessingMediaPost).mockImplementation(
+    async (_db, id, _expectedScheduledAt, leaseUntil) =>
+      makePost({ id, status: 'processing', creation_id: 'container-1', scheduled_at: leaseUntil }) as any,
+  );
+  vi.mocked(recoverStalledMediaPostStarts).mockResolvedValue(0);
 });
 
 describe('processMediaPosts — scheduled posts', () => {
@@ -122,7 +136,7 @@ describe('processMediaPosts — scheduled posts', () => {
     expect(updateMediaPost).toHaveBeenCalledWith(
       db,
       'post-1',
-      expect.not.objectContaining({ status: expect.anything() }),
+      expect.objectContaining({ status: 'scheduled' }),
     );
   });
 
@@ -141,6 +155,9 @@ describe('processMediaPosts — scheduled posts', () => {
 
   it('3rd failure marks the post failed', async () => {
     vi.mocked(getDueMediaPosts).mockResolvedValueOnce([makePost({ attempt_count: 2 })] as any);
+    vi.mocked(claimScheduledMediaPost).mockResolvedValueOnce(
+      makePost({ status: 'processing', attempt_count: 2 }) as any,
+    );
     const client = makeClient({
       createMediaContainer: vi.fn().mockRejectedValue(new Error('boom')),
     });
@@ -154,6 +171,9 @@ describe('processMediaPosts — scheduled posts', () => {
 
   it('permission error message mentions the missing scope', async () => {
     vi.mocked(getDueMediaPosts).mockResolvedValueOnce([makePost({ attempt_count: 2 })] as any);
+    vi.mocked(claimScheduledMediaPost).mockResolvedValueOnce(
+      makePost({ status: 'processing', attempt_count: 2 }) as any,
+    );
     const client = makeClient({
       createMediaContainer: vi.fn().mockRejectedValue(
         new Error('Instagram API error 403: {"error":{"message":"(#10) Application does not have permission"}}'),
@@ -191,7 +211,11 @@ describe('processMediaPosts — processing posts', () => {
     });
     await processMediaPosts(db, client, 'acc-1');
     expect(client.publishMedia).not.toHaveBeenCalled();
-    expect(updateMediaPost).not.toHaveBeenCalled();
+    expect(updateMediaPost).toHaveBeenCalledWith(
+      db,
+      'post-1',
+      expect.objectContaining({ scheduled_at: '2026-07-23T10:00:00.000+09:00' }),
+    );
   });
 
   it('ERROR container marks the post failed', async () => {
@@ -250,5 +274,41 @@ describe('kickImmediate', () => {
     const client = makeClient();
     await kickImmediate(db, client, 'post-1');
     expect(client.createMediaContainer).not.toHaveBeenCalled();
+  });
+
+  it('creates only one container when two immediate kicks race', async () => {
+    const scheduled = makePost();
+    vi.mocked(getMediaPostById).mockResolvedValue(scheduled as any);
+    vi.mocked(claimScheduledMediaPost)
+      .mockResolvedValueOnce(makePost({ status: 'processing' }) as any)
+      .mockResolvedValueOnce(null);
+    const client = makeClient();
+
+    await Promise.all([
+      kickImmediate(db, client, 'post-1'),
+      kickImmediate(db, client, 'post-1'),
+    ]);
+
+    expect(claimScheduledMediaPost).toHaveBeenCalledTimes(2);
+    expect(client.createMediaContainer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('processMediaPosts — concurrency', () => {
+  it('publishes only once when two cron runs see the same processing post', async () => {
+    const processing = makePost({ status: 'processing', creation_id: 'container-1' });
+    vi.mocked(getProcessingMediaPosts).mockResolvedValue([processing] as any);
+    vi.mocked(claimProcessingMediaPost)
+      .mockResolvedValueOnce(processing as any)
+      .mockResolvedValueOnce(null);
+    const client = makeClient();
+
+    await Promise.all([
+      processMediaPosts(db, client, 'acc-1'),
+      processMediaPosts(db, client, 'acc-1'),
+    ]);
+
+    expect(claimProcessingMediaPost).toHaveBeenCalledTimes(2);
+    expect(client.publishMedia).toHaveBeenCalledTimes(1);
   });
 });
