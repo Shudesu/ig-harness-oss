@@ -20,3 +20,11 @@ bucket_name = "YOUR_R2_BUCKET"
 
 [triggers]
 crons = ["*/5 * * * *"]
+
+[[durable_objects.bindings]]
+name = "TENANT_SCHEDULER"
+class_name = "TenantScheduler"
+
+[[migrations]]
+tag = "v1-scheduler"
+new_sqlite_classes = ["TenantScheduler"]

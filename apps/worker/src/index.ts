@@ -1,3 +1,5 @@
+import { armScheduler } from './tenant-scheduler.js';
+export { TenantScheduler } from './tenant-scheduler.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { listIgAccounts, updateIgAccount } from '@ig-harness/db';
@@ -33,6 +35,7 @@ import { recordCronRun, recordTokenValidity } from './lib/health.js';
 export type Env = {
   Bindings: {
     DB: D1Database;
+    TENANT_SCHEDULER?: DurableObjectNamespace;
     IMAGES: R2Bucket;
     // ASSETS is optional: create-ig-harness deploys without an [assets] binding,
     // so callers MUST guard `env.ASSETS` before invoking `.fetch` (see notFound below).
@@ -64,6 +67,17 @@ app.use('*', rateLimitMiddleware);
 
 // Auth middleware — skips /webhook automatically
 app.use('*', authMiddleware);
+
+// Called only after authentication. Standalone installs retain their cron clock.
+app.post('/api/internal/scheduler/arm', async (c) => {
+  if (c.get('staff')?.role !== 'owner') return c.json({ error: 'Forbidden' }, 403);
+  await armScheduler(c.env);
+  return c.json({ armed: Boolean(c.env.TENANT_SCHEDULER) });
+});
+app.use('/api/*', async (c, next) => {
+  if (c.env.TENANT_SCHEDULER) c.executionCtx.waitUntil(armScheduler(c.env).catch(() => {}));
+  await next();
+});
 
 // Mount route groups
 app.route('/', webhook);
@@ -268,6 +282,17 @@ async function scheduled(
   _event: ScheduledEvent,
   env: Env['Bindings'],
   ctx: ExecutionContext,
+): Promise<void> {
+  if (env.TENANT_SCHEDULER) {
+    await armScheduler(env);
+    return;
+  }
+  await runScheduledJobs(env, ctx);
+}
+
+export async function runScheduledJobs(
+  env: Env['Bindings'],
+  ctx: { waitUntil(promise: Promise<unknown>): void },
 ): Promise<void> {
   await ensureDefaultAccount(env, env.DB);
   // waitUntil keeps the write alive even if scheduled() resolves early.
