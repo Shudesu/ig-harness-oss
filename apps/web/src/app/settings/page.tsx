@@ -102,20 +102,20 @@ export default function SettingsPage() {
         <IgAccountsSection />
 
         {/* 登録済み接続先 */}
-        <section className="bg-white rounded-xl border border-gray-200 p-6">
+        <section className="bg-kumo-base rounded-xl border border-kumo-line p-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">🔗 LINE Harness 接続先</h2>
-              <p className="text-[11px] text-gray-500 mt-1">
+              <h2 className="text-sm font-semibold text-kumo-default">🔗 LINE Harness 接続先</h2>
+              <p className="text-[11px] text-kumo-subtle mt-1">
                 特典DMのリンクは、選ばれた接続先の tracked link を経由してクリック計測＋LINE連携
               </p>
             </div>
           </div>
 
           {loading ? (
-            <div className="text-sm text-gray-400">読み込み中...</div>
+            <div className="text-sm text-kumo-subtle">読み込み中...</div>
           ) : connections.length === 0 ? (
-            <div className="text-sm text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-lg">
+            <div className="text-sm text-kumo-subtle text-center py-6 border border-dashed border-kumo-line rounded-lg">
               接続先が未登録です。下のフォームから追加してください
             </div>
           ) : (
@@ -123,21 +123,21 @@ export default function SettingsPage() {
               {connections.map((conn) => (
                 <div
                   key={conn.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
+                  className="flex items-center justify-between p-3 bg-kumo-canvas rounded-lg border border-kumo-line"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800">{conn.name}</span>
+                      <span className="text-sm font-medium text-kumo-default">{conn.name}</span>
                       {conn.is_default && (
                         <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">
                           デフォルト
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-gray-500 font-mono truncate mt-0.5">
+                    <div className="text-[11px] text-kumo-subtle font-mono truncate mt-0.5">
                       {conn.worker_url}
                     </div>
-                    <div className="text-[10px] text-gray-400 font-mono mt-0.5">
+                    <div className="text-[10px] text-kumo-subtle font-mono mt-0.5">
                       Key: {conn.api_key_masked}
                     </div>
                   </div>
@@ -149,7 +149,7 @@ export default function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => handleSetDefault(conn)}
-                        className="px-2 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50"
+                        className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas"
                       >
                         デフォルト
                       </button>
@@ -157,14 +157,14 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => handleTest(conn)}
-                      className="px-2 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50"
+                      className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas"
                     >
                       テスト
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(conn)}
-                      className="px-2 py-1 text-xs text-red-500 bg-white border border-red-200 rounded hover:bg-red-50"
+                      className="px-2 py-1 text-xs text-red-500 bg-kumo-base border border-red-200 rounded hover:bg-red-50"
                     >
                       削除
                     </button>
@@ -176,37 +176,37 @@ export default function SettingsPage() {
         </section>
 
         {/* 新規追加 */}
-        <section className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-3">接続先を追加</h2>
+        <section className="bg-kumo-base rounded-xl border border-kumo-line p-6">
+          <h2 className="text-sm font-semibold text-kumo-default mb-3">接続先を追加</h2>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">名前</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">名前</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="本番 / テスト / LINE メイン など"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
+                className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Worker URL</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">Worker URL</label>
               <input
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://line-crm-worker.line-crm-api.workers.dev"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
+                className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">API Key</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">API Key</label>
               <input
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="lh_xxxxxxxxxxxxx"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
+                className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>
             <div className="pt-2">

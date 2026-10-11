@@ -1,1 +1,13 @@
+@source "../../node_modules/@cloudflare/kumo/dist/**/*.{js,jsx,ts,tsx}";
+@import "@cloudflare/kumo/styles/tailwind";
 @import "tailwindcss";
+
+@theme {
+  --color-kumo-brand: #e1306c;
+  --color-kumo-brand-hover: #c13584;
+  --text-color-kumo-brand: #a61e4d;
+  --color-harness-accent: #e1306c;
+  --color-harness-canvas: #f7f8fa;
+  --color-harness-ink: #101828;
+  --color-harness-line: #e4e7ec;
+}

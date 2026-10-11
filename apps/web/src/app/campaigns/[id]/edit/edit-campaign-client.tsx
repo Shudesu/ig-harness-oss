@@ -46,7 +46,7 @@ export default function EditCampaignClient() {
     }
   }, [id])
 
-  if (loading) return <div className="text-sm text-gray-500 p-8">読み込み中...</div>
+  if (loading) return <div className="text-sm text-kumo-subtle p-8">読み込み中...</div>
   if (error || !gate) {
     return (
       <div className="p-8 text-sm">

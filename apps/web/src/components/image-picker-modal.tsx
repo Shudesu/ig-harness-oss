@@ -58,20 +58,20 @@ export default function ImagePickerModal({ open, onClose, onPick }: Props) {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+        className="bg-kumo-base rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900">画像を選択</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="閉じる">
+        <div className="px-6 py-4 border-b border-kumo-line flex items-center justify-between">
+          <h2 className="text-lg font-bold text-kumo-default">画像を選択</h2>
+          <button onClick={onClose} className="text-kumo-subtle hover:text-kumo-subtle" aria-label="閉じる">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="px-6 py-4 border-b border-gray-200">
-          <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium cursor-pointer hover:bg-gray-50">
+        <div className="px-6 py-4 border-b border-kumo-line">
+          <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-kumo-line text-sm font-medium cursor-pointer hover:bg-kumo-canvas">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
@@ -93,9 +93,9 @@ export default function ImagePickerModal({ open, onClose, onPick }: Props) {
 
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
-            <div className="text-center text-sm text-gray-400 py-12">読み込み中...</div>
+            <div className="text-center text-sm text-kumo-subtle py-12">読み込み中...</div>
           ) : items.length === 0 ? (
-            <div className="text-center text-sm text-gray-400 py-12">
+            <div className="text-center text-sm text-kumo-subtle py-12">
               まだ画像がありません。上のボタンからアップロードしてください。
             </div>
           ) : (
@@ -107,7 +107,7 @@ export default function ImagePickerModal({ open, onClose, onPick }: Props) {
                     onPick(img.url)
                     onClose()
                   }}
-                  className="group relative aspect-square rounded-lg border border-gray-200 overflow-hidden hover:border-[#E1306C] transition-colors"
+                  className="group relative aspect-square rounded-lg border border-kumo-line overflow-hidden hover:border-[#E1306C] transition-colors"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={img.url} alt="" className="w-full h-full object-cover" />

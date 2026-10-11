@@ -42,9 +42,9 @@ export function FollowerAvatar({
 
   return (
     <div
-      className={`${wh} rounded-full bg-gray-200 flex items-center justify-center${className ? ` ${className}` : ''}`}
+      className={`${wh} rounded-full bg-kumo-fill flex items-center justify-center${className ? ` ${className}` : ''}`}
     >
-      <span className={`text-gray-500 ${text} font-medium`}>{initial}</span>
+      <span className={`text-kumo-subtle ${text} font-medium`}>{initial}</span>
     </div>
   )
 }

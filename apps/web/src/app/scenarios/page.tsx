@@ -135,23 +135,23 @@ export default function ScenariosPage() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">新規シナリオを作成</h2>
+        <div className="mb-6 bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-6">
+          <h2 className="text-sm font-semibold text-kumo-default mb-4">新規シナリオを作成</h2>
           <div className="space-y-4 max-w-lg">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">シナリオ名 <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">シナリオ名 <span className="text-red-500">*</span></label>
               <input
                 type="text"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="例: ウェルカムDMシナリオ"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">トリガータイプ</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">トリガータイプ</label>
               <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-kumo-base"
                 value={form.triggerType}
                 onChange={(e) => setForm({ ...form, triggerType: e.target.value })}
               >
@@ -166,9 +166,9 @@ export default function ScenariosPage() {
                 id="scenarioIsActive"
                 checked={form.isActive}
                 onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="w-4 h-4 rounded border-kumo-line text-blue-600 focus:ring-blue-500"
               />
-              <label htmlFor="scenarioIsActive" className="text-sm text-gray-600">作成後すぐに有効にする</label>
+              <label htmlFor="scenarioIsActive" className="text-sm text-kumo-subtle">作成後すぐに有効にする</label>
             </div>
 
             {formError && <p className="text-xs text-red-600">{formError}</p>}
@@ -184,7 +184,7 @@ export default function ScenariosPage() {
               </button>
               <button
                 onClick={() => { setShowCreate(false); setFormError('') }}
-                className="px-4 py-2 min-h-[44px] text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="px-4 py-2 min-h-[44px] text-sm font-medium text-kumo-subtle bg-kumo-tint hover:bg-kumo-fill rounded-lg transition-colors"
               >
                 キャンセル
               </button>
@@ -197,19 +197,19 @@ export default function ScenariosPage() {
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse space-y-3">
-              <div className="h-4 bg-gray-200 rounded w-3/4" />
-              <div className="h-3 bg-gray-100 rounded w-full" />
+            <div key={i} className="bg-kumo-base rounded-lg border border-kumo-line p-5 animate-pulse space-y-3">
+              <div className="h-4 bg-kumo-fill rounded w-3/4" />
+              <div className="h-3 bg-kumo-tint rounded w-full" />
             </div>
           ))}
         </div>
       ) : scenarios.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+        <div className="bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-12 text-center">
           <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
-          <p className="text-gray-500 text-sm">シナリオがありません</p>
+          <p className="text-kumo-subtle text-sm">シナリオがありません</p>
           <button
             onClick={() => setShowCreate(true)}
             className="mt-3 text-sm font-medium text-blue-500 hover:opacity-80 transition-opacity"
@@ -220,11 +220,11 @@ export default function ScenariosPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {scenarios.map((scenario) => (
-            <div key={scenario.id} className="bg-white rounded-lg border border-gray-200 p-5">
+            <div key={scenario.id} className="bg-kumo-base rounded-lg border border-kumo-line p-5">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate">{scenario.name}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <h3 className="text-sm font-semibold text-kumo-default truncate">{scenario.name}</h3>
+                  <p className="text-xs text-kumo-subtle mt-0.5">
                     {getTriggerLabel(scenario.triggerType)}
                   </p>
                 </div>
@@ -237,27 +237,27 @@ export default function ScenariosPage() {
                   title={scenario.isActive ? '無効にする' : '有効にする'}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    className={`inline-block h-4 w-4 transform rounded-full bg-kumo-base shadow transition-transform ${
                       scenario.isActive ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>
               </div>
 
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-kumo-line">
+                <div className="flex items-center gap-3 text-xs text-kumo-subtle">
                   {scenario.stepCount !== undefined && (
                     <span>{scenario.stepCount} ステップ</span>
                   )}
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                    scenario.isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+                    scenario.isActive ? 'bg-blue-100 text-blue-700' : 'bg-kumo-tint text-kumo-subtle'
                   }`}>
                     {scenario.isActive ? 'アクティブ' : '停止中'}
                   </span>
                 </div>
                 <button
                   onClick={() => handleDelete(String(scenario.id))}
-                  className="p-1.5 rounded text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  className="p-1.5 rounded text-kumo-subtle hover:text-red-500 hover:bg-red-50 transition-colors"
                   title="削除"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

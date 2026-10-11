@@ -71,9 +71,9 @@ export default function EditRichMessageClient() {
     }
   }, [id])
 
-  if (loading) return <div className="text-sm text-gray-500 p-8">読み込み中...</div>
+  if (loading) return <div className="text-sm text-kumo-subtle p-8">読み込み中...</div>
   if (error) return <div className="text-sm text-red-600 p-8">{error}</div>
-  if (!existing) return <div className="text-sm text-gray-500 p-8">データなし</div>
+  if (!existing) return <div className="text-sm text-kumo-subtle p-8">データなし</div>
 
   return <RichMessageBuilder existing={existing} />
 }

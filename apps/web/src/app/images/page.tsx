@@ -121,7 +121,7 @@ export default function ImagesPage() {
       <Header title="画像ギャラリー" description="R2 にアップロード済みの画像（リッチメッセージで使用）" />
 
       <div className="mb-4 flex items-center justify-between">
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-kumo-subtle">
           {loading ? '読み込み中...' : `${items.length} 件`}
         </div>
         <label
@@ -159,30 +159,30 @@ export default function ImagesPage() {
       )}
 
       {!loading && items.length === 0 && !error && (
-        <div className="bg-white rounded-xl border border-gray-200 py-16 text-center">
-          <div className="text-gray-400 text-sm">まだ画像がありません</div>
+        <div className="bg-kumo-base rounded-xl border border-kumo-line py-16 text-center">
+          <div className="text-kumo-subtle text-sm">まだ画像がありません</div>
         </div>
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
         {items.map((img) => (
-          <div key={img.key} className="bg-white rounded-lg border border-gray-200 overflow-hidden group">
-            <div className="aspect-square bg-gray-100">
+          <div key={img.key} className="bg-kumo-base rounded-lg border border-kumo-line overflow-hidden group">
+            <div className="aspect-square bg-kumo-tint">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={img.url} alt="" className="w-full h-full object-cover" />
             </div>
             <div className="px-3 py-2">
-              <div className="text-[11px] text-gray-600 truncate font-medium" title={img.original_filename ?? img.key}>
+              <div className="text-[11px] text-kumo-subtle truncate font-medium" title={img.original_filename ?? img.key}>
                 {img.original_filename ?? img.key}
               </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">
+              <div className="text-[10px] text-kumo-subtle mt-0.5">
                 {formatSize(img.size)} · {img.uploaded.slice(0, 10)}
               </div>
             </div>
-            <div className="border-t border-gray-100 flex">
+            <div className="border-t border-kumo-line flex">
               <button
                 onClick={() => copyUrl(img.url, img.key)}
-                className="flex-1 px-2 py-1.5 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+                className="flex-1 px-2 py-1.5 text-[11px] font-medium text-kumo-subtle hover:bg-kumo-canvas"
               >
                 {copiedKey === img.key ? '✓ コピー済み' : 'URL'}
               </button>

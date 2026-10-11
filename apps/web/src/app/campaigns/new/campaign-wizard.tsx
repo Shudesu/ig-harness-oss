@@ -576,7 +576,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
       <div className="mb-4">
         <Link
           href={isEdit && existingGate ? `/campaigns/${existingGate.id}` : '/campaigns'}
-          className="text-sm text-gray-500 hover:text-gray-700"
+          className="text-sm text-kumo-subtle hover:text-kumo-default"
         >
           ← {isEdit ? 'キャンペーン詳細に戻る' : 'キャンペーン一覧に戻る'}
         </Link>
@@ -586,20 +586,20 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
         {/* Form */}
         <div className="space-y-4">
           {/* ── セクション1: 基本情報 */}
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">① キャンペーン名</h2>
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h2 className="text-sm font-semibold text-kumo-default mb-3">① キャンペーン名</h2>
             <input
               type="text"
               value={s.name}
               onChange={(e) => update('name', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+              className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
             />
-            <p className="mt-1 text-[11px] text-gray-400">管理画面に表示される名前。ユーザーには見えません</p>
+            <p className="mt-1 text-[11px] text-kumo-subtle">管理画面に表示される名前。ユーザーには見えません</p>
           </section>
 
           {/* ── セクション2: 何に反応するか */}
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">② 何に反応して発動する？</h2>
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h2 className="text-sm font-semibold text-kumo-default mb-3">② 何に反応して発動する？</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
               {TRIGGER_OPTIONS.map((opt) => (
@@ -610,14 +610,14 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   className={`px-3 py-2.5 rounded-lg text-left text-xs border transition-colors ${
                     s.triggerType === opt.v
                       ? 'border-[#E1306C] bg-pink-50'
-                      : 'border-gray-200 hover:bg-gray-50'
+                      : 'border-kumo-line hover:bg-kumo-canvas'
                   }`}
                 >
-                  <div className={`text-sm font-medium ${s.triggerType === opt.v ? 'text-[#E1306C]' : 'text-gray-800'}`}>
+                  <div className={`text-sm font-medium ${s.triggerType === opt.v ? 'text-[#E1306C]' : 'text-kumo-default'}`}>
                     <span className="mr-1">{opt.emoji}</span>
                     {opt.label}
                   </div>
-                  <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">{opt.help}</div>
+                  <div className="text-[10px] text-kumo-subtle mt-0.5 leading-snug">{opt.help}</div>
                 </button>
               ))}
             </div>
@@ -625,10 +625,10 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
             {s.triggerType === 'comment_on_post' && (
               <>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-medium text-gray-700">
-                    対象リール <span className="text-gray-400 font-normal">（空欄なら全投稿）</span>
+                  <div className="text-xs font-medium text-kumo-default">
+                    対象リール <span className="text-kumo-subtle font-normal">（空欄なら全投稿）</span>
                   </div>
-                  <span className="text-[10px] text-gray-400">{s.targetMediaIds.length} 件</span>
+                  <span className="text-[10px] text-kumo-subtle">{s.targetMediaIds.length} 件</span>
                 </div>
 
                 {s.targetMediaIds.length > 0 ? (
@@ -637,15 +637,15 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                       const m = s.targetMediaPreviews[pid]
                       const otherCampaigns = (coverage[pid] ?? []).length
                       return (
-                        <div key={pid} className="flex items-center gap-3 border border-gray-200 rounded-lg p-2 bg-gray-50">
-                          <div className="w-12 h-12 bg-gray-200 rounded overflow-hidden shrink-0">
+                        <div key={pid} className="flex items-center gap-3 border border-kumo-line rounded-lg p-2 bg-kumo-canvas">
+                          <div className="w-12 h-12 bg-kumo-fill rounded overflow-hidden shrink-0">
                             {m?.thumbnail_url || m?.media_url ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={m.thumbnail_url || m.media_url} alt="" className="w-full h-full object-cover" />
                             ) : null}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs text-gray-700 line-clamp-1">
+                            <div className="text-xs text-kumo-default line-clamp-1">
                               {m?.caption?.slice(0, 60) ?? `投稿 #${pid.slice(-8)}`}
                             </div>
                             {otherCampaigns > 0 && (
@@ -663,7 +663,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                               delete copy[pid]
                               update('targetMediaPreviews', copy)
                             }}
-                            className="shrink-0 px-2 py-1 text-xs text-gray-500 border border-gray-200 rounded hover:bg-white"
+                            className="shrink-0 px-2 py-1 text-xs text-kumo-subtle border border-kumo-line rounded hover:bg-kumo-base"
                           >
                             外す
                           </button>
@@ -673,7 +673,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                     <button
                       type="button"
                       onClick={() => setMediaPickerOpen(true)}
-                      className="w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+                      className="w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-kumo-line text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
                     >
                       + リールを追加・変更
                     </button>
@@ -683,26 +683,26 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                     <button
                       type="button"
                       onClick={() => setMediaPickerOpen(true)}
-                      className="w-full flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-lg px-3 py-3 text-sm text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+                      className="w-full flex items-center justify-center gap-2 border border-dashed border-kumo-line rounded-lg px-3 py-3 text-sm text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
                     >
                       リールを選択（複数可）
                     </button>
-                    <div className="text-[11px] text-gray-400 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                      選ばない場合は <span className="font-medium text-gray-600">全ての投稿</span> に適用されるデフォルトキャンペーンになります。
+                    <div className="text-[11px] text-kumo-subtle bg-kumo-canvas border border-kumo-line rounded-lg px-3 py-2">
+                      選ばない場合は <span className="font-medium text-kumo-subtle">全ての投稿</span> に適用されるデフォルトキャンペーンになります。
                       <br />
-                      <span className="text-gray-500">個別リール指定のキャンペーンを作ると、そちらが優先されるので今後も柔軟に上書き可能。</span>
+                      <span className="text-kumo-subtle">個別リール指定のキャンペーンを作ると、そちらが優先されるので今後も柔軟に上書き可能。</span>
                     </div>
                   </div>
                 )}
 
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">キーワード（任意）</label>
+                <div className="mt-3 pt-3 border-t border-kumo-line">
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">キーワード（任意）</label>
                   <input
                     type="text"
                     value={s.keyword}
                     onChange={(e) => update('keyword', e.target.value)}
                     placeholder="例: 欲しい（空欄なら全コメントに反応）"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                   />
                 </div>
               </>
@@ -710,7 +710,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
 
             {s.triggerType === 'dm_keyword' && (
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label className="block text-xs font-medium text-kumo-subtle mb-1">
                   DMキーワード <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -718,32 +718,32 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   value={s.keyword}
                   onChange={(e) => update('keyword', e.target.value)}
                   placeholder="例: 仕組み"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                  className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                 />
-                <p className="mt-1 text-[11px] text-gray-400">
+                <p className="mt-1 text-[11px] text-kumo-subtle">
                   このキーワードを含むDMが届くと発動します（部分一致）
                 </p>
               </div>
             )}
 
             {s.triggerType === 'story_mention' && (
-              <div className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <div className="text-[11px] text-kumo-subtle bg-kumo-canvas border border-kumo-line rounded-lg px-3 py-2">
                 自分のストーリーがメンション or シェアされると即発動します。追加設定なし。
               </div>
             )}
 
             {s.triggerType === 'comment_on_post' && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="mt-4 pt-4 border-t border-kumo-line">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-gray-600">
+                  <label className="block text-xs font-medium text-kumo-subtle">
                     コメントへの公開返信（任意）
                   </label>
-                  <span className="text-[10px] text-gray-400">{s.commentReplyTexts.length}/3 パターン</span>
+                  <span className="text-[10px] text-kumo-subtle">{s.commentReplyTexts.length}/3 パターン</span>
                 </div>
                 <div className="space-y-2">
                   {s.commentReplyTexts.map((text, idx) => (
                     <div key={idx} className="flex gap-2 items-start">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-gray-100 text-[10px] font-medium text-gray-600 flex items-center justify-center mt-2">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-kumo-tint text-[10px] font-medium text-kumo-subtle flex items-center justify-center mt-2">
                         {idx + 1}
                       </span>
                       <textarea
@@ -755,7 +755,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                         }}
                         placeholder={idx === 0 ? '例: @{{username}} DMでプレゼント送ったよ！🎁' : 'バリエーション（任意）'}
                         rows={2}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                        className="flex-1 px-3 py-2 border border-kumo-line rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                       />
                       {s.commentReplyTexts.length > 1 && (
                         <button
@@ -778,12 +778,12 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   <button
                     type="button"
                     onClick={() => update('commentReplyTexts', [...s.commentReplyTexts, ''])}
-                    className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+                    className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-kumo-line text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
                   >
                     + バリエーションを追加
                   </button>
                 )}
-                <p className="mt-2 text-[11px] text-gray-400">
+                <p className="mt-2 text-[11px] text-kumo-subtle">
                   複数入れると毎回ランダムで1つ選ばれます（ボット感を減らす）。<code className="font-mono">{'{{username}}'}</code> でコメントした人の @username を差し込めます。全部空欄ならDMのみ。
                 </p>
                 <p className="mt-1 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
@@ -797,9 +797,9 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
           </section>
 
           {/* ── セクション3: 最初のDM */}
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">③ コメントがきたら、このDMを送る</h2>
-            <p className="text-[11px] text-gray-400 mb-3">ユーザーが最初に受け取るDM</p>
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h2 className="text-sm font-semibold text-kumo-default mb-1">③ コメントがきたら、このDMを送る</h2>
+            <p className="text-[11px] text-kumo-subtle mb-3">ユーザーが最初に受け取るDM</p>
 
             <SlotModeToggle
               mode={s.ctaMode}
@@ -816,7 +816,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
             ) : (
               <div className="space-y-3 mt-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">画像</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">画像</label>
                   <ImagePreview
                     url={s.ctaImageUrl}
                     onChange={(u) => update('ctaImageUrl', u)}
@@ -824,23 +824,23 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">メッセージ</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">メッセージ</label>
                   <textarea
                     value={s.ctaText}
                     onChange={(e) => update('ctaText', e.target.value)}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">ボタンの文字</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">ボタンの文字</label>
                   <input
                     type="text"
                     value={s.ctaButtonLabel}
                     onChange={(e) => update('ctaButtonLabel', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                   />
-                  <p className="mt-1 text-[11px] text-gray-400">
+                  <p className="mt-1 text-[11px] text-kumo-subtle">
                     このボタンを押すと {s.requireFollow ? 'フォロー確認 → ' : ''}特典DMが送信されます
                   </p>
                 </div>
@@ -849,23 +849,23 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
           </section>
 
           {/* ── セクション4: フォロー確認 */}
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
                 checked={s.requireFollow}
                 onChange={(e) => update('requireFollow', e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300"
+                className="w-4 h-4 rounded border-kumo-line"
               />
-              <span className="text-sm font-semibold text-gray-900">④ フォローしている人だけに特典を配る</span>
+              <span className="text-sm font-semibold text-kumo-default">④ フォローしている人だけに特典を配る</span>
             </label>
-            <p className="mt-1 ml-6 text-[11px] text-gray-400">
+            <p className="mt-1 ml-6 text-[11px] text-kumo-subtle">
               OFF: ボタンを押したら即特典DMを送信<br />
               ON: ボタンを押したらフォロー確認 → フォロー済みのみ特典DM、未達は別DMで案内
             </p>
             {s.requireFollow && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <h3 className="text-xs font-semibold text-gray-700 mb-2">フォロー未達の人に送るDM</h3>
+              <div className="mt-4 pt-4 border-t border-kumo-line">
+                <h3 className="text-xs font-semibold text-kumo-default mb-2">フォロー未達の人に送るDM</h3>
                 <SlotModeToggle
                   mode={s.reminderMode}
                   onChange={(m) => update('reminderMode', m)}
@@ -880,21 +880,21 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                 ) : (
                   <div className="space-y-3 mt-3">
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">メッセージ</label>
+                      <label className="block text-xs font-medium text-kumo-subtle mb-1">メッセージ</label>
                       <textarea
                         value={s.reminderText}
                         onChange={(e) => update('reminderText', e.target.value)}
                         rows={2}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                        className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">ボタンの文字</label>
+                      <label className="block text-xs font-medium text-kumo-subtle mb-1">ボタンの文字</label>
                       <input
                         type="text"
                         value={s.reminderButtonLabel}
                         onChange={(e) => update('reminderButtonLabel', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                        className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                       />
                     </div>
                   </div>
@@ -904,9 +904,9 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
           </section>
 
           {/* ── セクション5: 特典DM */}
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-sm font-semibold text-gray-900 mb-1">⑤ 特典DM（ボタン押下後に送る）</h2>
-            <p className="text-[11px] text-gray-400 mb-3">{s.requireFollow ? 'フォロー確認OK後に' : 'ボタン押下直後に'}届くDM</p>
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h2 className="text-sm font-semibold text-kumo-default mb-1">⑤ 特典DM（ボタン押下後に送る）</h2>
+            <p className="text-[11px] text-kumo-subtle mb-3">{s.requireFollow ? 'フォロー確認OK後に' : 'ボタン押下直後に'}届くDM</p>
 
             <SlotModeToggle
               mode={s.rewardMode}
@@ -936,7 +936,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
             ) : (
               <div className="space-y-3 mt-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">画像</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">画像</label>
                   <ImagePreview
                     url={s.rewardImageUrl}
                     onChange={(u) => update('rewardImageUrl', u)}
@@ -944,12 +944,12 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">メッセージ</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">メッセージ</label>
                   <textarea
                     value={s.rewardText}
                     onChange={(e) => update('rewardText', e.target.value)}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                   />
                 </div>
                 <RewardUrlField
@@ -964,12 +964,12 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   help="ボタンを押すとこのURLが開きます"
                 />
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">ボタンの文字</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">ボタンの文字</label>
                   <input
                     type="text"
                     value={s.rewardButtonLabel}
                     onChange={(e) => update('rewardButtonLabel', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                   />
                 </div>
               </div>
@@ -977,21 +977,21 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
           </section>
 
           {/* ── セクション6: 24h フォローアップDM */}
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-sm font-semibold text-gray-900">⑥ フォローアップDM（任意・最大3本）</h2>
-              <span className="text-[10px] text-gray-400">{s.followupSteps.length}/3</span>
+              <h2 className="text-sm font-semibold text-kumo-default">⑥ フォローアップDM（任意・最大3本）</h2>
+              <span className="text-[10px] text-kumo-subtle">{s.followupSteps.length}/3</span>
             </div>
-            <p className="text-[11px] text-gray-400 mb-3">
+            <p className="text-[11px] text-kumo-subtle mb-3">
               特典DMが届いた後に、時間差でもう一通送ります。<br />
-              Meta の 24時間ルール に収まる範囲で <span className="font-medium text-gray-600">24h × 60 = 1440分まで</span>。
+              Meta の 24時間ルール に収まる範囲で <span className="font-medium text-kumo-subtle">24h × 60 = 1440分まで</span>。
             </p>
 
             <div className="space-y-3">
               {s.followupSteps.map((step, idx) => (
-                <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
+                <div key={idx} className="border border-kumo-line rounded-lg p-3 space-y-2 bg-kumo-canvas">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-700">#{idx + 1}</span>
+                    <span className="text-xs font-medium text-kumo-default">#{idx + 1}</span>
                     <button
                       type="button"
                       onClick={() =>
@@ -1003,7 +1003,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                     </button>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">送信タイミング（特典配信から）</label>
+                    <label className="block text-[11px] font-medium text-kumo-subtle mb-1">送信タイミング（特典配信から）</label>
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
@@ -1019,10 +1019,10 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                             ),
                           )
                         }}
-                        className="w-24 px-2 py-1 border border-gray-300 rounded text-sm"
+                        className="w-24 px-2 py-1 border border-kumo-line rounded text-sm"
                       />
-                      <span className="text-xs text-gray-500">分後</span>
-                      <span className="text-[10px] text-gray-400 ml-2">
+                      <span className="text-xs text-kumo-subtle">分後</span>
+                      <span className="text-[10px] text-kumo-subtle ml-2">
                         {step.delay_minutes >= 60
                           ? `≒ ${Math.round((step.delay_minutes / 60) * 10) / 10} 時間`
                           : ''}
@@ -1030,7 +1030,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-medium text-gray-600 mb-1">メッセージ</label>
+                    <label className="block text-[11px] font-medium text-kumo-subtle mb-1">メッセージ</label>
                     <textarea
                       value={step.text}
                       onChange={(e) =>
@@ -1043,11 +1043,11 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                       }
                       rows={2}
                       placeholder="例: LP の動画見てくれた？質問あれば返信してね"
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm resize-none"
+                      className="w-full px-2 py-1 border border-kumo-line rounded text-sm resize-none"
                     />
                   </div>
                   <details className="text-[11px]">
-                    <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
+                    <summary className="cursor-pointer text-kumo-subtle hover:text-kumo-default">
                       + ボタン付き（任意）
                     </summary>
                     <div className="mt-2 space-y-1.5">
@@ -1063,7 +1063,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                           )
                         }
                         placeholder="ボタンラベル（例: もう一度見る）"
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                        className="w-full px-2 py-1 border border-kumo-line rounded text-xs"
                       />
                       <input
                         type="text"
@@ -1077,7 +1077,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                           )
                         }
                         placeholder="URL (https://... or {REWARD_URL})"
-                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                        className="w-full px-2 py-1 border border-kumo-line rounded text-xs font-mono"
                       />
                     </div>
                   </details>
@@ -1097,7 +1097,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                     },
                   ])
                 }
-                className="mt-3 w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+                className="mt-3 w-full py-1.5 rounded-lg text-xs font-medium border border-dashed border-kumo-line text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
               >
                 + フォローアップを追加
               </button>
@@ -1114,7 +1114,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
           <div className="flex gap-2 justify-end">
             <Link
               href="/campaigns"
-              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-kumo-subtle hover:bg-kumo-tint"
             >
               キャンセル
             </Link>
@@ -1135,18 +1135,18 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
             the left. The aside's combined height (~3 × ~280px) fits
             comfortably in any reasonable desktop viewport. */}
         <aside className="lg:sticky lg:top-8 self-start space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-xs font-semibold text-gray-500 mb-3">1. 最初のDM（コメント→自動送信）</h3>
+          <div className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h3 className="text-xs font-semibold text-kumo-subtle mb-3">1. 最初のDM（コメント→自動送信）</h3>
             <RichMessagePreview blocks={ctaPreviewBlocks} />
           </div>
           {s.requireFollow && (
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-xs font-semibold text-gray-500 mb-3">2. フォロー未達のときのDM</h3>
+            <div className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+              <h3 className="text-xs font-semibold text-kumo-subtle mb-3">2. フォロー未達のときのDM</h3>
               <RichMessagePreview blocks={reminderPreviewBlocks} />
             </div>
           )}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-xs font-semibold text-gray-500 mb-3">
+          <div className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h3 className="text-xs font-semibold text-kumo-subtle mb-3">
               {s.requireFollow ? '3' : '2'}. 特典DM（ボタン押下後）
             </h3>
             <RichMessagePreview blocks={rewardPreviewBlocks} />
@@ -1344,7 +1344,7 @@ function SlotModeToggle({
         className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border ${
           mode === 'new'
             ? 'border-[#E1306C] text-[#E1306C] bg-pink-50'
-            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            : 'border-kumo-line text-kumo-subtle hover:bg-kumo-canvas'
         }`}
       >
         📝 新しく作る
@@ -1356,7 +1356,7 @@ function SlotModeToggle({
         className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-40 disabled:cursor-not-allowed ${
           mode === 'existing'
             ? 'border-[#E1306C] text-[#E1306C] bg-pink-50'
-            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            : 'border-kumo-line text-kumo-subtle hover:bg-kumo-canvas'
         }`}
       >
         📂 作り置きから選ぶ{existingCount > 0 ? ` (${existingCount})` : ''}
@@ -1376,7 +1376,7 @@ function ExistingMessagePicker({
 }) {
   if (options.length === 0) {
     return (
-      <div className="text-center text-[11px] text-gray-400 py-3 border border-dashed border-gray-200 rounded-lg">
+      <div className="text-center text-[11px] text-kumo-subtle py-3 border border-dashed border-kumo-line rounded-lg">
         この種類の作り置きがありません
       </div>
     )
@@ -1386,7 +1386,7 @@ function ExistingMessagePicker({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+        className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm bg-kumo-base focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
       >
         <option value="">-- 選択してください --</option>
         {options.map((m) => (
@@ -1477,19 +1477,19 @@ function RewardUrlField({
 
       {mode === 'harness' && hasConnections ? (
         <div className="rounded-lg border border-[#E1306C]/20 bg-pink-50/40 p-3 space-y-2">
-          <p className="text-[11px] text-gray-500 leading-relaxed">
+          <p className="text-[11px] text-kumo-subtle leading-relaxed">
             URL は LINE Harness の tracked link 経由で自動生成されます。
             友だち追加時に IG ↔ LINE のユーザーが紐付きます（ig userId × line friend_uuid）。
           </p>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wider">
+              <label className="block text-[10px] font-medium text-kumo-subtle mb-1 uppercase tracking-wider">
                 接続先
               </label>
               <select
                 value={connectionId}
                 onChange={(e) => onConnectionChange(e.target.value)}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                className="w-full px-2 py-1.5 border border-kumo-line rounded-lg text-xs bg-kumo-base focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
               >
                 {connections.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -1500,13 +1500,13 @@ function RewardUrlField({
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wider">
+              <label className="block text-[10px] font-medium text-kumo-subtle mb-1 uppercase tracking-wider">
                 Pool（LINE側属性タグ）
               </label>
               <select
                 value={poolSlug}
                 onChange={(e) => onPoolChange(e.target.value)}
-                className="w-full px-2 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                className="w-full px-2 py-1.5 border border-kumo-line rounded-lg text-xs bg-kumo-base focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
               >
                 <option value="">（指定なし）</option>
                 {pools.map((p) => (
@@ -1520,7 +1520,7 @@ function RewardUrlField({
         </div>
       ) : (
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
+          <label className="block text-xs font-medium text-kumo-subtle mb-1">
             誘導先 URL <span className="text-red-500">*</span>
           </label>
           <input
@@ -1528,10 +1528,10 @@ function RewardUrlField({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="https://line.me/R/ti/p/@xxx または https://example.com/lp"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+            className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
           />
           {!hasConnections && (
-            <p className="mt-1 text-[11px] text-gray-400 leading-relaxed">
+            <p className="mt-1 text-[11px] text-kumo-subtle leading-relaxed">
               <a href="/settings" className="text-[#E1306C] hover:underline">
                 /settings
               </a>{' '}
@@ -1539,7 +1539,7 @@ function RewardUrlField({
             </p>
           )}
           {help && hasConnections && (
-            <p className="mt-1 text-[11px] text-gray-400">{help}</p>
+            <p className="mt-1 text-[11px] text-kumo-subtle">{help}</p>
           )}
         </div>
       )}
@@ -1566,15 +1566,15 @@ function ModeButton({
       onClick={onClick}
       className={`px-3 py-2.5 rounded-lg text-left border transition-colors ${
         active
-          ? 'border-[#E1306C] bg-pink-50 text-gray-900'
-          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+          ? 'border-[#E1306C] bg-pink-50 text-kumo-default'
+          : 'border-kumo-line bg-kumo-base text-kumo-subtle hover:bg-kumo-canvas'
       }`}
     >
       <div className="text-sm font-semibold flex items-center gap-1.5">
         <span>{emoji}</span>
         <span>{label}</span>
       </div>
-      <div className={`text-[10px] mt-0.5 ${active ? 'text-[#E1306C]' : 'text-gray-400'}`}>
+      <div className={`text-[10px] mt-0.5 ${active ? 'text-[#E1306C]' : 'text-kumo-subtle'}`}>
         {sub}
       </div>
     </button>
@@ -1584,17 +1584,17 @@ function ModeButton({
 function ImagePreview({ url, onChange, onPick }: { url: string; onChange: (u: string) => void; onPick: () => void }) {
   if (url) {
     return (
-      <div className="flex items-center gap-3 border border-gray-200 rounded-lg p-2 bg-gray-50">
-        <div className="w-16 h-16 bg-white rounded overflow-hidden shrink-0">
+      <div className="flex items-center gap-3 border border-kumo-line rounded-lg p-2 bg-kumo-canvas">
+        <div className="w-16 h-16 bg-kumo-base rounded overflow-hidden shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={url} alt="" className="w-full h-full object-cover" />
         </div>
-        <div className="flex-1 min-w-0 text-[10px] text-gray-400 font-mono truncate">{url}</div>
+        <div className="flex-1 min-w-0 text-[10px] text-kumo-subtle font-mono truncate">{url}</div>
         <div className="flex gap-1 shrink-0">
-          <button type="button" onClick={onPick} className="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-white">
+          <button type="button" onClick={onPick} className="px-2 py-1 text-xs border border-kumo-line rounded hover:bg-kumo-base">
             変更
           </button>
-          <button type="button" onClick={() => onChange('')} className="px-2 py-1 text-xs text-gray-500 border border-gray-200 rounded hover:bg-gray-50">
+          <button type="button" onClick={() => onChange('')} className="px-2 py-1 text-xs text-kumo-subtle border border-kumo-line rounded hover:bg-kumo-canvas">
             削除
           </button>
         </div>
@@ -1605,7 +1605,7 @@ function ImagePreview({ url, onChange, onPick }: { url: string; onChange: (u: st
     <button
       type="button"
       onClick={onPick}
-      className="w-full flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-lg px-3 py-4 text-sm text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+      className="w-full flex items-center justify-center gap-2 border border-dashed border-kumo-line rounded-lg px-3 py-4 text-sm text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />

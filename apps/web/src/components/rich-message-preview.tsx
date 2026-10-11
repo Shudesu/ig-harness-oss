@@ -22,8 +22,8 @@ function renderBlock(block: RichMessageBlock, idx: number) {
     case 'text':
       return (
         <div key={idx} className="flex justify-start">
-          <div className="max-w-[80%] rounded-2xl rounded-tl-md bg-gray-100 px-4 py-2 text-sm text-gray-800 whitespace-pre-wrap break-words">
-            {block.text || <span className="text-gray-400 italic">（空）</span>}
+          <div className="max-w-[80%] rounded-2xl rounded-tl-md bg-kumo-tint px-4 py-2 text-sm text-kumo-default whitespace-pre-wrap break-words">
+            {block.text || <span className="text-kumo-subtle italic">（空）</span>}
           </div>
         </div>
       )
@@ -38,10 +38,10 @@ function renderBlock(block: RichMessageBlock, idx: number) {
             <img
               src={block.url}
               alt={block.alt ?? ''}
-              className="max-w-[240px] rounded-2xl border border-gray-200 object-cover"
+              className="max-w-[240px] rounded-2xl border border-kumo-line object-cover"
             />
           ) : (
-            <div className="w-60 h-40 rounded-2xl bg-gray-100 flex items-center justify-center text-xs text-gray-400">
+            <div className="w-60 h-40 rounded-2xl bg-kumo-tint flex items-center justify-center text-xs text-kumo-subtle">
               画像URL未設定
             </div>
           )}
@@ -51,24 +51,24 @@ function renderBlock(block: RichMessageBlock, idx: number) {
     case 'card':
       return (
         <div key={idx} className="flex justify-start">
-          <div className="w-[260px] rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+          <div className="w-[260px] rounded-xl border border-kumo-line bg-kumo-base overflow-hidden shadow-sm">
             {block.image_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={block.image_url} alt="" className="w-full h-40 object-cover" />
             ) : (
-              <div className="w-full h-40 bg-gradient-to-br from-pink-100 to-orange-100 flex items-center justify-center text-xs text-gray-400">
+              <div className="w-full h-40 bg-gradient-to-br from-pink-100 to-orange-100 flex items-center justify-center text-xs text-kumo-subtle">
                 画像なし
               </div>
             )}
             <div className="px-4 py-3">
-              <div className="text-sm font-semibold text-gray-900 line-clamp-2">
-                {block.title || <span className="text-gray-400">（タイトル未設定）</span>}
+              <div className="text-sm font-semibold text-kumo-default line-clamp-2">
+                {block.title || <span className="text-kumo-subtle">（タイトル未設定）</span>}
               </div>
               {block.subtitle && (
-                <div className="mt-1 text-xs text-gray-500 line-clamp-2">{block.subtitle}</div>
+                <div className="mt-1 text-xs text-kumo-subtle line-clamp-2">{block.subtitle}</div>
               )}
             </div>
-            <div className="divide-y divide-gray-100 border-t border-gray-100">
+            <div className="divide-y divide-gray-100 border-t border-kumo-line">
               {block.buttons.map((btn, bi) => (
                 <div key={bi} className="px-4 py-2.5 text-center text-sm font-medium" style={{ color: '#0095F6' }}>
                   {btn.label || '（ラベル未設定）'}
@@ -83,18 +83,18 @@ function renderBlock(block: RichMessageBlock, idx: number) {
       return (
         <div key={idx} className="flex gap-2 overflow-x-auto pb-2">
           {block.cards.map((card, ci) => (
-            <div key={ci} className="shrink-0 w-[220px] rounded-xl border border-gray-200 bg-white overflow-hidden">
+            <div key={ci} className="shrink-0 w-[220px] rounded-xl border border-kumo-line bg-kumo-base overflow-hidden">
               {card.image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={card.image_url} alt="" className="w-full h-32 object-cover" />
               ) : (
-                <div className="w-full h-32 bg-gray-100" />
+                <div className="w-full h-32 bg-kumo-tint" />
               )}
               <div className="px-3 py-2">
-                <div className="text-sm font-semibold text-gray-900 line-clamp-2">{card.title || '（タイトル）'}</div>
-                {card.subtitle && <div className="mt-1 text-xs text-gray-500 line-clamp-1">{card.subtitle}</div>}
+                <div className="text-sm font-semibold text-kumo-default line-clamp-2">{card.title || '（タイトル）'}</div>
+                {card.subtitle && <div className="mt-1 text-xs text-kumo-subtle line-clamp-1">{card.subtitle}</div>}
               </div>
-              <div className="divide-y divide-gray-100 border-t border-gray-100">
+              <div className="divide-y divide-gray-100 border-t border-kumo-line">
                 {card.buttons.map((btn, bi) => (
                   <div key={bi} className="px-3 py-2 text-center text-sm font-medium" style={{ color: '#0095F6' }}>
                     {btn.label || '（ラベル）'}
@@ -110,8 +110,8 @@ function renderBlock(block: RichMessageBlock, idx: number) {
       return (
         <div key={idx} className="space-y-2">
           <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-2xl rounded-tl-md bg-gray-100 px-4 py-2 text-sm text-gray-800">
-              {block.text || <span className="text-gray-400 italic">（空）</span>}
+            <div className="max-w-[80%] rounded-2xl rounded-tl-md bg-kumo-tint px-4 py-2 text-sm text-kumo-default">
+              {block.text || <span className="text-kumo-subtle italic">（空）</span>}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -158,15 +158,15 @@ export function RichBlocksCompact({ blocks }: { blocks: RichMessageBlock[] }): J
         }
         if (block.type === 'card') {
           return (
-            <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden bg-white text-[13px]">
+            <div key={idx} className="border border-kumo-line rounded-xl overflow-hidden bg-kumo-base text-[13px]">
               {block.image_url && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={block.image_url} alt="" className="w-full h-12 object-cover" />
               )}
               <div className="px-2 py-1.5">
-                <p className="font-semibold text-gray-900 line-clamp-1">{block.title}</p>
+                <p className="font-semibold text-kumo-default line-clamp-1">{block.title}</p>
                 {block.subtitle && (
-                  <p className="text-[11px] text-gray-500 line-clamp-1">{block.subtitle}</p>
+                  <p className="text-[11px] text-kumo-subtle line-clamp-1">{block.subtitle}</p>
                 )}
               </div>
               <div className="flex flex-wrap gap-1 px-2 pb-2">
@@ -190,12 +190,12 @@ export function RichBlocksCompact({ blocks }: { blocks: RichMessageBlock[] }): J
               key={idx}
               src={block.url}
               alt={block.alt ?? ''}
-              className="max-w-[160px] rounded-xl border border-gray-200"
+              className="max-w-[160px] rounded-xl border border-kumo-line"
             />
           )
         }
         return (
-          <span key={idx} className="text-[11px] text-gray-400">[{block.type}]</span>
+          <span key={idx} className="text-[11px] text-kumo-subtle">[{block.type}]</span>
         )
       })}
     </div>
@@ -205,7 +205,7 @@ export function RichBlocksCompact({ blocks }: { blocks: RichMessageBlock[] }): J
 export default function RichMessagePreview({ blocks }: { blocks: RichMessageBlock[] }) {
   if (blocks.length === 0) {
     return (
-      <div className="text-center text-sm text-gray-400 py-12">
+      <div className="text-center text-sm text-kumo-subtle py-12">
         ブロックを追加するとプレビューが表示されます
       </div>
     )
@@ -214,9 +214,9 @@ export default function RichMessagePreview({ blocks }: { blocks: RichMessageBloc
   return (
     <div className="space-y-3">
       {/* Simulated DM header */}
-      <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
+      <div className="flex items-center gap-2 pb-2 border-b border-kumo-line">
         <BrandMark size={32} shape="circle" />
-        <div className="text-sm font-medium text-gray-700">Instagram DM プレビュー</div>
+        <div className="text-sm font-medium text-kumo-default">Instagram DM プレビュー</div>
       </div>
       {blocks.map((b, i) => renderBlock(b, i))}
     </div>

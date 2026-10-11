@@ -6,6 +6,7 @@ const pkg = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'u
 
 const nextConfig: NextConfig = {
   output: 'export',
+  webpack: (config) => { if (process.env.HARNESS_NO_BUILD_CACHE) config.cache = false; return config },
   trailingSlash: true,
   transpilePackages: ['@ig-harness/shared'],
   env: {

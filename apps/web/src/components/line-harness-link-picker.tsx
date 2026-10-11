@@ -146,15 +146,15 @@ export default function LineHarnessLinkPicker({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        className="bg-kumo-base rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-kumo-line flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">🔗 LINE Harness から選択</h2>
-            <p className="text-xs text-gray-500 mt-0.5">tracked link + pool を選ぶと LINE 側で自動で属性付与</p>
+            <h2 className="text-lg font-bold text-kumo-default">🔗 LINE Harness から選択</h2>
+            <p className="text-xs text-kumo-subtle mt-0.5">tracked link + pool を選ぶと LINE 側で自動で属性付与</p>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="閉じる">
+          <button type="button" onClick={onClose} className="text-kumo-subtle hover:text-kumo-subtle" aria-label="閉じる">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -162,21 +162,21 @@ export default function LineHarnessLinkPicker({
         </div>
 
         {connections.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-500">
+          <div className="p-6 text-center text-sm text-kumo-subtle">
             接続先が未登録です。
             <a href="/settings" className="text-[#E1306C] hover:underline ml-1">/settings</a> から追加してください
           </div>
         ) : (
           <>
-            <div className="px-6 py-3 border-b border-gray-200 space-y-2">
+            <div className="px-6 py-3 border-b border-kumo-line space-y-2">
               <div>
-                <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wider">
+                <label className="block text-[10px] font-medium text-kumo-subtle mb-1 uppercase tracking-wider">
                   接続先
                 </label>
                 <select
                   value={connectionId}
                   onChange={(e) => setConnectionId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                  className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm bg-kumo-base focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                 >
                   {connections.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -188,13 +188,13 @@ export default function LineHarnessLinkPicker({
               </div>
 
               <div>
-                <label className="block text-[10px] font-medium text-gray-500 mb-1 uppercase tracking-wider">
+                <label className="block text-[10px] font-medium text-kumo-subtle mb-1 uppercase tracking-wider">
                   Pool（LINE側で属性タグ付け）
                 </label>
                 <select
                   value={poolSlug}
                   onChange={(e) => setPoolSlug(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                  className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm bg-kumo-base focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                 >
                   <option value="">（指定なし）</option>
                   {pools.map((p) => (
@@ -208,13 +208,13 @@ export default function LineHarnessLinkPicker({
 
             {!creatingOpen ? (
               <>
-                <div className="px-6 py-3 border-b border-gray-200 flex gap-2">
+                <div className="px-6 py-3 border-b border-kumo-line flex gap-2">
                   <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="名前 or URL で絞り込み"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-300"
+                    className="flex-1 px-3 py-2 border border-kumo-line rounded-lg text-sm placeholder:text-gray-300"
                   />
                   <button
                     type="button"
@@ -227,11 +227,11 @@ export default function LineHarnessLinkPicker({
 
                 <div className="flex-1 overflow-y-auto">
                   {loading ? (
-                    <div className="text-center text-sm text-gray-400 py-12">読み込み中...</div>
+                    <div className="text-center text-sm text-kumo-subtle py-12">読み込み中...</div>
                   ) : error ? (
                     <div className="text-center text-sm text-red-600 py-12 px-4">{error}</div>
                   ) : filtered.length === 0 ? (
-                    <div className="text-center text-sm text-gray-400 py-12">
+                    <div className="text-center text-sm text-kumo-subtle py-12">
                       {items.length === 0
                         ? 'この接続先には tracked link がまだありません。+ 新規作成 から追加してください'
                         : '該当する tracked link がありません'}
@@ -243,15 +243,15 @@ export default function LineHarnessLinkPicker({
                           key={x.id}
                           type="button"
                           onClick={() => handleSelect(x)}
-                          className="w-full flex items-center gap-3 px-6 py-3 text-left hover:bg-gray-50"
+                          className="w-full flex items-center gap-3 px-6 py-3 text-left hover:bg-kumo-canvas"
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">{x.name}</div>
-                            <div className="text-[11px] text-gray-400 truncate mt-0.5">
+                            <div className="text-sm font-medium text-kumo-default truncate">{x.name}</div>
+                            <div className="text-[11px] text-kumo-subtle truncate mt-0.5">
                               → {x.originalUrl}
                             </div>
                           </div>
-                          <div className="shrink-0 text-[10px] text-gray-400 font-medium">
+                          <div className="shrink-0 text-[10px] text-kumo-subtle font-medium">
                             {x.clickCount} クリック
                           </div>
                         </button>
@@ -263,23 +263,23 @@ export default function LineHarnessLinkPicker({
             ) : (
               <div className="p-6 space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">名前</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">名前</label>
                   <input
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder="例: 権利収入 キャンペーン特典"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm placeholder:text-gray-300"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm placeholder:text-gray-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">誘導先 URL</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">誘導先 URL</label>
                   <input
                     type="url"
                     value={newUrl}
                     onChange={(e) => setNewUrl(e.target.value)}
                     placeholder="https://line.me/R/ti/p/@xxx"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono placeholder:text-gray-300"
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm font-mono placeholder:text-gray-300"
                   />
                 </div>
                 {error && (
@@ -287,11 +287,11 @@ export default function LineHarnessLinkPicker({
                     {error}
                   </div>
                 )}
-                <div className="flex gap-2 justify-end pt-2 border-t border-gray-100">
+                <div className="flex gap-2 justify-end pt-2 border-t border-kumo-line">
                   <button
                     type="button"
                     onClick={() => setCreatingOpen(false)}
-                    className="px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
+                    className="px-3 py-2 rounded-lg text-sm text-kumo-subtle hover:bg-kumo-tint"
                   >
                     キャンセル
                   </button>

@@ -55,22 +55,22 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)' }}>
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
+      <div className="bg-kumo-base rounded-2xl shadow-xl p-8 w-full max-w-sm">
         <div className="text-center mb-6">
           <div className="mx-auto mb-3 w-fit"><BrandMark size={48} /></div>
-          <h1 className="text-xl font-bold text-gray-900">IG Harness</h1>
-          <p className="text-sm text-gray-500 mt-1">管理画面にログイン</p>
+          <h1 className="text-xl font-bold text-kumo-default">IG Harness</h1>
+          <p className="text-sm text-kumo-subtle mt-1">管理画面にログイン</p>
         </div>
 
         <form onSubmit={handleLogin}>
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+            <label className="block text-sm font-medium text-kumo-default mb-1">API Key</label>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="APIキーを入力"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent"
               autoFocus
             />
           </div>

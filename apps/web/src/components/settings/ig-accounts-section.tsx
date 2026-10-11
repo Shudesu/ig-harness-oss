@@ -120,10 +120,10 @@ export default function IgAccountsSection() {
   }
 
   return (
-    <section className="bg-white rounded-xl border border-gray-200 p-6">
+    <section className="bg-kumo-base rounded-xl border border-kumo-line p-6">
       <div className="mb-4">
-        <h2 className="text-sm font-semibold text-gray-900">📷 Instagram アカウント</h2>
-        <p className="text-[11px] text-gray-500 mt-1">
+        <h2 className="text-sm font-semibold text-kumo-default">📷 Instagram アカウント</h2>
+        <p className="text-[11px] text-kumo-subtle mt-1">
           複数の IG アカウントを登録すると、サイドバーの切替で各アカウントのデータを管理できます
         </p>
       </div>
@@ -136,16 +136,16 @@ export default function IgAccountsSection() {
 
       {/* 一覧 */}
       {loading ? (
-        <div className="text-sm text-gray-400">読み込み中...</div>
+        <div className="text-sm text-kumo-subtle">読み込み中...</div>
       ) : rows.length === 0 ? (
-        <div className="text-sm text-gray-400 text-center py-6 border border-dashed border-gray-200 rounded-lg">
+        <div className="text-sm text-kumo-subtle text-center py-6 border border-dashed border-kumo-line rounded-lg">
           アカウントが未登録です
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-[11px] text-gray-400 border-b border-gray-100">
+              <tr className="text-left text-[11px] text-kumo-subtle border-b border-kumo-line">
                 <th className="py-2 pr-3 font-medium">アカウント</th>
                 <th className="py-2 pr-3 font-medium">IG User ID</th>
                 <th className="py-2 pr-3 font-medium">トークン</th>
@@ -158,13 +158,13 @@ export default function IgAccountsSection() {
               {rows.map((account) => (
                 <tr key={account.id} className="border-b border-gray-50 align-top">
                   <td className="py-2.5 pr-3">
-                    <span className="font-medium text-gray-800">
+                    <span className="font-medium text-kumo-default">
                       {account.username ? `@${account.username}` : account.igUserId}
                     </span>
                   </td>
-                  <td className="py-2.5 pr-3 font-mono text-xs text-gray-500">{account.igUserId}</td>
-                  <td className="py-2.5 pr-3 font-mono text-xs text-gray-500">{account.accessToken}</td>
-                  <td className="py-2.5 pr-3 text-xs text-gray-500">{formatExpiry(account.tokenExpiresAt)}</td>
+                  <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.igUserId}</td>
+                  <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.accessToken}</td>
+                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt)}</td>
                   <td className="py-2.5 pr-3">
                     <span className="inline-flex items-center gap-1">
                       {account.isDefault && (
@@ -173,7 +173,7 @@ export default function IgAccountsSection() {
                         </span>
                       )}
                       {!account.isActive && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-kumo-tint text-kumo-subtle">
                           停止中
                         </span>
                       )}
@@ -189,7 +189,7 @@ export default function IgAccountsSection() {
                             onChange={(e) => setTokenDraft(e.target.value)}
                             placeholder="新しいアクセストークン"
                             autoFocus
-                            className="w-44 px-2 py-1 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
+                            className="w-44 px-2 py-1 border border-kumo-line rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
                           />
                           <button
                             type="button"
@@ -203,7 +203,7 @@ export default function IgAccountsSection() {
                           <button
                             type="button"
                             onClick={() => { setTokenEditId(null); setTokenDraft('') }}
-                            className="px-2 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50"
+                            className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas"
                           >
                             取消
                           </button>
@@ -213,7 +213,7 @@ export default function IgAccountsSection() {
                           <button
                             type="button"
                             onClick={() => { setTokenEditId(account.id); setTokenDraft('') }}
-                            className="px-2 py-1 text-xs text-gray-600 bg-white border border-gray-200 rounded hover:bg-gray-50 whitespace-nowrap"
+                            className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas whitespace-nowrap"
                           >
                             トークン更新
                           </button>
@@ -224,8 +224,8 @@ export default function IgAccountsSection() {
                               onClick={() => handleToggleActive(account)}
                               className={`px-2 py-1 text-xs rounded border whitespace-nowrap ${
                                 account.isActive
-                                  ? 'text-red-500 bg-white border-red-200 hover:bg-red-50'
-                                  : 'text-green-600 bg-white border-green-200 hover:bg-green-50'
+                                  ? 'text-red-500 bg-kumo-base border-red-200 hover:bg-red-50'
+                                  : 'text-green-600 bg-kumo-base border-green-200 hover:bg-green-50'
                               }`}
                             >
                               {account.isActive ? '停止' : '有効化'}
@@ -244,12 +244,12 @@ export default function IgAccountsSection() {
 
       {/* 追加フォーム（owner のみ） */}
       {isOwner && (
-        <div className="mt-5 pt-5 border-t border-gray-100">
-          <h3 className="text-xs font-semibold text-gray-700 mb-3">アカウントを追加</h3>
+        <div className="mt-5 pt-5 border-t border-kumo-line">
+          <h3 className="text-xs font-semibold text-kumo-default mb-3">アカウントを追加</h3>
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label className="block text-xs font-medium text-kumo-subtle mb-1">
                   IG User ID <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -257,22 +257,22 @@ export default function IgAccountsSection() {
                   value={igUserId}
                   onChange={(e) => setIgUserId(e.target.value)}
                   placeholder="17841400000000000"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
+                  className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">ユーザーネーム（任意）</label>
+                <label className="block text-xs font-medium text-kumo-subtle mb-1">ユーザーネーム（任意）</label>
                 <input
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="my_second_account"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
+                  className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">
                 アクセストークン <span className="text-red-400">*</span>
               </label>
               <input
@@ -280,7 +280,7 @@ export default function IgAccountsSection() {
                 value={accessToken}
                 onChange={(e) => setAccessToken(e.target.value)}
                 placeholder="IGAAxxxxxxxxxxxxx"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
+                className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>
 
@@ -289,7 +289,7 @@ export default function IgAccountsSection() {
               <button
                 type="button"
                 onClick={() => setShowAppFields((v) => !v)}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
+                className="flex items-center gap-1 text-xs text-kumo-subtle hover:text-kumo-default"
               >
                 <svg
                   className={`w-3 h-3 transition-transform ${showAppFields ? 'rotate-90' : ''}`}
@@ -302,28 +302,28 @@ export default function IgAccountsSection() {
                 別 Meta App を使う場合
               </button>
               {showAppFields && (
-                <div className="mt-2 space-y-3 pl-4 border-l-2 border-gray-100">
-                  <p className="text-[11px] text-gray-400">
+                <div className="mt-2 space-y-3 pl-4 border-l-2 border-kumo-line">
+                  <p className="text-[11px] text-kumo-subtle">
                     省略時はデフォルトアカウントと同じ Meta App の設定を使います
                   </p>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">App Secret</label>
+                    <label className="block text-xs font-medium text-kumo-subtle mb-1">App Secret</label>
                     <input
                       type="password"
                       value={appSecret}
                       onChange={(e) => setAppSecret(e.target.value)}
                       placeholder="Meta App の App Secret"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
+                      className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Verify Token</label>
+                    <label className="block text-xs font-medium text-kumo-subtle mb-1">Verify Token</label>
                     <input
                       type="password"
                       value={verifyToken}
                       onChange={(e) => setVerifyToken(e.target.value)}
                       placeholder="Webhook 検証用トークン"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
+                      className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
                     />
                   </div>
                 </div>
