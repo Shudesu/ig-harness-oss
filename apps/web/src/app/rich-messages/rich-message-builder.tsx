@@ -128,7 +128,7 @@ export default function RichMessageBuilder({ existing }: Props) {
       />
 
       <div className="mb-4">
-        <Link href="/rich-messages" className="text-sm text-gray-500 hover:text-gray-700">
+        <Link href="/rich-messages" className="text-sm text-kumo-subtle hover:text-kumo-default">
           ← 一覧に戻る
         </Link>
       </div>
@@ -136,26 +136,26 @@ export default function RichMessageBuilder({ existing }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
         {/* Form column */}
         <div className="space-y-4">
-          <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">名前 <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-medium text-kumo-default mb-1">名前 <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="例: 2026-04 リール共通 CTA"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">種別</label>
+              <label className="block text-xs font-medium text-kumo-default mb-1">種別</label>
               <div className="flex gap-2">
                 {(['cta', 'reward', 'reminder', 'generic'] as const).map((k) => (
                   <button
                     key={k}
                     onClick={() => setKind(k)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
-                      kind === k ? 'border-[#E1306C] text-[#E1306C] bg-pink-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      kind === k ? 'border-[#E1306C] text-[#E1306C] bg-pink-50' : 'border-kumo-line text-kumo-subtle hover:bg-kumo-canvas'
                     }`}
                   >
                     {({ cta: 'CTA', reward: 'リワード', reminder: 'リマインダー', generic: '汎用' } as Record<RichMessageKind, string>)[k]}
@@ -165,13 +165,13 @@ export default function RichMessageBuilder({ existing }: Props) {
             </div>
           </section>
 
-          <section className="bg-white rounded-xl border border-gray-200 p-5">
+          <section className="bg-kumo-base rounded-xl border border-kumo-line p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-semibold text-gray-900">ブロック</h3>
-                <p className="text-xs text-gray-500 mt-0.5">最大 5 つまで。送信時は上から順に配信されます</p>
+                <h3 className="text-sm font-semibold text-kumo-default">ブロック</h3>
+                <p className="text-xs text-kumo-subtle mt-0.5">最大 5 つまで。送信時は上から順に配信されます</p>
               </div>
-              <span className="text-xs text-gray-400">{blocks.length} / 5</span>
+              <span className="text-xs text-kumo-subtle">{blocks.length} / 5</span>
             </div>
 
             <div className="space-y-3">
@@ -190,14 +190,14 @@ export default function RichMessageBuilder({ existing }: Props) {
             </div>
 
             {blocks.length < 5 && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <div className="text-xs font-medium text-gray-500 mb-2">ブロック追加</div>
+              <div className="mt-4 pt-4 border-t border-kumo-line">
+                <div className="text-xs font-medium text-kumo-subtle mb-2">ブロック追加</div>
                 <div className="flex flex-wrap gap-2">
                   {(['text', 'image', 'card', 'carousel', 'quick_replies'] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => addBlock(t)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-700 hover:border-[#E1306C] hover:text-[#E1306C]"
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-kumo-line text-kumo-default hover:border-[#E1306C] hover:text-[#E1306C]"
                     >
                       + {BLOCK_LABELS[t]}
                     </button>
@@ -215,7 +215,7 @@ export default function RichMessageBuilder({ existing }: Props) {
             {existing && (
               <button
                 onClick={() => setShowTestSend(true)}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-kumo-line text-kumo-default hover:bg-kumo-canvas"
               >
                 テスト配信
               </button>
@@ -223,7 +223,7 @@ export default function RichMessageBuilder({ existing }: Props) {
             <div className="flex gap-2 ml-auto">
               <Link
                 href="/rich-messages"
-                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-kumo-subtle hover:bg-kumo-tint"
               >
                 キャンセル
               </Link>
@@ -241,8 +241,8 @@ export default function RichMessageBuilder({ existing }: Props) {
 
         {/* Preview column (sticky on desktop) */}
         <aside className="lg:sticky lg:top-8 self-start">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">プレビュー</h3>
+          <div className="bg-kumo-base rounded-xl border border-kumo-line p-5">
+            <h3 className="text-sm font-semibold text-kumo-default mb-3">プレビュー</h3>
             <RichMessagePreview blocks={blocks} />
           </div>
         </aside>
@@ -295,17 +295,17 @@ function BlockEditor({
   onPickImage: (cb: (url: string) => void) => void
 }) {
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
-      <div className="bg-gray-50 border-b border-gray-200 px-3 py-2 flex items-center justify-between">
+    <div className="border border-kumo-line rounded-lg overflow-hidden">
+      <div className="bg-kumo-canvas border-b border-kumo-line px-3 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">#{index + 1}</span>
-          <span className="text-sm font-medium text-gray-800">{BLOCK_LABELS[block.type]}</span>
+          <span className="text-xs font-medium text-kumo-subtle">#{index + 1}</span>
+          <span className="text-sm font-medium text-kumo-default">{BLOCK_LABELS[block.type]}</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => onMove(-1)}
             disabled={index === 0}
-            className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+            className="p-1 rounded hover:bg-kumo-fill disabled:opacity-30"
             aria-label="上へ移動"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -315,7 +315,7 @@ function BlockEditor({
           <button
             onClick={() => onMove(1)}
             disabled={index === total - 1}
-            className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+            className="p-1 rounded hover:bg-kumo-fill disabled:opacity-30"
             aria-label="下へ移動"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -337,7 +337,7 @@ function BlockEditor({
             onChange={(e) => onChange({ text: e.target.value })}
             placeholder="テキスト（最大1000文字）"
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+            className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
           />
         )}
 
@@ -391,11 +391,11 @@ function ImageUrlField({ url, onChange, onPickImage }: { url: string; onChange: 
         value={url}
         onChange={(e) => onChange(e.target.value)}
         placeholder="https://... または ギャラリーから選択"
-        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+        className="flex-1 px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
       />
       <button
         onClick={() => onPickImage((picked) => onChange(picked))}
-        className="px-3 py-2 rounded-lg text-xs font-medium border border-gray-300 text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+        className="px-3 py-2 rounded-lg text-xs font-medium border border-kumo-line text-kumo-default hover:bg-kumo-canvas whitespace-nowrap"
       >
         ギャラリー
       </button>
@@ -423,21 +423,21 @@ function CardEditor({ card, onChange, onPickImage }: {
         value={card.title}
         onChange={(e) => onChange({ title: e.target.value })}
         placeholder="タイトル（最大80文字）"
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+        className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
       />
       <input
         type="text"
         value={card.subtitle ?? ''}
         onChange={(e) => onChange({ subtitle: e.target.value })}
         placeholder="サブタイトル（省略可）"
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+        className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
       />
       <div>
-        <div className="text-xs font-medium text-gray-600 mb-1">画像 (任意)</div>
+        <div className="text-xs font-medium text-kumo-subtle mb-1">画像 (任意)</div>
         <ImageUrlField url={card.image_url ?? ''} onChange={(url) => onChange({ image_url: url })} onPickImage={onPickImage} />
       </div>
       <div>
-        <div className="text-xs font-medium text-gray-600 mb-1">ボタン（最大 3）</div>
+        <div className="text-xs font-medium text-kumo-subtle mb-1">ボタン（最大 3）</div>
         <ButtonsEditor
           buttons={card.buttons}
           onChange={(buttons) => onChange({ buttons })}
@@ -460,9 +460,9 @@ function CarouselEditor({ cards, onChange, onPickImage }: {
   return (
     <div className="space-y-3">
       {cards.map((card, idx) => (
-        <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
+        <div key={idx} className="border border-kumo-line rounded-lg p-3 space-y-2 bg-kumo-canvas">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-600">カード #{idx + 1}</span>
+            <span className="text-xs font-medium text-kumo-subtle">カード #{idx + 1}</span>
             {cards.length > 1 && (
               <button onClick={() => removeCard(idx)} className="text-xs text-red-500 hover:text-red-700">削除</button>
             )}
@@ -473,7 +473,7 @@ function CarouselEditor({ cards, onChange, onPickImage }: {
       {cards.length < 10 && (
         <button
           onClick={() => onChange([...cards, { title: '', buttons: [{ type: 'postback', label: '', payload: 'CHECK_FOLLOW:{GATE_ID}:{DELIVERY_ID}' }] }])}
-          className="w-full py-2 rounded-lg text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+          className="w-full py-2 rounded-lg text-xs font-medium border border-dashed border-kumo-line text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
         >
           + カード追加
         </button>
@@ -520,14 +520,14 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
       {buttons.map((btn, idx) => {
         const preset = detectPreset(btn)
         return (
-          <div key={idx} className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-white">
+          <div key={idx} className="border border-kumo-line rounded-lg p-2.5 space-y-2 bg-kumo-base">
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={btn.label}
                 onChange={(e) => update(idx, { ...btn, label: e.target.value } as RichMessageButton)}
                 placeholder="ボタンに表示する文字"
-                className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-xs"
+                className="flex-1 px-2 py-1.5 border border-kumo-line rounded text-xs"
               />
               {buttons.length > 1 && (
                 <button type="button" onClick={() => remove(idx)} className="p-1 text-red-500 hover:bg-red-50 rounded" aria-label="削除">
@@ -539,7 +539,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
             </div>
 
             <div>
-              <div className="text-[10px] font-medium text-gray-500 mb-1">押された時の動作</div>
+              <div className="text-[10px] font-medium text-kumo-subtle mb-1">押された時の動作</div>
               <div className={`grid gap-1.5 ${showAdvanced ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 {([
                   { v: 'gate_check', emoji: '🎁', label: '特典を受け取る' },
@@ -555,7 +555,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
                     className={`px-2 py-1.5 rounded border text-xs text-left transition-colors ${
                       preset === opt.v
                         ? 'border-[#E1306C] bg-pink-50 text-[#E1306C]'
-                        : 'border-gray-200 text-gray-700 hover:border-gray-300'
+                        : 'border-kumo-line text-kumo-default hover:border-kumo-line'
                     }`}
                   >
                     <span className="mr-1">{opt.emoji}</span>
@@ -564,7 +564,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
                 ))}
               </div>
               {preset === 'gate_check' && (
-                <p className="mt-1 text-[10px] text-gray-400">
+                <p className="mt-1 text-[10px] text-kumo-subtle">
                   タップ → フォロー状態を確認 → フォロー済みなら特典DM配信
                 </p>
               )}
@@ -575,9 +575,9 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
                     value={btn.type === 'url' ? btn.url : ''}
                     onChange={(e) => update(idx, { type: 'url', label: btn.label, url: e.target.value })}
                     placeholder="https://line.me/... や {REWARD_URL}"
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs font-mono"
+                    className="w-full px-2 py-1.5 border border-kumo-line rounded text-xs font-mono"
                   />
-                  <p className="mt-1 text-[10px] text-gray-400">
+                  <p className="mt-1 text-[10px] text-kumo-subtle">
                     <code>{'{REWARD_URL}'}</code> と書いておくと、キャンペーンの「特典 URL」がタップ時に埋め込まれます
                   </p>
                 </div>
@@ -589,7 +589,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
                     onChange={(e) => update(idx, e.target.value === 'url'
                       ? { type: 'url', label: btn.label, url: '' }
                       : { type: 'postback', label: btn.label, payload: '' })}
-                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs"
+                    className="w-full px-2 py-1 border border-kumo-line rounded text-xs"
                   >
                     <option value="postback">postback (独自 payload)</option>
                     <option value="url">URL</option>
@@ -600,7 +600,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
                       value={btn.payload}
                       onChange={(e) => update(idx, { ...btn, payload: e.target.value })}
                       placeholder="payload 文字列"
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                      className="w-full px-2 py-1 border border-kumo-line rounded text-xs font-mono"
                     />
                   ) : (
                     <input
@@ -608,7 +608,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
                       value={btn.url}
                       onChange={(e) => update(idx, { ...btn, url: e.target.value })}
                       placeholder="https://..."
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+                      className="w-full px-2 py-1 border border-kumo-line rounded text-xs font-mono"
                     />
                   )}
                 </div>
@@ -621,7 +621,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
         <button
           type="button"
           onClick={() => onChange([...buttons, { type: 'url', label: '', url: '{REWARD_URL}' }])}
-          className="w-full py-1.5 rounded text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#E1306C]"
+          className="w-full py-1.5 rounded text-xs font-medium border border-dashed border-kumo-line text-kumo-subtle hover:border-[#E1306C]"
         >
           + ボタン追加（任意）
         </button>
@@ -629,7 +629,7 @@ function ButtonsEditor({ buttons, onChange }: { buttons: RichMessageButton[]; on
       <button
         type="button"
         onClick={() => setShowAdvanced((v) => !v)}
-        className="text-[10px] text-gray-400 hover:text-gray-600"
+        className="text-[10px] text-kumo-subtle hover:text-kumo-subtle"
       >
         {showAdvanced ? '詳細設定を隠す' : '⚙️ 詳細設定（カスタム payload 等）'}
       </button>
@@ -656,7 +656,7 @@ function QuickRepliesEditor({
         onChange={(e) => onChange({ text: e.target.value })}
         placeholder="メッセージテキスト"
         rows={2}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+        className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
       />
       <div className="space-y-1.5">
         {replies.map((r, idx) => (
@@ -666,14 +666,14 @@ function QuickRepliesEditor({
               value={r.label}
               onChange={(e) => update(idx, { label: e.target.value })}
               placeholder="ラベル"
-              className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs"
+              className="flex-1 px-2 py-1 border border-kumo-line rounded text-xs"
             />
             <input
               type="text"
               value={r.payload}
               onChange={(e) => update(idx, { payload: e.target.value })}
               placeholder="payload"
-              className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs font-mono"
+              className="flex-1 px-2 py-1 border border-kumo-line rounded text-xs font-mono"
             />
             {replies.length > 1 && (
               <button
@@ -691,7 +691,7 @@ function QuickRepliesEditor({
         {replies.length < 13 && (
           <button
             onClick={() => onChange({ replies: [...replies, { label: '', payload: '' }] })}
-            className="w-full py-1.5 rounded text-xs font-medium border border-dashed border-gray-300 text-gray-500 hover:border-[#E1306C]"
+            className="w-full py-1.5 rounded text-xs font-medium border border-dashed border-kumo-line text-kumo-subtle hover:border-[#E1306C]"
           >
             + クイックリプライ追加
           </button>

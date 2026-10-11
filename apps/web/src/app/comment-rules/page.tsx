@@ -41,7 +41,7 @@ function MediaIdPicker({ mediaId, onChange }: { mediaId: string; onChange: (id: 
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="w-full flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-lg px-3 py-3 text-sm text-gray-500 hover:border-[#E1306C] hover:text-[#E1306C]"
+          className="w-full flex items-center justify-center gap-2 border border-dashed border-kumo-line rounded-lg px-3 py-3 text-sm text-kumo-subtle hover:border-[#E1306C] hover:text-[#E1306C]"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -59,31 +59,31 @@ function MediaIdPicker({ mediaId, onChange }: { mediaId: string; onChange: (id: 
 
   return (
     <>
-      <div className="flex items-center gap-3 border border-gray-200 rounded-lg p-2 bg-gray-50">
-        <div className="w-14 h-14 bg-gray-200 rounded overflow-hidden shrink-0">
+      <div className="flex items-center gap-3 border border-kumo-line rounded-lg p-2 bg-kumo-canvas">
+        <div className="w-14 h-14 bg-kumo-fill rounded overflow-hidden shrink-0">
           {preview?.thumbnail_url || preview?.media_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={preview.thumbnail_url || preview.media_url} alt="" className="w-full h-full object-cover" />
           ) : null}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-gray-700 line-clamp-2">
+          <div className="text-xs text-kumo-default line-clamp-2">
             {preview?.caption?.slice(0, 80) ?? '(選択済み — キャプションを取得中)'}
           </div>
-          <div className="text-[10px] text-gray-400 font-mono mt-0.5 truncate">{mediaId}</div>
+          <div className="text-[10px] text-kumo-subtle font-mono mt-0.5 truncate">{mediaId}</div>
         </div>
         <div className="flex gap-1 shrink-0">
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="px-2 py-1 text-xs border border-gray-200 rounded hover:bg-white"
+            className="px-2 py-1 text-xs border border-kumo-line rounded hover:bg-kumo-base"
           >
             変更
           </button>
           <button
             type="button"
             onClick={() => onChange('')}
-            className="px-2 py-1 text-xs text-red-500 border border-gray-200 rounded hover:bg-red-50"
+            className="px-2 py-1 text-xs text-red-500 border border-kumo-line rounded hover:bg-red-50"
           >
             解除
           </button>
@@ -296,28 +296,28 @@ export default function CommentRulesPage() {
 
       {/* Create / Edit form */}
       {showForm && (
-        <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+        <div className="mb-6 bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-6">
+          <h2 className="text-sm font-semibold text-kumo-default mb-4">
             {editingId ? 'ルールを編集' : '新規ルールを作成'}
           </h2>
           <div className="space-y-4 max-w-lg">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">ルール名 <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">ルール名 <span className="text-red-500">*</span></label>
               <input
                 type="text"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                 placeholder="例: 価格問い合わせ自動返信"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">対象投稿 (省略可)</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">対象投稿 (省略可)</label>
               <MediaIdPicker
                 mediaId={form.mediaId}
                 onChange={(id) => setForm({ ...form, mediaId: id })}
               />
-              <p className="mt-1 text-[11px] text-gray-400">
+              <p className="mt-1 text-[11px] text-kumo-subtle">
                 省略時: すべての投稿への該当キーワードコメントに反応
               </p>
             </div>
@@ -325,7 +325,7 @@ export default function CommentRulesPage() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300"
+                  className="w-4 h-4 rounded border-kumo-line"
                   checked={form.matchType === 'any_comment'}
                   onChange={(e) =>
                     setForm((f) => {
@@ -348,30 +348,30 @@ export default function CommentRulesPage() {
                     })
                   }
                 />
-                <span className="text-xs text-gray-700">
+                <span className="text-xs text-kumo-default">
                   🎯 すべてのコメントに反応（キーワード不要）
                 </span>
               </label>
-              <p className="ml-6 mt-1 text-[11px] text-gray-400">
+              <p className="ml-6 mt-1 text-[11px] text-kumo-subtle">
                 対象投稿が指定されていれば、その投稿への全コメント。未指定なら全投稿の全コメント
               </p>
             </div>
             {form.matchType !== 'any_comment' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">キーワード</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">キーワード</label>
                   <input
                     type="text"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                    className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                     placeholder="例: 価格"
                     value={form.keyword}
                     onChange={(e) => setForm({ ...form, keyword: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">マッチタイプ</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">マッチタイプ</label>
                   <select
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+                    className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-kumo-base"
                     value={form.matchType}
                     onChange={(e) => setForm({ ...form, matchType: e.target.value as MatchType })}
                   >
@@ -383,9 +383,9 @@ export default function CommentRulesPage() {
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">レスポンスタイプ</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">レスポンスタイプ</label>
               <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+                className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-kumo-base"
                 value={form.responseType}
                 onChange={(e) => setForm({ ...form, responseType: e.target.value as ResponseType })}
               >
@@ -395,12 +395,12 @@ export default function CommentRulesPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">
                 {form.responseType === 'image' ? '画像URL' : '返信テキスト'}
               </label>
               {form.responseType === 'text' ? (
                 <textarea
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+                  className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
                   rows={3}
                   placeholder="自動返信するメッセージを入力"
                   value={form.responseText}
@@ -409,7 +409,7 @@ export default function CommentRulesPage() {
               ) : (
                 <input
                   type="url"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                   placeholder="https://example.com/image.jpg"
                   value={form.responseText}
                   onChange={(e) => setForm({ ...form, responseText: e.target.value })}
@@ -417,11 +417,11 @@ export default function CommentRulesPage() {
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">遅延 (秒)</label>
+              <label className="block text-xs font-medium text-kumo-subtle mb-1">遅延 (秒)</label>
               <input
                 type="number"
                 min={0}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                 value={form.delaySeconds}
                 onChange={(e) => setForm({ ...form, delaySeconds: Number(e.target.value) })}
               />
@@ -432,9 +432,9 @@ export default function CommentRulesPage() {
                 id="ruleIsActive"
                 checked={form.isActive}
                 onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300"
+                className="w-4 h-4 rounded border-kumo-line"
               />
-              <label htmlFor="ruleIsActive" className="text-sm text-gray-600">作成後すぐに有効にする</label>
+              <label htmlFor="ruleIsActive" className="text-sm text-kumo-subtle">作成後すぐに有効にする</label>
             </div>
 
             {formError && <p className="text-xs text-red-600">{formError}</p>}
@@ -450,7 +450,7 @@ export default function CommentRulesPage() {
               </button>
               <button
                 onClick={() => { setShowForm(false); setEditingId(null); setFormError('') }}
-                className="px-4 py-2 min-h-[44px] text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                className="px-4 py-2 min-h-[44px] text-sm font-medium text-kumo-subtle bg-kumo-tint hover:bg-kumo-fill rounded-lg transition-colors"
               >
                 キャンセル
               </button>
@@ -463,19 +463,19 @@ export default function CommentRulesPage() {
       {loading ? (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse space-y-3">
-              <div className="h-4 bg-gray-200 rounded w-1/2" />
-              <div className="h-3 bg-gray-100 rounded w-3/4" />
+            <div key={i} className="bg-kumo-base rounded-lg border border-kumo-line p-5 animate-pulse space-y-3">
+              <div className="h-4 bg-kumo-fill rounded w-1/2" />
+              <div className="h-3 bg-kumo-tint rounded w-3/4" />
             </div>
           ))}
         </div>
       ) : rules.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+        <div className="bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-12 text-center">
           <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
           </svg>
-          <p className="text-gray-500 text-sm">コメントルールがありません</p>
+          <p className="text-kumo-subtle text-sm">コメントルールがありません</p>
           <button
             onClick={openCreate}
             className="mt-3 text-sm font-medium hover:opacity-80 transition-opacity"
@@ -489,28 +489,28 @@ export default function CommentRulesPage() {
           {rules.map((rule) => (
             <div
               key={rule.id}
-              className="bg-white rounded-lg border border-gray-200 p-5 flex items-start justify-between gap-4"
+              className="bg-kumo-base rounded-lg border border-kumo-line p-5 flex items-start justify-between gap-4"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <h3 className="text-sm font-semibold text-gray-900 truncate">{rule.name}</h3>
+                  <h3 className="text-sm font-semibold text-kumo-default truncate">{rule.name}</h3>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                    rule.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    rule.isActive ? 'bg-green-100 text-green-700' : 'bg-kumo-tint text-kumo-subtle'
                   }`}>
                     {rule.isActive ? 'ON' : 'OFF'}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-kumo-subtle">
                   {rule.matchType === 'any_comment' ? (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[11px] font-medium">
                       🎯 すべてのコメント
                     </span>
                   ) : rule.keyword ? (
-                    <span>キーワード: <span className="font-medium text-gray-700">{rule.keyword}</span> ({MATCH_TYPE_LABELS[rule.matchType]})</span>
+                    <span>キーワード: <span className="font-medium text-kumo-default">{rule.keyword}</span> ({MATCH_TYPE_LABELS[rule.matchType]})</span>
                   ) : null}
-                  <span>返信タイプ: <span className="font-medium text-gray-700">{RESPONSE_TYPE_LABELS[rule.responseType]}</span></span>
+                  <span>返信タイプ: <span className="font-medium text-kumo-default">{RESPONSE_TYPE_LABELS[rule.responseType]}</span></span>
                   {rule.delaySeconds > 0 && (
-                    <span>遅延: <span className="font-medium text-gray-700">{rule.delaySeconds}秒</span></span>
+                    <span>遅延: <span className="font-medium text-kumo-default">{rule.delaySeconds}秒</span></span>
                   )}
                 </div>
               </div>
@@ -524,14 +524,14 @@ export default function CommentRulesPage() {
                   title={rule.isActive ? '無効にする' : '有効にする'}
                 >
                   <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    className={`inline-block h-4 w-4 transform rounded-full bg-kumo-base shadow transition-transform ${
                       rule.isActive ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>
                 <button
                   onClick={() => openEdit(rule)}
-                  className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                  className="p-2 rounded-lg text-kumo-subtle hover:text-kumo-subtle hover:bg-kumo-tint transition-colors"
                   title="編集"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -541,7 +541,7 @@ export default function CommentRulesPage() {
                 </button>
                 <button
                   onClick={() => handleDelete(String(rule.id))}
-                  className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                  className="p-2 rounded-lg text-kumo-subtle hover:text-red-500 hover:bg-red-50 transition-colors"
                   title="削除"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

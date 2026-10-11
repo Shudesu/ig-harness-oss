@@ -40,7 +40,7 @@ const TYPE_CLASSES: Record<string, string> = {
   REELS: 'bg-purple-100 text-purple-700',
   FEED: 'bg-blue-100 text-blue-700',
   STORY: 'bg-pink-100 text-pink-700',
-  AD: 'bg-gray-100 text-gray-700',
+  AD: 'bg-kumo-tint text-kumo-default',
 }
 
 export default function MediaPickerModal({
@@ -117,22 +117,22 @@ export default function MediaPickerModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+        className="bg-kumo-base rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-kumo-line flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">投稿を選択</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Instagram アカウントから直接取得</p>
+            <h2 className="text-lg font-bold text-kumo-default">投稿を選択</h2>
+            <p className="text-xs text-kumo-subtle mt-0.5">Instagram アカウントから直接取得</p>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="閉じる">
+          <button type="button" onClick={onClose} className="text-kumo-subtle hover:text-kumo-subtle" aria-label="閉じる">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <div className="px-6 py-3 border-b border-gray-200 flex gap-2 flex-wrap">
+        <div className="px-6 py-3 border-b border-kumo-line flex gap-2 flex-wrap">
           {tabs.length > 1 &&
             tabs.map((t) => (
               <button
@@ -142,7 +142,7 @@ export default function MediaPickerModal({
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
                   filter === t
                     ? 'border-[#E1306C] text-[#E1306C] bg-pink-50'
-                    : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    : 'border-kumo-line text-kumo-subtle hover:bg-kumo-canvas'
                 }`}
               >
                 {t === 'all' ? 'すべて' : TYPE_LABELS[t]}
@@ -151,7 +151,7 @@ export default function MediaPickerModal({
           <button
             type="button"
             onClick={load}
-            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"
+            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium border border-kumo-line text-kumo-subtle hover:bg-kumo-canvas"
           >
             🔄 再読込
           </button>
@@ -161,7 +161,7 @@ export default function MediaPickerModal({
             className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
               showManual
                 ? 'border-[#E1306C] text-[#E1306C] bg-pink-50'
-                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                : 'border-kumo-line text-kumo-subtle hover:bg-kumo-canvas'
             }`}
           >
             手動IDで指定
@@ -169,8 +169,8 @@ export default function MediaPickerModal({
         </div>
 
         {showManual && (
-          <div className="px-6 py-3 border-b border-gray-200 bg-gray-50">
-            <div className="text-xs text-gray-600 mb-2">
+          <div className="px-6 py-3 border-b border-kumo-line bg-kumo-canvas">
+            <div className="text-xs text-kumo-subtle mb-2">
               古い投稿 (100件以上前) はギャラリーに出ません。Graph API で取得した メディア ID を直接入力できます。
             </div>
             <div className="flex gap-2">
@@ -179,7 +179,7 @@ export default function MediaPickerModal({
                 value={manualId}
                 onChange={(e) => setManualId(e.target.value)}
                 placeholder="例: 17841401234567890_18012345678901234"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                className="flex-1 px-3 py-2 border border-kumo-line rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') submitManual()
                 }}
@@ -199,11 +199,11 @@ export default function MediaPickerModal({
 
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
-            <div className="text-center text-sm text-gray-400 py-12">読み込み中...</div>
+            <div className="text-center text-sm text-kumo-subtle py-12">読み込み中...</div>
           ) : error ? (
             <div className="text-center text-sm text-red-600 py-12">{error}</div>
           ) : items.length === 0 ? (
-            <div className="text-center text-sm text-gray-400 py-12">
+            <div className="text-center text-sm text-kumo-subtle py-12">
               該当する投稿が見つかりません
             </div>
           ) : (
@@ -231,18 +231,18 @@ export default function MediaPickerModal({
                         onClose()
                       }
                     }}
-                    className={`group relative text-left bg-white border rounded-lg overflow-hidden transition-colors ${
+                    className={`group relative text-left bg-kumo-base border rounded-lg overflow-hidden transition-colors ${
                       isSelected
                         ? 'border-[#E1306C] ring-2 ring-[#E1306C]/30'
-                        : 'border-gray-200 hover:border-[#E1306C]'
+                        : 'border-kumo-line hover:border-[#E1306C]'
                     }`}
                   >
-                    <div className="relative aspect-square bg-gray-100">
+                    <div className="relative aspect-square bg-kumo-tint">
                       {thumb ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumb} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                        <div className="w-full h-full flex items-center justify-center text-xs text-kumo-subtle">
                           サムネなし
                         </div>
                       )}
@@ -262,7 +262,7 @@ export default function MediaPickerModal({
                       {multiSelect && (
                         <span
                           className={`absolute bottom-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                            isSelected ? 'bg-[#E1306C] text-white' : 'bg-white/90 text-gray-400 border border-gray-300'
+                            isSelected ? 'bg-[#E1306C] text-white' : 'bg-kumo-base/90 text-kumo-subtle border border-kumo-line'
                           }`}
                         >
                           {isSelected ? '✓' : ''}
@@ -275,10 +275,10 @@ export default function MediaPickerModal({
                       )}
                     </div>
                     <div className="p-2">
-                      <div className="text-[11px] text-gray-700 line-clamp-2 leading-snug min-h-[28px]">
+                      <div className="text-[11px] text-kumo-default line-clamp-2 leading-snug min-h-[28px]">
                         {captionPreview}
                       </div>
-                      <div className="text-[10px] text-gray-400 mt-1 truncate">
+                      <div className="text-[10px] text-kumo-subtle mt-1 truncate">
                         {m.timestamp.slice(0, 10)}
                       </div>
                     </div>
@@ -290,15 +290,15 @@ export default function MediaPickerModal({
         </div>
 
         {multiSelect && (
-          <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
-            <div className="text-xs text-gray-600">
+          <div className="px-6 py-3 border-t border-kumo-line flex items-center justify-between bg-kumo-canvas">
+            <div className="text-xs text-kumo-subtle">
               {working.size} 件選択中
             </div>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-kumo-subtle hover:bg-kumo-tint"
               >
                 キャンセル
               </button>

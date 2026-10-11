@@ -167,9 +167,9 @@ export default function CampaignDetailClient() {
         <Header title="読み込み中..." />
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse space-y-3">
-              <div className="h-4 bg-gray-200 rounded w-1/3" />
-              <div className="h-3 bg-gray-100 rounded w-2/3" />
+            <div key={i} className="bg-kumo-base rounded-lg border border-kumo-line p-5 animate-pulse space-y-3">
+              <div className="h-4 bg-kumo-fill rounded w-1/3" />
+              <div className="h-3 bg-kumo-tint rounded w-2/3" />
             </div>
           ))}
         </div>
@@ -181,7 +181,7 @@ export default function CampaignDetailClient() {
     return (
       <div>
         <Header title="見つかりません" />
-        <div className="bg-white rounded-lg border border-gray-200 p-6 text-sm text-gray-600">
+        <div className="bg-kumo-base rounded-lg border border-kumo-line p-6 text-sm text-kumo-subtle">
           {error || 'キャンペーンが見つかりません。'}
           <div className="mt-4">
             <Link href="/campaigns" className="text-sm font-medium" style={{ color: ACCENT }}>
@@ -211,7 +211,7 @@ export default function CampaignDetailClient() {
       ? 'bg-green-100 text-green-700'
       : gate.status === 'paused'
         ? 'bg-yellow-100 text-yellow-700'
-        : 'bg-gray-100 text-gray-500'
+        : 'bg-kumo-tint text-kumo-subtle'
 
   // Helper to get a slot's DM preview. Falls back to empty if the rich
   // message hasn't loaded or the slot isn't configured.
@@ -232,13 +232,13 @@ export default function CampaignDetailClient() {
           <div className="flex items-center gap-2">
             <Link
               href="/campaigns"
-              className="px-3 py-2 min-h-[40px] text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="px-3 py-2 min-h-[40px] text-sm font-medium text-kumo-subtle hover:bg-kumo-tint rounded-lg"
             >
               ← 一覧
             </Link>
             <Link
               href={`/campaigns/${gate.id}/edit`}
-              className="px-4 py-2 min-h-[40px] text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 rounded-lg"
+              className="px-4 py-2 min-h-[40px] text-sm font-medium text-kumo-default border border-kumo-line hover:bg-kumo-canvas rounded-lg"
             >
               編集
             </Link>
@@ -269,7 +269,7 @@ export default function CampaignDetailClient() {
           {gate.status === 'active' && <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5 animate-pulse" />}
           {STATUS_LABELS[gate.status] ?? gate.status}
         </span>
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-kumo-subtle">
           {trigger.emoji} {trigger.label}
         </span>
       </div>
@@ -281,8 +281,8 @@ export default function CampaignDetailClient() {
       )}
 
       {/* Funnel stats */}
-      <section className="mb-8 bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">📊 配信フロー</h2>
+      <section className="mb-8 bg-kumo-base rounded-xl border border-kumo-line p-5">
+        <h2 className="text-sm font-semibold text-kumo-default mb-4">📊 配信フロー</h2>
         <Funnel
           steps={[
             { label: '反応', sub: 'コメント / DM / メンション', value: a.triggered, emoji: '👋' },
@@ -294,19 +294,19 @@ export default function CampaignDetailClient() {
           ]}
         />
         {a.dropped > 0 && (
-          <div className="mt-4 text-xs text-gray-500">
-            ※ フォロー確認で諦めた人: <span className="font-medium text-gray-700">{a.dropped}</span> 名
+          <div className="mt-4 text-xs text-kumo-subtle">
+            ※ フォロー確認で諦めた人: <span className="font-medium text-kumo-default">{a.dropped}</span> 名
           </div>
         )}
       </section>
 
       {/* Configuration (simplified) */}
-      <section className="mb-8 bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">⚙️ 設定</h2>
+      <section className="mb-8 bg-kumo-base rounded-xl border border-kumo-line p-5 space-y-4">
+        <h2 className="text-sm font-semibold text-kumo-default">⚙️ 設定</h2>
 
         <div>
-          <div className="text-xs font-medium text-gray-500 mb-1.5">何に反応</div>
-          <div className="text-sm text-gray-800">
+          <div className="text-xs font-medium text-kumo-subtle mb-1.5">何に反応</div>
+          <div className="text-sm text-kumo-default">
             {trigger.emoji} {trigger.label}
             {gate.trigger_keyword && (
               <span className="ml-2 inline-flex px-2 py-0.5 rounded bg-pink-50 text-[#E1306C] text-xs">
@@ -322,13 +322,13 @@ export default function CampaignDetailClient() {
               const targetIds = gate.target_post_ids ?? (gate.target_post_id ? [gate.target_post_id] : [])
               return (
                 <>
-                  <div className="text-xs font-medium text-gray-500 mb-1.5">
+                  <div className="text-xs font-medium text-kumo-subtle mb-1.5">
                     対象投稿 {targetIds.length > 0 && `(${targetIds.length} 件)`}
                   </div>
                   {targetIds.length === 0 ? (
                     <div>
-                      <div className="text-sm text-gray-600">🌐 全投稿（デフォルトキャンペーン）</div>
-                      <div className="text-[11px] text-gray-400 mt-1">
+                      <div className="text-sm text-kumo-subtle">🌐 全投稿（デフォルトキャンペーン）</div>
+                      <div className="text-[11px] text-kumo-subtle mt-1">
                         個別リール指定の別キャンペーンがある投稿はそちらが優先されます
                       </div>
                     </div>
@@ -342,15 +342,15 @@ export default function CampaignDetailClient() {
         )}
 
         <div>
-          <div className="text-xs font-medium text-gray-500 mb-1.5">フォロー確認</div>
-          <div className="text-sm text-gray-800">
+          <div className="text-xs font-medium text-kumo-subtle mb-1.5">フォロー確認</div>
+          <div className="text-sm text-kumo-default">
             {gate.require_follow ? '✅ ON — フォロー済みの人だけに特典' : '— OFF — ボタン押下で即特典'}
           </div>
         </div>
 
         {gate.reward_url && (
           <div>
-            <div className="text-xs font-medium text-gray-500 mb-1.5">特典URL</div>
+            <div className="text-xs font-medium text-kumo-subtle mb-1.5">特典URL</div>
             <a
               href={gate.reward_url}
               target="_blank"
@@ -366,14 +366,14 @@ export default function CampaignDetailClient() {
 
         {gate.trigger_type === 'comment_on_post' && gate.comment_reply_text && (
           <div>
-            <div className="text-xs font-medium text-gray-500 mb-1.5">
+            <div className="text-xs font-medium text-kumo-subtle mb-1.5">
               コメント公開返信
               {parseReplyPatterns(gate.comment_reply_text).length > 1 &&
                 `（${parseReplyPatterns(gate.comment_reply_text).length}パターンからランダム）`}
             </div>
             <ul className="space-y-1">
               {parseReplyPatterns(gate.comment_reply_text).map((p, i) => (
-                <li key={i} className="text-sm text-gray-800 bg-gray-50 border border-gray-100 rounded px-3 py-2 whitespace-pre-wrap">
+                <li key={i} className="text-sm text-kumo-default bg-kumo-canvas border border-kumo-line rounded px-3 py-2 whitespace-pre-wrap">
                   {p}
                 </li>
               ))}
@@ -384,7 +384,7 @@ export default function CampaignDetailClient() {
 
       {/* DM flow */}
       <section className="mb-8">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">💬 配信されるDMの流れ</h2>
+        <h2 className="text-sm font-semibold text-kumo-default mb-4">💬 配信されるDMの流れ</h2>
         <div className="space-y-0">
           <FlowStep
             kind="trigger"
@@ -438,21 +438,21 @@ export default function CampaignDetailClient() {
           {parseFollowupsForDetail(gate.followup_dm_sequence).map((step, idx) => (
             <div key={`fup-${idx}`}>
               <FlowArrow text={`${step.delay_minutes} 分後`} />
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+              <div className="bg-kumo-base rounded-xl border border-kumo-line overflow-hidden">
+                <div className="px-4 py-3 border-b border-kumo-line flex items-center gap-2">
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                     style={{ backgroundColor: ACCENT }}
                   >
                     ⏰
                   </div>
-                  <div className="text-sm font-semibold text-gray-800">
+                  <div className="text-sm font-semibold text-kumo-default">
                     フォローアップ #{idx + 1}
                   </div>
                 </div>
-                <div className="p-4 text-sm text-gray-800 whitespace-pre-wrap">{step.text}</div>
+                <div className="p-4 text-sm text-kumo-default whitespace-pre-wrap">{step.text}</div>
                 {step.button_label && step.button_url && (
-                  <div className="border-t border-gray-100 px-4 py-2 text-center text-sm font-medium" style={{ color: '#0095F6' }}>
+                  <div className="border-t border-kumo-line px-4 py-2 text-center text-sm font-medium" style={{ color: '#0095F6' }}>
                     {step.button_label}
                   </div>
                 )}
@@ -488,7 +488,7 @@ function TargetPostsList({
         <button
           type="button"
           onClick={() => setExpanded(false)}
-          className="text-[11px] text-gray-500 hover:text-gray-700"
+          className="text-[11px] text-kumo-subtle hover:text-kumo-default"
         >
           ▲ 閉じる
         </button>
@@ -500,24 +500,24 @@ function TargetPostsList({
               href={m.permalink}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-3 border border-gray-200 rounded-lg p-2 bg-gray-50 hover:bg-gray-100"
+              className="flex items-center gap-3 border border-kumo-line rounded-lg p-2 bg-kumo-canvas hover:bg-kumo-tint"
             >
-              <div className="w-12 h-12 bg-gray-200 rounded overflow-hidden shrink-0">
+              <div className="w-12 h-12 bg-kumo-fill rounded overflow-hidden shrink-0">
                 {(m.thumbnail_url || m.media_url) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={m.thumbnail_url || m.media_url} alt="" className="w-full h-full object-cover" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-gray-700 line-clamp-1">
+                <div className="text-xs text-kumo-default line-clamp-1">
                   {m.caption?.slice(0, 60) ?? '(キャプションなし)'}
                 </div>
-                <div className="text-[10px] text-gray-400 mt-0.5">{m.timestamp.slice(0, 10)}</div>
+                <div className="text-[10px] text-kumo-subtle mt-0.5">{m.timestamp.slice(0, 10)}</div>
               </div>
-              <span className="text-xs text-gray-400 shrink-0">↗</span>
+              <span className="text-xs text-kumo-subtle shrink-0">↗</span>
             </a>
           ) : (
-            <div key={pid} className="text-xs text-gray-500 font-mono">投稿 #{pid.slice(-8)}</div>
+            <div key={pid} className="text-xs text-kumo-subtle font-mono">投稿 #{pid.slice(-8)}</div>
           )
         })}
       </div>
@@ -539,12 +539,12 @@ function TargetPostsList({
               className="shrink-0 block group"
               title={m?.caption?.slice(0, 100) ?? pid}
             >
-              <div className="w-12 h-12 rounded overflow-hidden bg-gray-200 border border-gray-300 group-hover:border-[#E1306C]">
+              <div className="w-12 h-12 rounded overflow-hidden bg-kumo-fill border border-kumo-line group-hover:border-[#E1306C]">
                 {thumb ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={thumb} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-400 font-mono">
+                  <div className="w-full h-full flex items-center justify-center text-[9px] text-kumo-subtle font-mono">
                     #{pid.slice(-6)}
                   </div>
                 )}
@@ -553,7 +553,7 @@ function TargetPostsList({
           )
         })}
         {ids.length > preview.length && (
-          <div className="shrink-0 w-12 h-12 rounded border border-dashed border-gray-300 flex items-center justify-center text-[10px] font-medium text-gray-500 bg-white">
+          <div className="shrink-0 w-12 h-12 rounded border border-dashed border-kumo-line flex items-center justify-center text-[10px] font-medium text-kumo-subtle bg-kumo-base">
             +{ids.length - preview.length}
           </div>
         )}
@@ -561,7 +561,7 @@ function TargetPostsList({
       <button
         type="button"
         onClick={() => setExpanded(true)}
-        className="mt-2 text-[11px] text-gray-500 hover:text-gray-700"
+        className="mt-2 text-[11px] text-kumo-subtle hover:text-kumo-default"
       >
         ▼ 全 {ids.length} 件をリスト表示
       </button>
@@ -626,12 +626,12 @@ function Funnel({ steps }: { steps: Array<{ label: string; sub: string; value: n
         return (
           <div key={s.label} className="flex items-center gap-3">
             <div className="w-28 shrink-0">
-              <div className="text-xs font-medium text-gray-800">
+              <div className="text-xs font-medium text-kumo-default">
                 <span className="mr-1">{s.emoji}</span>{s.label}
               </div>
-              <div className="text-[10px] text-gray-400 leading-tight">{s.sub}</div>
+              <div className="text-[10px] text-kumo-subtle leading-tight">{s.sub}</div>
             </div>
-            <div className="flex-1 relative h-8 bg-gray-50 rounded-lg overflow-hidden">
+            <div className="flex-1 relative h-8 bg-kumo-canvas rounded-lg overflow-hidden">
               <div
                 className="absolute inset-y-0 left-0 rounded-lg transition-all"
                 style={{
@@ -665,27 +665,27 @@ function DmFlowCard({
   extraNote?: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+    <div className="bg-kumo-base rounded-xl border border-kumo-line overflow-hidden">
+      <div className="px-4 py-3 border-b border-kumo-line flex items-center gap-2">
         <div
           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
           style={{ backgroundColor: ACCENT }}
         >
           {step}
         </div>
-        <div className="text-sm font-semibold text-gray-800">{label}</div>
+        <div className="text-sm font-semibold text-kumo-default">{label}</div>
       </div>
       <div className="p-4">
         {blocks.length > 0 ? (
           <RichMessagePreview blocks={blocks} />
         ) : (
-          <div className="text-xs text-gray-400 text-center py-6">
+          <div className="text-xs text-kumo-subtle text-center py-6">
             （DM未設定 — フォーム保存に失敗した可能性があります）
           </div>
         )}
       </div>
       {extraNote && (
-        <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-[11px] text-gray-500">
+        <div className="px-4 py-2 border-t border-kumo-line bg-kumo-canvas text-[11px] text-kumo-subtle">
           {extraNote}
         </div>
       )}
@@ -703,13 +703,13 @@ function FlowStep({
   sub?: string
 }) {
   const emoji = kind === 'trigger' ? '👋' : kind === 'decision' ? '🔍' : '🎯'
-  const bg = kind === 'end' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+  const bg = kind === 'end' ? 'bg-green-50 border-green-200' : 'bg-kumo-canvas border-kumo-line'
   return (
     <div className={`border rounded-xl px-4 py-3 flex items-start gap-3 ${bg}`}>
       <div className="text-xl shrink-0 leading-none mt-0.5">{emoji}</div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-800">{label}</div>
-        {sub && <div className="text-[11px] text-gray-500 mt-0.5">{sub}</div>}
+        <div className="text-sm font-medium text-kumo-default">{label}</div>
+        {sub && <div className="text-[11px] text-kumo-subtle mt-0.5">{sub}</div>}
       </div>
     </div>
   )
@@ -719,7 +719,7 @@ function FlowArrow({ text }: { text?: string }) {
   return (
     <div className="flex items-center justify-center py-2 gap-2">
       <div className="w-px h-4 bg-gray-300" />
-      {text && <span className="text-[10px] text-gray-400">{text}</span>}
+      {text && <span className="text-[10px] text-kumo-subtle">{text}</span>}
       <div className="w-px h-4 bg-gray-300" />
     </div>
   )
@@ -752,23 +752,23 @@ function LineCrossLinkBadge({
   const poolLabel = gate.line_pool_slug ? ` / pool=${gate.line_pool_slug}` : ''
 
   return (
-    <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-[#E1306C]/20 bg-pink-50/40 px-2.5 py-1.5 text-[11px] text-gray-700">
+    <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-md border border-[#E1306C]/20 bg-pink-50/40 px-2.5 py-1.5 text-[11px] text-kumo-default">
       <span className="font-semibold text-[#E1306C]">🔗 LINE連携</span>
-      <span className="text-gray-500">→</span>
+      <span className="text-kumo-subtle">→</span>
       <span className="font-medium">{connLabel}</span>
-      {poolLabel && <span className="text-gray-500">{poolLabel}</span>}
+      {poolLabel && <span className="text-kumo-subtle">{poolLabel}</span>}
       {gate.line_tracked_link_short ? (
         <>
           <span className="text-gray-300">•</span>
-          <span className="text-gray-500">tracked link:</span>
-          <code className="font-mono text-[10px] bg-white/80 border border-gray-200 rounded px-1.5 py-0.5">
+          <span className="text-kumo-subtle">tracked link:</span>
+          <code className="font-mono text-[10px] bg-kumo-base/80 border border-kumo-line rounded px-1.5 py-0.5">
             {gate.line_tracked_link_short}
           </code>
         </>
       ) : (
         <>
           <span className="text-gray-300">•</span>
-          <span className="text-gray-400">初回配信時に自動生成</span>
+          <span className="text-kumo-subtle">初回配信時に自動生成</span>
         </>
       )}
     </div>

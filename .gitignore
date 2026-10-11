@@ -23,3 +23,5 @@ apps/worker/dist/
 .ig-harness-deployed.json
 .ig-harness-setup.json
 .ig-harness-config.json
+
+node_modules

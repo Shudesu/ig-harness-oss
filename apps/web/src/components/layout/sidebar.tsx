@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { Button } from '@cloudflare/kumo/components/button'
 import { BrandMark } from '@/components/brand'
 import { usePathname } from 'next/navigation'
 import { useAccount } from '@/contexts/account-context'
@@ -112,35 +113,35 @@ function AccountSwitcher() {
 
   return (
     <div ref={ref} className="mt-3">
-      <button
+      <Button
         onClick={() => setOpen(!open)}
         aria-label="アカウント切替"
-        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-gray-50 border border-gray-200 hover:bg-gray-100 transition-colors"
+        className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-kumo-canvas border border-kumo-line hover:bg-kumo-tint transition-colors"
       >
         {selectedAccount && <AccountAvatar account={selectedAccount} size={28} />}
         <div className="flex-1 text-left min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+          <p className="text-sm font-medium text-kumo-default truncate">{displayName}</p>
           {selectedAccount && !selectedAccount.isActive && (
-            <p className="text-[10px] text-gray-400">停止中</p>
+            <p className="text-[10px] text-kumo-subtle">停止中</p>
           )}
         </div>
         <svg
-          className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 text-kumo-subtle shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
-      </button>
+      </Button>
 
       {open && (
-        <div className="mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+        <div className="mt-1 bg-kumo-base border border-kumo-line rounded-lg shadow-lg overflow-hidden">
           {accounts.map((account) => {
             const isSelected = account.id === selectedAccountId
             const name = account.displayName || account.name
             return (
-              <button
+              <Button
                 key={account.id}
                 onClick={() => {
                   setOpen(false)
@@ -152,16 +153,16 @@ function AccountSwitcher() {
                   window.location.href = '/'
                 }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
-                  isSelected ? 'bg-pink-50' : 'hover:bg-gray-50'
+                  isSelected ? 'bg-pink-50' : 'hover:bg-kumo-canvas'
                 }`}
               >
                 <AccountAvatar account={account} size={24} />
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm truncate ${isSelected ? 'font-semibold text-[#E1306C]' : 'text-gray-700'}`}>
+                  <p className={`text-sm truncate ${isSelected ? 'font-semibold text-[#E1306C]' : 'text-kumo-default'}`}>
                     {name}
                   </p>
                   {!account.isActive && (
-                    <p className="text-xs text-gray-400 truncate">停止中</p>
+                    <p className="text-xs text-kumo-subtle truncate">停止中</p>
                   )}
                 </div>
                 {isSelected && (
@@ -169,7 +170,7 @@ function AccountSwitcher() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
-              </button>
+              </Button>
             )
           })}
         </div>
@@ -189,6 +190,11 @@ export default function Sidebar() {
 
   useEffect(() => { setIsOpen(false) }, [pathname])
   useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setIsOpen(false) }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [])
+  useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : ''
     return () => { document.body.style.overflow = '' }
   }, [isOpen])
@@ -198,12 +204,12 @@ export default function Sidebar() {
   const sidebarContent = (
     <>
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-gray-200">
+      <div className="px-6 py-5 border-b border-kumo-line">
         <div className="flex items-center gap-2">
           <BrandMark size={32} />
           <div>
-            <p className="text-sm font-bold text-gray-900 leading-tight">IG Harness</p>
-            <p className="text-xs text-gray-400">管理画面</p>
+            <p className="text-sm font-bold text-kumo-default leading-tight">IG Harness</p>
+            <p className="text-xs text-kumo-subtle">管理画面</p>
           </div>
         </div>
 
@@ -221,10 +227,10 @@ export default function Sidebar() {
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 active
-                  ? 'text-white'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  ? 'bg-kumo-tint text-kumo-default'
+                  : 'text-kumo-subtle hover:bg-kumo-tint hover:text-kumo-default'
               }`}
-              style={active ? { backgroundColor: IG_COLOR } : {}}
+              aria-current={active ? 'page' : undefined}
             >
               <NavIcon d={item.icon} />
               {item.label}
@@ -234,39 +240,39 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-gray-200">
+      <div className="border-t border-kumo-line">
         {staffName && (
-          <div className="px-3 py-2 text-xs text-gray-500 border-t border-gray-100">
-            <div className="font-medium text-gray-700">{staffName}</div>
+          <div className="px-3 py-2 text-xs text-kumo-subtle border-t border-kumo-line">
+            <div className="font-medium text-kumo-default">{staffName}</div>
           </div>
         )}
         <div className="px-6 py-4 space-y-3">
-          <p className="text-xs text-gray-400">IG Harness v{process.env.APP_VERSION || '0.0.0'}</p>
+          <p className="text-xs text-kumo-subtle">IG Harness v{process.env.APP_VERSION || '0.0.0'}</p>
           <a
             href="https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 text-xs text-gray-500 hover:text-[#E1306C] transition-colors"
+            className="flex items-center gap-2 text-xs text-kumo-subtle hover:text-[#E1306C] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
             セットアップガイド
           </a>
-          <button
+          <Button
             onClick={() => {
               localStorage.removeItem('lh_api_key')
               localStorage.removeItem('lh_staff_name')
               localStorage.removeItem('lh_staff_role')
               window.location.href = '/login'
             }}
-            className="flex items-center gap-2 text-xs text-gray-400 hover:text-red-500 transition-colors"
+            className="flex items-center gap-2 text-xs text-kumo-subtle hover:text-red-500 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
             ログアウト
-          </button>
+          </Button>
         </div>
       </div>
     </>
@@ -275,22 +281,22 @@ export default function Sidebar() {
   return (
     <>
       {/* Mobile: hamburger header */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
-        <button
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-kumo-base border-b border-kumo-line px-4 py-3 flex items-center gap-3">
+        <Button
           onClick={() => setIsOpen(!isOpen)}
-          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-          aria-label="メニュー"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-kumo-tint transition-colors"
+          aria-label="メニュー" aria-expanded={isOpen}
         >
-          <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-6 h-6 text-kumo-default" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {isOpen
               ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             }
           </svg>
-        </button>
+        </Button>
         <div className="flex items-center gap-2">
           <BrandMark size={28} />
-          <p className="text-sm font-bold text-gray-900">IG Harness</p>
+          <p className="text-sm font-bold text-kumo-default">IG Harness</p>
         </div>
       </div>
 
@@ -298,19 +304,19 @@ export default function Sidebar() {
       {isOpen && <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setIsOpen(false)} />}
 
       {/* Mobile: slide-in sidebar */}
-      <aside className={`lg:hidden fixed top-0 left-0 z-50 w-72 bg-white flex flex-col h-screen transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`lg:hidden fixed top-0 left-0 z-50 w-72 bg-kumo-base flex flex-col h-screen transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="absolute top-4 right-4">
-          <button onClick={() => setIsOpen(false)} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-gray-100" aria-label="閉じる">
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Button onClick={() => setIsOpen(false)} className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg hover:bg-kumo-tint" aria-label="閉じる">
+            <svg className="w-5 h-5 text-kumo-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </button>
+          </Button>
         </div>
         {sidebarContent}
       </aside>
 
       {/* Desktop: always visible */}
-      <aside className="hidden lg:flex w-64 bg-white border-r border-gray-200 flex-col h-screen sticky top-0">
+      <aside className="hidden lg:flex w-64 bg-kumo-base border-r border-kumo-line flex-col h-screen sticky top-0">
         {sidebarContent}
       </aside>
     </>

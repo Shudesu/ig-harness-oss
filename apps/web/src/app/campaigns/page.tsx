@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<EngagementGate['status'], string> = {
 const STATUS_CLASSES: Record<EngagementGate['status'], string> = {
   active: 'bg-green-100 text-green-700',
   paused: 'bg-yellow-100 text-yellow-700',
-  archived: 'bg-gray-100 text-gray-500',
+  archived: 'bg-kumo-tint text-kumo-subtle',
 }
 
 export default function CampaignsPage() {
@@ -96,7 +96,7 @@ export default function CampaignsPage() {
       )}
 
       {!loading && gates.length > 0 && (
-        <div className="mb-4 text-xs text-gray-500">
+        <div className="mb-4 text-xs text-kumo-subtle">
           {gates.length} キャンペーン · {uniqueTargetPosts} 投稿をカバー
         </div>
       )}
@@ -104,23 +104,23 @@ export default function CampaignsPage() {
       {loading ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {[...Array(2)].map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse space-y-3">
-              <div className="h-4 bg-gray-200 rounded w-1/2" />
-              <div className="h-3 bg-gray-100 rounded w-3/4" />
+            <div key={i} className="bg-kumo-base rounded-xl border border-kumo-line p-5 animate-pulse space-y-3">
+              <div className="h-4 bg-kumo-fill rounded w-1/2" />
+              <div className="h-3 bg-kumo-tint rounded w-3/4" />
               <div className="flex gap-2 mt-4">
                 {[...Array(3)].map((_, j) => (
-                  <div key={j} className="w-16 h-16 bg-gray-100 rounded" />
+                  <div key={j} className="w-16 h-16 bg-kumo-tint rounded" />
                 ))}
               </div>
             </div>
           ))}
         </div>
       ) : gates.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+        <div className="bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-12 text-center">
           <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
-          <p className="text-gray-500 text-sm">キャンペーンがありません</p>
+          <p className="text-kumo-subtle text-sm">キャンペーンがありません</p>
           <Link
             href="/campaigns/new"
             className="mt-3 inline-block text-sm font-medium hover:opacity-80 transition-opacity"
@@ -151,18 +151,18 @@ function CampaignCard({
   const targets = gate.target_post_ids ?? (gate.target_post_id ? [gate.target_post_id] : [])
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-sm transition-shadow">
-      <div className="p-4 border-b border-gray-100">
+    <div className="bg-kumo-base rounded-xl border border-kumo-line overflow-hidden hover:shadow-sm transition-shadow">
+      <div className="p-4 border-b border-kumo-line">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <Link
               href={`/campaigns/${gate.id}`}
-              className="text-sm font-semibold text-gray-900 hover:opacity-80 line-clamp-1"
+              className="text-sm font-semibold text-kumo-default hover:opacity-80 line-clamp-1"
             >
               {gate.name}
             </Link>
             <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px]">
-              <span className="text-gray-500">
+              <span className="text-kumo-subtle">
                 {trigger.emoji} {trigger.label}
               </span>
               {gate.trigger_keyword && (
@@ -170,7 +170,7 @@ function CampaignCard({
                   「{gate.trigger_keyword}」
                 </span>
               )}
-              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${STATUS_CLASSES[gate.status] ?? 'bg-gray-100 text-gray-500'}`}>
+              <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full font-medium ${STATUS_CLASSES[gate.status] ?? 'bg-kumo-tint text-kumo-subtle'}`}>
                 {STATUS_LABELS[gate.status] ?? gate.status}
               </span>
             </div>
@@ -178,7 +178,7 @@ function CampaignCard({
           <div className="shrink-0 flex gap-1">
             <Link
               href={`/campaigns/${gate.id}`}
-              className="px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100"
+              className="px-2 py-1 rounded text-xs font-medium text-kumo-subtle hover:bg-kumo-tint"
             >
               詳細
             </Link>
@@ -194,16 +194,16 @@ function CampaignCard({
       </div>
 
       {gate.trigger_type === 'comment_on_post' && (
-        <div className="p-4 bg-gray-50">
-          <div className="text-[10px] font-medium text-gray-500 uppercase tracking-wider mb-2">
+        <div className="p-4 bg-kumo-canvas">
+          <div className="text-[10px] font-medium text-kumo-subtle uppercase tracking-wider mb-2">
             対象投稿 {targets.length > 0 && `(${targets.length})`}
           </div>
           {targets.length === 0 ? (
-            <div className="text-xs text-gray-600">
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-white border border-gray-200">
+            <div className="text-xs text-kumo-subtle">
+              <span className="inline-flex items-center px-2 py-0.5 rounded bg-kumo-base border border-kumo-line">
                 🌐 全投稿（デフォルト）
               </span>
-              <span className="ml-2 text-[10px] text-gray-400">
+              <span className="ml-2 text-[10px] text-kumo-subtle">
                 個別指定キャンペーンのある投稿はそちらが優先
               </span>
             </div>
@@ -221,12 +221,12 @@ function CampaignCard({
                     className="shrink-0 block group"
                     title={m?.caption?.slice(0, 100) ?? pid}
                   >
-                    <div className="w-16 h-16 rounded overflow-hidden bg-gray-200 border border-gray-300 group-hover:border-[#E1306C]">
+                    <div className="w-16 h-16 rounded overflow-hidden bg-kumo-fill border border-kumo-line group-hover:border-[#E1306C]">
                       {thumb ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={thumb} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-400 font-mono">
+                        <div className="w-full h-full flex items-center justify-center text-[9px] text-kumo-subtle font-mono">
                           #{pid.slice(-6)}
                         </div>
                       )}
@@ -240,7 +240,7 @@ function CampaignCard({
       )}
 
       {gate.trigger_type !== 'comment_on_post' && (
-        <div className="p-4 bg-gray-50 text-xs text-gray-600">
+        <div className="p-4 bg-kumo-canvas text-xs text-kumo-subtle">
           {gate.trigger_type === 'dm_keyword'
             ? 'DMキーワードに反応（投稿制限なし）'
             : 'ストーリーメンションに反応（投稿制限なし）'}

@@ -19,7 +19,7 @@ const KIND_CLASSES: Record<RichMessage['kind'], string> = {
   cta: 'bg-pink-100 text-pink-700',
   reward: 'bg-green-100 text-green-700',
   reminder: 'bg-yellow-100 text-yellow-700',
-  generic: 'bg-gray-100 text-gray-600',
+  generic: 'bg-kumo-tint text-kumo-subtle',
 }
 
 function firstImageUrl(blocks: RichMessageBlock[]): string | null {
@@ -82,7 +82,7 @@ export default function RichMessagesPage() {
       <Header title="DMテンプレート" description="キャンペーンで使い回せる DM の土台（画像+テキスト+ボタン）" />
 
       <div className="mb-4 flex items-center justify-between">
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-kumo-subtle">
           {loading ? '読み込み中...' : `${messages.length} 件`}
         </div>
         <Link
@@ -104,8 +104,8 @@ export default function RichMessagesPage() {
       )}
 
       {!loading && messages.length === 0 && !error && (
-        <div className="bg-white rounded-xl border border-gray-200 py-16 text-center">
-          <div className="text-gray-400 text-sm mb-4">まだテンプレートがありません</div>
+        <div className="bg-kumo-base rounded-xl border border-kumo-line py-16 text-center">
+          <div className="text-kumo-subtle text-sm mb-4">まだテンプレートがありません</div>
           <Link
             href="/rich-messages/new"
             className="inline-block px-5 py-2.5 rounded-lg text-sm font-medium text-white"
@@ -120,13 +120,13 @@ export default function RichMessagesPage() {
         {messages.map((msg) => {
           const thumb = firstImageUrl(msg.blocks)
           return (
-            <div key={msg.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
-              <div className="relative bg-gray-100 h-40">
+            <div key={msg.id} className="bg-kumo-base rounded-xl border border-kumo-line overflow-hidden flex flex-col">
+              <div className="relative bg-kumo-tint h-40">
                 {thumb ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={thumb} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
+                  <div className="w-full h-full flex items-center justify-center text-xs text-kumo-subtle">
                     画像ブロックなし
                   </div>
                 )}
@@ -135,21 +135,21 @@ export default function RichMessagesPage() {
                 </span>
               </div>
               <div className="p-4 flex-1">
-                <div className="text-sm font-semibold text-gray-900 line-clamp-2">{msg.name}</div>
-                <div className="mt-1 text-xs text-gray-500">
+                <div className="text-sm font-semibold text-kumo-default line-clamp-2">{msg.name}</div>
+                <div className="mt-1 text-xs text-kumo-subtle">
                   {msg.blocks.length} ブロック · 更新 {msg.updated_at.slice(0, 10)}
                 </div>
               </div>
-              <div className="border-t border-gray-100 px-3 py-2 flex gap-1">
+              <div className="border-t border-kumo-line px-3 py-2 flex gap-1">
                 <Link
                   href={`/rich-messages/${msg.id}`}
-                  className="flex-1 text-center px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  className="flex-1 text-center px-3 py-1.5 rounded-lg text-xs font-medium text-kumo-default hover:bg-kumo-canvas"
                 >
                   編集
                 </Link>
                 <button
                   onClick={() => setTestSendTarget(msg)}
-                  className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-kumo-default hover:bg-kumo-canvas"
                 >
                   テスト配信
                 </button>

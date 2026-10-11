@@ -28,14 +28,14 @@ interface FollowerDetailModalProps {
 function FollowerDetailModal({ follower, onClose }: FollowerDetailModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-          <h2 className="text-base font-semibold text-gray-900">フォロワー詳細</h2>
+      <div className="bg-kumo-base rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-kumo-line">
+          <h2 className="text-base font-semibold text-kumo-default">フォロワー詳細</h2>
           <button
             onClick={onClose}
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-kumo-tint transition-colors"
           >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-kumo-subtle" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -44,33 +44,33 @@ function FollowerDetailModal({ follower, onClose }: FollowerDetailModalProps) {
           <div className="flex items-center gap-3">
             <FollowerAvatar igsid={follower.igsid} username={follower.username} displayName={follower.displayName} size="lg" />
             <div>
-              <p className="font-semibold text-gray-900">{follower.displayName || follower.username || 'Unknown'}</p>
-              {follower.username && <p className="text-sm text-gray-500">@{follower.username}</p>}
+              <p className="font-semibold text-kumo-default">{follower.displayName || follower.username || 'Unknown'}</p>
+              {follower.username && <p className="text-sm text-kumo-subtle">@{follower.username}</p>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
-              <p className="text-xs text-gray-400 mb-0.5">IGSID</p>
-              <p className="text-gray-700 font-mono text-xs break-all">{follower.igsid}</p>
+              <p className="text-xs text-kumo-subtle mb-0.5">IGSID</p>
+              <p className="text-kumo-default font-mono text-xs break-all">{follower.igsid}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400 mb-0.5">スコア</p>
-              <p className="text-gray-700 font-semibold">{follower.score}</p>
+              <p className="text-xs text-kumo-subtle mb-0.5">スコア</p>
+              <p className="text-kumo-default font-semibold">{follower.score}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400 mb-0.5">初回確認日</p>
-              <p className="text-gray-700">{new Date(follower.createdAt).toLocaleDateString('ja-JP')}</p>
+              <p className="text-xs text-kumo-subtle mb-0.5">初回確認日</p>
+              <p className="text-kumo-default">{new Date(follower.createdAt).toLocaleDateString('ja-JP')}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-400 mb-0.5">更新日</p>
-              <p className="text-gray-700">{new Date(follower.updatedAt).toLocaleDateString('ja-JP')}</p>
+              <p className="text-xs text-kumo-subtle mb-0.5">更新日</p>
+              <p className="text-kumo-default">{new Date(follower.updatedAt).toLocaleDateString('ja-JP')}</p>
             </div>
           </div>
 
           {follower.tags && follower.tags.length > 0 && (
             <div>
-              <p className="text-xs text-gray-400 mb-1.5">タグ</p>
+              <p className="text-xs text-kumo-subtle mb-1.5">タグ</p>
               <div className="flex flex-wrap gap-1.5">
                 {follower.tags.map((tag) => (
                   <TagBadge key={tag.id} tag={tag} />
@@ -79,10 +79,10 @@ function FollowerDetailModal({ follower, onClose }: FollowerDetailModalProps) {
             </div>
           )}
         </div>
-        <div className="px-6 py-4 border-t border-gray-100">
+        <div className="px-6 py-4 border-t border-kumo-line">
           <button
             onClick={onClose}
-            className="w-full px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            className="w-full px-4 py-2 text-sm font-medium text-kumo-subtle bg-kumo-tint hover:bg-kumo-fill rounded-lg transition-colors"
           >
             閉じる
           </button>
@@ -161,7 +161,7 @@ export default function FollowersPage() {
             placeholder="ユーザー名・名前で検索"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="text-sm border border-gray-300 rounded-lg px-3 py-2 min-h-[44px] bg-white focus:outline-none focus:ring-2 focus:ring-pink-500 w-52"
+            className="text-sm border border-kumo-line rounded-lg px-3 py-2 min-h-[44px] bg-kumo-base focus:outline-none focus:ring-2 focus:ring-pink-500 w-52"
           />
           <button
             type="submit"
@@ -172,9 +172,9 @@ export default function FollowersPage() {
           </button>
         </form>
         <div className="flex items-center gap-2">
-          <label className="text-sm text-gray-600 font-medium whitespace-nowrap">タグ:</label>
+          <label className="text-sm text-kumo-subtle font-medium whitespace-nowrap">タグ:</label>
           <select
-            className="text-sm border border-gray-300 rounded-lg px-3 py-2 min-h-[44px] bg-white focus:outline-none focus:ring-2 focus:ring-pink-500"
+            className="text-sm border border-kumo-line rounded-lg px-3 py-2 min-h-[44px] bg-kumo-base focus:outline-none focus:ring-2 focus:ring-pink-500"
             value={selectedTagId}
             onChange={(e) => setSelectedTagId(e.target.value)}
           >
@@ -184,7 +184,7 @@ export default function FollowersPage() {
             ))}
           </select>
         </div>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-kumo-subtle">
           {loading ? '読み込み中...' : `${total.toLocaleString('ja-JP')} 件`}
         </span>
       </div>
@@ -195,41 +195,41 @@ export default function FollowersPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-kumo-base rounded-lg shadow-sm border border-kumo-line overflow-hidden">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="px-4 py-4 border-b border-gray-100 flex items-center gap-4 animate-pulse">
-              <div className="w-9 h-9 rounded-full bg-gray-200" />
+            <div key={i} className="px-4 py-4 border-b border-kumo-line flex items-center gap-4 animate-pulse">
+              <div className="w-9 h-9 rounded-full bg-kumo-fill" />
               <div className="flex-1 space-y-2">
-                <div className="h-3 bg-gray-200 rounded w-32" />
-                <div className="h-2 bg-gray-100 rounded w-20" />
+                <div className="h-3 bg-kumo-fill rounded w-32" />
+                <div className="h-2 bg-kumo-tint rounded w-20" />
               </div>
-              <div className="h-5 bg-gray-100 rounded-full w-16" />
+              <div className="h-5 bg-kumo-tint rounded-full w-16" />
             </div>
           ))}
         </div>
       ) : followers.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+        <div className="bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-12 text-center">
           <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          <p className="text-gray-500 text-sm">フォロワーが見つかりません</p>
+          <p className="text-kumo-subtle text-sm">フォロワーが見つかりません</p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-kumo-base rounded-lg shadow-sm border border-kumo-line overflow-hidden">
           {followers.map((follower, idx) => (
             <button
               key={follower.id}
               onClick={() => setSelectedFollower(follower)}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors ${idx !== followers.length - 1 ? 'border-b border-gray-100' : ''}`}
+              className={`w-full flex items-center gap-4 px-4 py-3.5 text-left hover:bg-kumo-canvas transition-colors ${idx !== followers.length - 1 ? 'border-b border-kumo-line' : ''}`}
             >
               <FollowerAvatar igsid={follower.igsid} username={follower.username} displayName={follower.displayName} size="md" className="shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="text-sm font-medium text-kumo-default truncate">
                   {follower.displayName || follower.username || 'Unknown'}
                 </p>
                 {follower.username && (
-                  <p className="text-xs text-gray-400 truncate">@{follower.username}</p>
+                  <p className="text-xs text-kumo-subtle truncate">@{follower.username}</p>
                 )}
               </div>
               <div className="flex flex-wrap gap-1 justify-end shrink-0 max-w-[150px]">
@@ -248,22 +248,22 @@ export default function FollowersPage() {
       {/* Pagination */}
       {!loading && total > 0 && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mt-4">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-kumo-subtle">
             {((page - 1) * PAGE_SIZE) + 1}〜{Math.min(page * PAGE_SIZE, total)} 件 / 全{total.toLocaleString('ja-JP')}件
           </p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 min-h-[44px] text-sm border border-kumo-line rounded-lg bg-kumo-base hover:bg-kumo-canvas disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               前へ
             </button>
-            <span className="text-sm text-gray-600 px-1">{page} ページ</span>
+            <span className="text-sm text-kumo-subtle px-1">{page} ページ</span>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={!hasNextPage}
-              className="px-3 py-2 min-h-[44px] text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-2 min-h-[44px] text-sm border border-kumo-line rounded-lg bg-kumo-base hover:bg-kumo-canvas disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               次へ
             </button>
