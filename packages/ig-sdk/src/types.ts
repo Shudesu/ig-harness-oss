@@ -19,6 +19,7 @@ export interface MessagingEvent {
   timestamp: number;
   message?: IncomingMessage;
   postback?: Postback;
+  referral?: MessagingReferral;
 }
 
 export interface IncomingMessage {
@@ -30,8 +31,18 @@ export interface IncomingMessage {
 }
 
 export interface Attachment {
-  type: "image" | "video" | "audio" | "file";
+  type: "image" | "video" | "audio" | "file" | "story_mention";
   payload: { url: string };
+}
+
+export interface MessagingReferral {
+  ref?: string;
+  source?: string;
+  type?: string;
+  story?: {
+    id?: string;
+    url?: string;
+  };
 }
 
 export interface Postback {

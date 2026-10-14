@@ -84,12 +84,13 @@ Instagram APIダッシュボード → **ステップ3**:
 - `comments`
 - `live_comments`
 - `mentions`
+- `messaging_referral`
 
 ### 4c: アカウントレベルサブスクリプション（最重要）
 **Meta Consoleの設定だけでは不十分。** API でも登録が必要:
 
 ```bash
-curl -X POST "https://graph.instagram.com/v25.0/YOUR_IG_USER_ID/subscribed_apps?subscribed_fields=messages,messaging_postbacks,comments,mentions&access_token=YOUR_TOKEN"
+curl -X POST "https://graph.instagram.com/v25.0/YOUR_IG_USER_ID/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_referral,comments,mentions&access_token=YOUR_TOKEN"
 ```
 
 `{"success":true}` が返ればOK。

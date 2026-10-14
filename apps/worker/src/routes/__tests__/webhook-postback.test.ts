@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePostbackPayload } from '../webhook.js';
+import { isStoryMentionMessagingEvent, parsePostbackPayload } from '../webhook.js';
 
 describe('parsePostbackPayload', () => {
   it('parses CHECK_FOLLOW payload', () => {
@@ -17,5 +17,41 @@ describe('parsePostbackPayload', () => {
 
   it('returns unknown for empty payload', () => {
     expect(parsePostbackPayload('')).toEqual({ kind: 'unknown' });
+  });
+});
+
+describe('story mention messaging events', () => {
+  const base = {
+    sender: { id: 'sender' },
+    recipient: { id: 'business' },
+    timestamp: 1,
+  };
+
+  it('recognizes referral and attachment payloads', () => {
+    expect(isStoryMentionMessagingEvent({
+      ...base,
+      referral: { source: 'STORY_MENTION', type: 'OPEN_THREAD' },
+    })).toBe(true);
+    expect(isStoryMentionMessagingEvent({
+      ...base,
+      message: {
+        mid: 'mid-story',
+        attachments: [{ type: 'story_mention', payload: { url: 'https://example.com/story' } }],
+      },
+    })).toBe(true);
+  });
+
+  it('does not mistake ordinary referrals or media messages for story mentions', () => {
+    expect(isStoryMentionMessagingEvent({
+      ...base,
+      referral: { source: 'IGME', ref: 'campaign-link', type: 'OPEN_THREAD' },
+    })).toBe(false);
+    expect(isStoryMentionMessagingEvent({
+      ...base,
+      message: {
+        mid: 'mid-image',
+        attachments: [{ type: 'image', payload: { url: 'https://example.com/image.jpg' } }],
+      },
+    })).toBe(false);
   });
 });

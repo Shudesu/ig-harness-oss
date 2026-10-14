@@ -26,13 +26,13 @@
 ### ステップ3: Webhook設定
 - コールバックURL: `https://your-worker.workers.dev/webhook`
 - Verify Token: 任意の文字列（Workerのシークレットと一致させる）
-- サブスクライブするフィールド: `messages`, `messaging_postbacks`, `comments`, `mentions`
+- サブスクライブするフィールド: `messages`, `messaging_postbacks`, `messaging_referral`, `comments`, `mentions`
 
 ### 罠: アカウントレベルのサブスクリプション
 Meta Developer ConsoleのWebhookフィールド設定（アプリレベル）とは別に、**アカウントレベルのサブスクリプション**が必要:
 
 ```bash
-curl -X POST "https://graph.instagram.com/v25.0/{IG_USER_ID}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,comments,mentions&access_token={TOKEN}"
+curl -X POST "https://graph.instagram.com/v25.0/{IG_USER_ID}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_referral,comments,mentions&access_token={TOKEN}"
 ```
 
 これを忘れるとWebhookが届かない。
@@ -78,7 +78,7 @@ ManyChatが接続されていると、**ManyChatがプライマリレシーバ�
 curl -X DELETE "https://graph.instagram.com/v25.0/{IG_USER_ID}/subscribed_apps?access_token={TOKEN}"
 
 # 再登録
-curl -X POST "https://graph.instagram.com/v25.0/{IG_USER_ID}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,comments,mentions&access_token={TOKEN}"
+curl -X POST "https://graph.instagram.com/v25.0/{IG_USER_ID}/subscribed_apps?subscribed_fields=messages,messaging_postbacks,messaging_referral,comments,mentions&access_token={TOKEN}"
 ```
 
 ### 罠: ManyChatのリンク解除後もstandbyが続く
@@ -196,7 +196,7 @@ Authorization: Bearer {IG_ACCESS_TOKEN}
 - [ ] テスター追加＆承認
 - [ ] アクセストークン生成
 - [ ] Webhook URL 設定（コールバック + Verify Token）
-- [ ] Webhook フィールドサブスクリプション（messages, comments, mentions, messaging_postbacks）
+- [ ] Webhook フィールドサブスクリプション（messages, messaging_postbacks, messaging_referral, comments, mentions）
 - [ ] アカウントレベルサブスクリプション（API で POST）
 - [ ] プライバシーポリシーURL 設定
 - [ ] データ削除URL 設定

@@ -223,7 +223,7 @@ export async function runSetup(repoDir: string): Promise<void> {
       `   Callback URL: ${pc.cyan(`${state.workerUrl}/webhook`)}`,
       `   Verify Token: ${pc.cyan(state.metaVerifyToken!)}`,
       `   → developers.facebook.com/apps → Webhooks → Instagram`,
-      `   → messages, messaging_postbacks, comments を購読`,
+      `   → messages, messaging_postbacks, messaging_referral, comments, mentions を購読`,
       "",
       `${pc.bold("② Meta App 公開時に Dashboard へ貼り付ける URL:")}`,
       `   Privacy Policy URL:   ${pc.cyan(`${state.workerUrl}/privacy-policy`)}`,
