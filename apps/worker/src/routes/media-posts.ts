@@ -4,7 +4,7 @@ import {
   listMediaPosts,
   getMediaPostById,
   cancelMediaPost,
-  updateMediaPost,
+  rescheduleMediaPostIfScheduled,
   jstNow,
   toJstString,
   getIgAccountById,
@@ -216,14 +216,20 @@ mediaPosts.post('/api/media-posts/:id/publish-now', async (c) => {
   // account's token when the ids diverge (see broadcasts.ts's /:id/send).
   const account = await getIgAccountById(c.env.DB, post.account_id);
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
-  const updated = await updateMediaPost(c.env.DB, post.id, { scheduled_at: jstNow() });
+  const updated = await rescheduleMediaPostIfScheduled(c.env.DB, post.id, jstNow());
+  if (!updated) {
+    return c.json(
+      { success: false, error: 'post is already being published' },
+      409,
+    );
+  }
   const igClient = await getAccountClient(c.env, c.env.DB, account);
   c.executionCtx.waitUntil(
     kickImmediate(c.env.DB, igClient, post.id).catch((err) =>
       console.error('[media-posts] publish-now kick failed:', err),
     ),
   );
-  return c.json({ success: true, data: updated ? serializeMediaPost(updated) : null });
+  return c.json({ success: true, data: serializeMediaPost(updated) });
 });
 
 export { mediaPosts };

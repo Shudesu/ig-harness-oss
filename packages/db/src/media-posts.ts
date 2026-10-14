@@ -115,16 +115,101 @@ export async function getDueMediaPosts(
 export async function getProcessingMediaPosts(
   db: D1Database,
   accountId: string,
+  now: string = jstNow(),
 ): Promise<MediaPost[]> {
   const result = await db
     .prepare(
       `SELECT * FROM media_posts
        WHERE account_id = ? AND status = 'processing'
+         AND creation_id IS NOT NULL AND scheduled_at <= ?
        ORDER BY scheduled_at ASC`,
     )
-    .bind(accountId)
+    .bind(accountId, now)
     .all<MediaPost>();
   return result.results;
+}
+
+/**
+ * Atomically move a scheduled post into processing before any Meta API call.
+ * Only one concurrent cron/manual request receives the claimed row.
+ */
+export async function claimScheduledMediaPost(
+  db: D1Database,
+  id: string,
+): Promise<MediaPost | null> {
+  return db
+    .prepare(
+      `UPDATE media_posts
+       SET status = 'processing', updated_at = ?
+       WHERE id = ? AND status = 'scheduled'
+       RETURNING *`,
+    )
+    .bind(jstNow(), id)
+    .first<MediaPost>();
+}
+
+/**
+ * Move a processing post's next-attempt time into the future as a lease.
+ * The scheduled_at compare-and-set prevents two Workers from publishing the
+ * same already-created container concurrently.
+ */
+export async function claimProcessingMediaPost(
+  db: D1Database,
+  id: string,
+  expectedScheduledAt: string,
+  leaseUntil: string,
+): Promise<MediaPost | null> {
+  return db
+    .prepare(
+      `UPDATE media_posts
+       SET scheduled_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'processing'
+         AND creation_id IS NOT NULL AND scheduled_at = ?
+       RETURNING *`,
+    )
+    .bind(leaseUntil, jstNow(), id, expectedScheduledAt)
+    .first<MediaPost>();
+}
+
+/** Reschedule only while the row is still eligible for manual publishing. */
+export async function rescheduleMediaPostIfScheduled(
+  db: D1Database,
+  id: string,
+  scheduledAt: string,
+): Promise<MediaPost | null> {
+  return db
+    .prepare(
+      `UPDATE media_posts
+       SET scheduled_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'scheduled'
+       RETURNING *`,
+    )
+    .bind(scheduledAt, jstNow(), id)
+    .first<MediaPost>();
+}
+
+/**
+ * A Worker can stop after claiming a post but before persisting creation_id.
+ * Requeue only those incomplete starts after the claim timeout; rows with a
+ * container id are handled by the normal processing recovery path.
+ */
+export async function recoverStalledMediaPostStarts(
+  db: D1Database,
+  accountId: string,
+  staleBefore: string,
+): Promise<number> {
+  const result = await db
+    .prepare(
+      `UPDATE media_posts
+       SET status = 'scheduled',
+           error = 'recovered: publishing start timed out; retrying',
+           updated_at = ?
+       WHERE account_id = ? AND status = 'processing'
+         AND creation_id IS NULL AND updated_at <= ?`,
+    )
+    .bind(jstNow(), accountId, staleBefore)
+    .run();
+  return result.meta.changes ?? 0;
 }
 
 export type UpdateMediaPostInput = Partial<
