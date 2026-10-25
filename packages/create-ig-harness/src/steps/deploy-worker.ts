@@ -45,6 +45,17 @@ database_id = "${options.d1DatabaseId}"
 binding = "IMAGES"
 bucket_name = "${options.r2BucketName}"
 
+[[durable_objects.bindings]]
+name = "TENANT_SCHEDULER"
+class_name = "TenantScheduler"
+
+[[migrations]]
+tag = "v1-scheduler"
+new_sqlite_classes = ["TenantScheduler"]
+
+[observability]
+enabled = true
+
 [triggers]
 crons = ["*/5 * * * *"]
 `;

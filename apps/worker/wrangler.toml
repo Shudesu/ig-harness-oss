@@ -16,7 +16,7 @@ database_id = "YOUR_D1_DATABASE_ID"
 
 [[r2_buckets]]
 binding = "IMAGES"
-bucket_name = "YOUR_R2_BUCKET"
+bucket_name = "your-r2-bucket"
 
 [triggers]
 crons = ["*/5 * * * *"]
@@ -28,3 +28,6 @@ class_name = "TenantScheduler"
 [[migrations]]
 tag = "v1-scheduler"
 new_sqlite_classes = ["TenantScheduler"]
+
+[observability]
+enabled = true

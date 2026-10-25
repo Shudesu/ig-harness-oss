@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { checkDeps } from "../steps/check-deps.js";
@@ -14,10 +14,14 @@ import { setSecrets } from "../steps/secrets.js";
 import { generateMcpConfig } from "../steps/mcp-config.js";
 import { showWebhookGuide } from "../steps/webhook-guide.js";
 import { generateApiKey } from "../lib/crypto.js";
-import { setAccountId } from "../lib/wrangler.js";
+import { subscribeInstagramAccount, validateInstagramToken } from "../steps/instagram-api.js";
+import { setAccountId, wrangler } from "../lib/wrangler.js";
 
 interface SetupState {
-  metaAppId?: string;
+  igUsername?: string;
+  tokenEncryptionKey?: string;
+  lineHarnessLinkSecret?: string;
+  adminProjectName?: string;
   metaAppSecret?: string;
   metaAccessToken?: string;
   metaVerifyToken?: string;
@@ -44,14 +48,15 @@ function loadState(repoDir: string): SetupState {
     try {
       return JSON.parse(readFileSync(path, "utf-8"));
     } catch {
-      // corrupt file, start fresh
+      throw new Error(`Setup state is invalid; preserve and repair ${path} before retrying.`);
     }
   }
   return { completedSteps: [] };
 }
 
 function saveState(repoDir: string, state: SetupState): void {
-  writeFileSync(getStatePath(repoDir), JSON.stringify(state, null, 2) + "\n");
+  writeFileSync(getStatePath(repoDir), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(getStatePath(repoDir), 0o600);
 }
 
 function isDone(state: SetupState, step: string): boolean {
@@ -98,7 +103,7 @@ export async function runSetup(repoDir: string): Promise<void> {
   // Step 3: Get Meta / Instagram credentials (skip if already saved)
   if (!isDone(state, "credentials")) {
     const credentials = await promptMetaCredentials();
-    state.metaAppId = credentials.metaAppId;
+    state.igUsername = credentials.igUsername;
     state.metaAppSecret = credentials.metaAppSecret;
     state.metaAccessToken = credentials.metaAccessToken;
     state.metaVerifyToken = credentials.metaVerifyToken;
@@ -106,7 +111,11 @@ export async function runSetup(repoDir: string): Promise<void> {
     markDone(state, "credentials");
     saveState(repoDir, state);
   } else {
-    p.log.success("Meta 資格情報: 入力済み（スキップ）");
+    const verified = await validateInstagramToken(state.metaAccessToken!);
+    state.igUserId = verified.userId;
+    state.igUsername = verified.username;
+    saveState(repoDir, state);
+    p.log.success("保存済みのInstagram資格情報を検証しました");
   }
 
   // Step 4: Generate API key (skip if already generated)
@@ -169,8 +178,13 @@ export async function runSetup(repoDir: string): Promise<void> {
     p.log.success(`Worker: デプロイ済み（${state.workerUrl}）`);
   }
 
+  const existingSecrets = JSON.parse(await wrangler(['secret', 'list', '--name', workerName]));
+  const hasEncryptionKey = existingSecrets.some((secret: { name: string }) => secret.name === 'TOKEN_ENCRYPTION_KEY');
+  if (!hasEncryptionKey) state.tokenEncryptionKey ??= randomBytes(32).toString('base64');
+  state.lineHarnessLinkSecret ??= randomBytes(32).toString('hex');
+  saveState(repoDir, state);
   // Step 8: Set secrets
-  if (!isDone(state, "secrets")) {
+  if (!isDone(state, "secrets-v2")) {
     await setSecrets({
       workerName,
       metaAppSecret: state.metaAppSecret!,
@@ -178,16 +192,21 @@ export async function runSetup(repoDir: string): Promise<void> {
       metaVerifyToken: state.metaVerifyToken!,
       igUserId: state.igUserId!,
       apiKey: state.apiKey!,
+      workerUrl: state.workerUrl!,
+      igUsername: state.igUsername,
+      tokenEncryptionKey: hasEncryptionKey ? undefined : state.tokenEncryptionKey,
+      lineHarnessLinkSecret: state.lineHarnessLinkSecret!,
     });
-    markDone(state, "secrets");
+    markDone(state, "secrets-v2");
     saveState(repoDir, state);
   } else {
     p.log.success("シークレット: 設定済み");
   }
 
   // Step 9: Deploy Admin UI via CF Pages
-  const suffix = state.apiKey!.slice(0, 8);
-  const adminProjectName = `ih-admin-${suffix}`;
+  state.adminProjectName ??= `ih-admin-${state.resourceSuffix ?? randomBytes(4).toString("hex")}`;
+  const adminProjectName = state.adminProjectName;
+  saveState(repoDir, state);
   if (!isDone(state, "admin")) {
     const { adminUrl } = await deployAdmin({
       repoDir,
@@ -202,6 +221,12 @@ export async function runSetup(repoDir: string): Promise<void> {
     p.log.success(`Admin UI: デプロイ済み（${state.adminUrl}）`);
   }
 
+  await wrangler(['secret', 'put', 'ADMIN_ORIGINS', '--name', workerName], { input: state.adminUrl! });
+  if (!isDone(state, 'account-subscription')) {
+    await subscribeInstagramAccount(state.metaAccessToken!, state.igUserId!);
+    markDone(state, 'account-subscription'); saveState(repoDir, state);
+  }
+
   // Step 10: Show webhook setup guide
   showWebhookGuide({
     workerUrl: state.workerUrl!,
@@ -210,7 +235,7 @@ export async function runSetup(repoDir: string): Promise<void> {
 
   // Step 11: Generate MCP config
   const addMcp = await p.confirm({
-    message: "MCP 設定を .mcp.json に追加しますか？（Claude Code / Cursor 用）",
+    message: "MCP 設定を .mcp.json に追加しますか？（Claude Code 用。Cursor / Desktop のスニペットも生成）",
   });
   if (addMcp && !p.isCancel(addMcp)) {
     await generateMcpConfig({ workerUrl: state.workerUrl!, apiKey: state.apiKey!, repoDir });
@@ -256,11 +281,17 @@ export async function runSetup(repoDir: string): Promise<void> {
         d1DatabaseId: state.d1DatabaseId,
         d1DatabaseName: state.d1DatabaseName,
         accountId: state.accountId,
+        r2BucketName: state.r2BucketName,
+        adminProjectName: state.adminProjectName,
+        lineHarnessLinkSecret: state.lineHarnessLinkSecret,
+        tokenEncryptionKey: state.tokenEncryptionKey,
       },
       null,
       2,
     ) + "\n",
+    { mode: 0o600 },
   );
+  chmodSync(deployedStatePath, 0o600);
 
   // Clean up setup state file on success (contains secrets — don't leave on disk)
   const statePath = getStatePath(repoDir);

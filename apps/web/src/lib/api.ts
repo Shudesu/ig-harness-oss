@@ -14,11 +14,11 @@ if (!API_URL) {
 }
 
 /**
- * Read the API key from localStorage (set during login).
+ * Read the API key from sessionStorage (set during login).
  */
 function getApiKey(): string {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('lh_api_key') || ''
+    return sessionStorage.getItem('igh_api_key') || ''
   }
   return ''
 }

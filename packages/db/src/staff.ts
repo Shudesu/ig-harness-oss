@@ -28,7 +28,12 @@ function generateApiKey(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  return `lh_${hex}`;
+  return `igh_${hex}`;
+}
+
+export async function hashStaffApiKey(key: string): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+  return 'sha256:' + Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 export async function getStaffByApiKey(
@@ -37,7 +42,7 @@ export async function getStaffByApiKey(
 ): Promise<StaffMember | null> {
   return db
     .prepare('SELECT * FROM staff_members WHERE api_key = ? AND is_active = 1')
-    .bind(apiKey)
+    .bind(await hashStaffApiKey(apiKey))
     .first<StaffMember>();
 }
 
@@ -71,13 +76,14 @@ export async function createStaffMember(
       `INSERT INTO staff_members (id, name, email, role, api_key, is_active, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
     )
-    .bind(id, input.name, input.email ?? null, input.role, apiKey, now, now)
+    .bind(id, input.name, input.email ?? null, input.role, await hashStaffApiKey(apiKey), now, now)
     .run();
 
-  return (await db
+  const created = (await db
     .prepare('SELECT * FROM staff_members WHERE id = ?')
     .bind(id)
     .first<StaffMember>())!;
+  return { ...created, api_key: apiKey };
 }
 
 export async function updateStaffMember(
@@ -112,7 +118,7 @@ export async function regenerateStaffApiKey(db: D1Database, id: string): Promise
   const now = jstNow();
   const result = await db
     .prepare('UPDATE staff_members SET api_key = ?, updated_at = ? WHERE id = ?')
-    .bind(newKey, now, id)
+    .bind(await hashStaffApiKey(newKey), now, id)
     .run();
   if (result.meta.changes === 0) {
     throw new Error(`Staff member not found: ${id}`);

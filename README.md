@@ -15,7 +15,7 @@ IG Harness本体のソフトウェア利用料は **0円** です。Cloudflare�
 
 > 📖 **セットアップガイド (スクショ付き完全版)**: <https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide>
 
-**現バージョン**: v0.11.1 ・ MIT License ・ TypeScript / Cloudflare Workers + D1 + R2
+**現バージョン**: v0.12.0 ・ MIT License ・ TypeScript / Cloudflare Workers + D1 + R2
 
 ---
 
@@ -71,9 +71,9 @@ CLI が以下を全部やる:
 - Worker / 管理画面のデプロイ
 - Instagram プロアカウントの credentials 登録
 - Meta App の Webhook 連携設定の案内（Privacy Policy / Data Deletion / Terms URL を自動表示）
-- 管理画面初回ログイン用 Owner ユーザー作成
+- owner用の環境APIキーを生成（DBへのowner行の作成は不要）
 
-所要時間: 約 5 分。完了すれば管理画面 (`https://<your-name>-admin.pages.dev`) で即運用開始。
+管理画面は完了時に表示されるPages URLです。セットアップ所要時間は権限設定・認証・ビルド環境により異なります。
 
 ### 必要なもの
 
@@ -199,3 +199,9 @@ Issue / PR 歓迎。OSS リポへの PR は `Shudesu/ig-harness-oss` (このリ�
 ---
 
 > **IG Harness** by [@Shudesu](https://github.com/Shudesu) — AI ネイティブ時代の OSS Instagram DM 自動化
+
+## 運用上の権限と更新
+
+MCPへowner/adminキーを渡すと、DM送信・一斉配信を含む管理権限を渡します。`IG_HARNESS_READ_ONLY=true` では書き込みツールを登録しません。[MCP設定](docs/manual/08-mcp.md)を確認してください。
+
+管理画面はセットアップが表示するPages URLです。環境API_KEYがownerであり、手動でowner行をINSERTする必要はありません。更新前バックアップ、migration、暗号化鍵、24時間枠、保持期間、ログ、削除受付の運用は [レビュー対応と更新手順](docs/operations/review-remediation.md) にまとめています。脆弱性は [SECURITY.md](SECURITY.md) の非公開窓口へ報告してください。

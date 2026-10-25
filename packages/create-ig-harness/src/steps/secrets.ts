@@ -3,6 +3,9 @@ import { wrangler } from "../lib/wrangler.js";
 
 interface SecretsOptions {
   workerName: string;
+  workerUrl: string;
+  igUsername?: string;
+  tokenEncryptionKey?: string;
   metaAppSecret: string;
   metaAccessToken: string;
   metaVerifyToken: string;
@@ -28,6 +31,9 @@ export async function setSecrets(options: SecretsOptions): Promise<void> {
     IG_VERIFY_TOKEN: options.metaVerifyToken,
     IG_USER_ID: options.igUserId,
     API_KEY: options.apiKey,
+    WORKER_URL: options.workerUrl,
+    ...(options.tokenEncryptionKey ? { TOKEN_ENCRYPTION_KEY: options.tokenEncryptionKey } : {}),
+    ...(options.igUsername ? { IG_USERNAME: options.igUsername } : {}),
     LINE_HARNESS_LINK_SECRET: linkSecret,
   };
 
@@ -38,9 +44,7 @@ export async function setSecrets(options: SecretsOptions): Promise<void> {
   }
 
   s.stop("シークレット設定完了");
-  p.log.info(
-    `LINE Harness 連携用 shared secret を設定しました。LINE Harness 側にも同じ値を IG_HARNESS_LINK_SECRET としてセットしてください:\n  ${linkSecret}`,
-  );
+  p.log.info("LINE連携用シークレットを設定しました。値は保護された .ig-harness-deployed.json に保存します。");
 }
 
 function generateSecret(): string {

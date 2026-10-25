@@ -7,7 +7,7 @@ import {
   jstNow,
 } from '@ig-harness/db';
 import type { InstagramClient } from '@ig-harness/ig-sdk';
-import { jitterDeliveryTime, addJitter, sleep } from './stealth.js';
+import { jitterDeliveryTime, addJitter, sleep } from './delivery-timing.js';
 import { recordDmFailure } from '../lib/health.js';
 
 /**
@@ -58,10 +58,6 @@ export async function processStepDeliveries(
   workerUrl?: string,
   accountId?: string,
 ): Promise<void> {
-  // Skip delivery outside 9:00-23:00 JST window
-  const jstHour = new Date(Date.now() + 9 * 60 * 60_000).getUTCHours();
-  if (jstHour < DEFAULT_START_HOUR || jstHour >= DEFAULT_END_HOUR) return;
-
   const now = jstNow();
   const dueFriendScenarios = await getFriendScenariosDueForDelivery(db, now, accountId);
 
@@ -80,7 +76,7 @@ export async function processStepDeliveries(
   }
 }
 
-async function processSingleDelivery(
+export async function processSingleDelivery(
   db: D1Database,
   igClient: InstagramClient,
   fs: {
@@ -98,6 +94,14 @@ async function processSingleDelivery(
     await completeFriendScenario(db, fs.id);
     return;
   }
+  const window = await db.prepare('SELECT last_inbound_at FROM followers WHERE id=?').bind(friend.id).first<{ last_inbound_at: string | null }>();
+  const inbound = window?.last_inbound_at ? Date.parse(window.last_inbound_at) : NaN;
+  if (!Number.isFinite(inbound) || inbound <= Date.now() - 86_400_000 || inbound > Date.now()) {
+    await db.prepare("UPDATE follower_scenarios SET status='completed', next_step_at=NULL, end_reason='window_expired', updated_at=? WHERE id=? AND status='active'").bind(new Date().toISOString(), fs.id).run();
+    return;
+  }
+  const jstHour = new Date(Date.now() + 9 * 60 * 60_000).getUTCHours();
+  if (jstHour < DEFAULT_START_HOUR || jstHour >= DEFAULT_END_HOUR) return;
   const metadata = JSON.parse((friend as { metadata?: string }).metadata || '{}') as Record<string, unknown>;
   const preferredHour = typeof metadata.preferred_hour === 'number' ? metadata.preferred_hour : undefined;
 

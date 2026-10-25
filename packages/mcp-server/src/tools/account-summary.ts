@@ -50,12 +50,12 @@ export function registerAccountSummary(server: McpServer): void {
             recent: recentBroadcasts.map(
               (b: {
                 id: string;
-                title: string;
+                name: string;
                 status: string;
                 sentAt: string | null;
               }) => ({
                 id: b.id,
-                title: b.title,
+                name: b.name,
                 status: b.status,
                 sentAt: b.sentAt,
               }),

@@ -26,7 +26,7 @@ export default function LoginPage() {
       })
 
       if (res.ok) {
-        localStorage.setItem('lh_api_key', apiKey)
+        sessionStorage.setItem('igh_api_key', apiKey)
         // Fetch staff profile for name display
         try {
           const profileRes = await fetch(`${apiUrl}/api/staff/me`, {
@@ -35,8 +35,8 @@ export default function LoginPage() {
           if (profileRes.ok) {
             const profileData = await profileRes.json()
             if (profileData.success && profileData.data) {
-              localStorage.setItem('lh_staff_name', profileData.data.name)
-              localStorage.setItem('lh_staff_role', profileData.data.role)
+              sessionStorage.setItem('igh_staff_name', profileData.data.name)
+              sessionStorage.setItem('igh_staff_role', profileData.data.role)
             }
           }
         } catch {

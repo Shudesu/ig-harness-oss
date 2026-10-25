@@ -1,38 +1,23 @@
----
-chapter: 2
-title: セットアップ
-tier: free
-status: placeholder
----
+# セルフホストのセットアップ
 
-# 第2章 セットアップ
+Node.js 22とpnpm 9.15.4、本人のCloudflareアカウント、Instagramプロアカウントを用意する。対象リポジトリは `Shudesu/ig-harness-oss`。`instagram-harness-oss` は別プロジェクト。
 
-> 【tier: 無料】自前 Cloudflare アカウントへのデプロイから、Instagram 接続、最小フロー稼働までを最短で通す。
+```sh
+git clone https://github.com/Shudesu/ig-harness-oss.git
+cd ig-harness-oss
+pnpm install --frozen-lockfile
+pnpm --filter create-ig-harness build
+pnpm deploy:setup
+```
 
-## 章の目的
-- Cloudflare Workers / Pages / D1 への IG Harness デプロイを完了できる
-- Meta for Developers アプリと Instagram プロアカウントを接続できる
-- 最小構成の DM 自動返信フローが「実機で動く」状態まで到達できる
+この実装は **Instagram API with Instagram Login** を利用する。Facebook Page tokenを求める古い案内は使用しない。MetaアプリのInstagramログイン用API設定から、Instagram App SecretとInstagramの長期access tokenを取得する。トークンは通常IGAAから始まるが、接頭辞だけでは判定せず、ウィザードが `graph.instagram.com/v21.0/me?fields=user_id,username` で確認する。`IG_USER_ID` は応答の `user_id`。`id` を手入力して取り違えない。
 
-## 想定読者
-- 第1章を読み終え、自前運用を決断した IG 運用者
-- Cloudflare / GitHub の基本操作ができる（コマンドコピペレベルで可）
+ウィザードはD1 migration、R2、Worker、Pages管理画面、必要なsecret、アカウント単位のsubscribed_apps設定を処理する。App側のWebhook callback/verify tokenと購読フィールドは表示される手順でも確認する。`messages`、`messaging_postbacks`、`messaging_referral`、`comments` を使用する。ストーリーメンションのDM添付もmessages経路で扱う。
 
-## 目次
-- 2.1 必要なアカウントと事前準備（Cloudflare / Meta for Developers / GitHub）
-- 2.2 リポジトリの取得と環境変数設計
-- 2.3 Cloudflare Workers / D1 / Pages の初期デプロイ
-- 2.4 Meta アプリ作成と Instagram プロアカウント接続
-- 2.5 最小フロー（DM 受信→自動返信）の動作確認
+Instagram側でメッセージへのアクセス許可、アプリのテスター参加、開発モードで許可されたアカウントを確認する。LiveモードやAdvanced Accessの要否は実際の権限・用途に従う。[Meta公式Instagram Login資料](https://www.postman.com/meta/instagram/folder/6raa77c/instagram-api-with-instagram-login)を参照。
 
-## 前提
-- 第1章を読了済み
-- Cloudflare アカウント（独立運用ならアカウント分離推奨）
-- Instagram プロアカウント／ビジネスアカウント
-- Meta for Developers アカウント
+管理画面は完了時に表示されたPages URL。環境 `API_KEY` がowner権限なので、DBにownerを直接INSERTしない。追加staffはAPIで作る。APIキーはブラウザセッション内だけに保存され、閉じた後は再ログインする。
 
-## 次の章
-- 第3章では、IG Harness の中核機能である Engagement Gates の基本動作を押さえる。
+`.ig-harness-setup.json` は失敗時の再開用秘密を含み0600。成功後は削除される。`.ig-harness-deployed.json` と生成MCP設定も秘密を含むためGitへ入れない。`TOKEN_ENCRYPTION_KEY` を保存せず捨てたり、更新のたびに再生成したりしない。
 
----
-*このファイルはプレースホルダーです。本文は別セッションで執筆します。*
+手動構成では `.env.example` と [運用手順](../operations/review-remediation.md) の必須変数、CORS、migration手順を確認する。`schema.sql` 単体で導入を完了としない。

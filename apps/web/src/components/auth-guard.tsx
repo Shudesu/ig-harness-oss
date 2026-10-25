@@ -13,7 +13,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return
     }
 
-    const key = localStorage.getItem('lh_api_key')
+    for (const key of ['lh_api_key', 'lh_staff_name', 'lh_staff_role']) localStorage.removeItem(key)
+    const key = sessionStorage.getItem('igh_api_key')
     if (!key) {
       router.replace('/login')
     } else {

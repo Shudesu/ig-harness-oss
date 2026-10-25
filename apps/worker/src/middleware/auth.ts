@@ -1,5 +1,6 @@
 import type { Context, Next } from 'hono';
 import { getStaffByApiKey } from '@ig-harness/db';
+import { constantTimeEqual } from '../lib/security.js';
 import type { Env } from '../index.js';
 
 export async function authMiddleware(c: Context<Env>, next: Next): Promise<Response | void> {
@@ -36,9 +37,11 @@ export async function authMiddleware(c: Context<Env>, next: Next): Promise<Respo
 
   const token = authHeader.slice('Bearer '.length);
 
+  if (!token.trim()) return c.json({ success: false, error: 'Unauthorized' }, 401);
+
   // Check env API_KEY first — it needs no DB round-trip, so the health
   // monitor can still authenticate while D1 is down (and report db_ok=false).
-  if (token === c.env.API_KEY) {
+  if (c.env.API_KEY?.trim() && await constantTimeEqual(token, c.env.API_KEY)) {
     c.set('staff', { id: 'env-owner', name: 'Owner', role: 'owner' as const });
     return next();
   }

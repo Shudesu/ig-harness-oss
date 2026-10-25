@@ -18,6 +18,8 @@ export async function recordWebhookReceived(db: D1Database, accountId: string): 
 
 // Record the timestamp of the most recent cron execution.
 export async function recordCronRun(db: D1Database): Promise<void> {
+  const previous = await db.prepare('SELECT value FROM integration_settings WHERE key = ?').bind('health:last_cron_at').first<{ value: string }>();
+  if (previous?.value && Date.parse(previous.value) > Date.now() - 15 * 60_000) return;
   await upsertSetting(db, 'health:last_cron_at', new Date().toISOString());
 }
 

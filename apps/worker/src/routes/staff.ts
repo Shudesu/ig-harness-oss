@@ -15,7 +15,7 @@ import type { Env } from '../index.js';
 const staff = new Hono<Env>();
 
 function maskApiKey(key: string): string {
-  return `lh_****${key.slice(-4)}`;
+  return key.startsWith('sha256:') ? 'igh_********' : `igh_****${key.slice(-4)}`;
 }
 
 function serializeStaff(row: StaffMember, masked = true) {

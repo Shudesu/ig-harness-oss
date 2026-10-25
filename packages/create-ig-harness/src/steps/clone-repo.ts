@@ -34,8 +34,9 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
     s.start("最新バージョンを取得中...");
     try {
       await execa("git", ["pull", "--ff-only"], { cwd: homeDir });
-    } catch {
-      // Non-critical, continue with existing
+    } catch (error) {
+      s.stop("リポジトリ更新失敗（更新を中断）");
+      throw error;
     }
     s.stop("リポジトリ更新完了");
   } else {
@@ -61,9 +62,9 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
     await execa("npx", ["pnpm", "install", "--frozen-lockfile"], {
       cwd: homeDir,
     });
-  } catch {
-    // Try without frozen lockfile
-    await execa("npx", ["pnpm", "install"], { cwd: homeDir });
+  } catch (error) {
+    s.stop("lockfileに基づく依存関係の導入に失敗しました");
+    throw error;
   }
   s.stop("依存関係インストール完了");
 

@@ -185,7 +185,7 @@ export default function Sidebar() {
   const [staffName, setStaffName] = useState<string | null>(null)
 
   useEffect(() => {
-    setStaffName(localStorage.getItem('lh_staff_name'))
+    setStaffName(sessionStorage.getItem('igh_staff_name'))
   }, [])
 
   useEffect(() => { setIsOpen(false) }, [pathname])
@@ -261,9 +261,9 @@ export default function Sidebar() {
           </a>
           <Button
             onClick={() => {
-              localStorage.removeItem('lh_api_key')
-              localStorage.removeItem('lh_staff_name')
-              localStorage.removeItem('lh_staff_role')
+              sessionStorage.removeItem('igh_api_key')
+              sessionStorage.removeItem('igh_staff_name')
+              sessionStorage.removeItem('igh_staff_role')
               window.location.href = '/login'
             }}
             className="flex items-center gap-2 text-xs text-kumo-subtle hover:text-red-500 transition-colors"

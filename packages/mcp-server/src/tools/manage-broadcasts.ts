@@ -22,7 +22,7 @@ export function registerManageBroadcasts(server: McpServer): void {
     },
     async ({ action, broadcastId, title, messageType, messageContent, targetType, targetTagId, scheduledAt, segmentConditions, accountId }) => {
       try {
-        const client = getClient();
+        const client = getClient(accountId);
 
         if (action === "list") {
           const broadcasts = await client.broadcasts.list();

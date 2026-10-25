@@ -152,21 +152,19 @@ export interface FriendScenarioEnrollment {
 }
 
 // ─── Broadcast ──────────────────────────────────────────
+export type BroadcastMessageType = 'text' | 'image' | 'template' | 'quick_reply'
 export interface Broadcast {
   id: string
-  title: string
-  messageType: MessageType
-  messageContent: string
-  targetType: 'all' | 'tag'
-  targetTagId: string | null
+  name: string
+  messageType: BroadcastMessageType
+  body: string
+  tagFilter: string | null
   status: BroadcastStatus
   scheduledAt: string | null
   sentAt: string | null
-  totalCount: number
-  successCount: number
-  lineRequestId?: string | null
-  aggregationUnit?: string | null
+  totalSent: number
   createdAt: string
+  updatedAt: string
 }
 
 export interface BroadcastInsight {
@@ -189,18 +187,24 @@ export interface BroadcastWithInsight extends Broadcast {
 }
 
 export interface CreateBroadcastInput {
-  title: string
-  messageType: MessageType
-  messageContent: string
-  targetType: 'all' | 'tag'
+  name?: string
+  body?: string
+  tagFilter?: string | null
+  title?: string
+  messageType: BroadcastMessageType
+  messageContent?: string
+  targetType?: 'all' | 'tag'
   targetTagId?: string
   scheduledAt?: string
   altText?: string
 }
 
 export interface UpdateBroadcastInput {
+  name?: string
+  body?: string
+  tagFilter?: string | null
   title?: string
-  messageType?: MessageType
+  messageType?: BroadcastMessageType
   messageContent?: string
   targetType?: 'all' | 'tag'
   targetTagId?: string | null

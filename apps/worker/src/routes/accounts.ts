@@ -1,3 +1,4 @@
+import { sealToken } from '../lib/token-crypto.js';
 import { Hono } from 'hono';
 import {
   listIgAccounts,
@@ -74,7 +75,7 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
     const account = await createIgAccount(c.env.DB, {
       igUserId: body.igUserId,
       username: body.username ?? null,
-      accessToken: body.accessToken,
+      accessToken: await sealToken(body.accessToken, body.igUserId, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret ?? null,
       verifyToken: body.verifyToken ?? null,
     });
@@ -109,7 +110,7 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
 
     const updated = await updateIgAccount(c.env.DB, id, {
       username: body.username,
-      accessToken: body.accessToken,
+      accessToken: body.accessToken === undefined ? undefined : await sealToken(body.accessToken, existing.ig_user_id, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret,
       verifyToken: body.verifyToken,
       isActive: body.isActive,

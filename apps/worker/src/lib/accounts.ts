@@ -1,3 +1,4 @@
+import { sealToken, openToken } from './token-crypto.js';
 import { InstagramClient } from '@ig-harness/ig-sdk';
 import {
   getDefaultIgAccount,
@@ -15,6 +16,7 @@ export type AccountEnv = {
   IG_USER_ID: string;
   IG_USERNAME?: string;
   IG_ACCESS_TOKEN: string;
+  TOKEN_ENCRYPTION_KEY?: string;
 };
 
 const BACKFILL_TABLES = [
@@ -115,7 +117,7 @@ export async function ensureDefaultAccount(env: AccountEnv, db: D1Database): Pro
     const created = await createIgAccount(db, {
       igUserId: env.IG_USER_ID,
       username: env.IG_USERNAME ?? null,
-      accessToken,
+      accessToken: await sealToken(accessToken, env.IG_USER_ID, env.TOKEN_ENCRYPTION_KEY),
       tokenExpiresAt: expiresAt,
       tokenRefreshedAt: refreshedAt,
       isDefault: true,
@@ -128,6 +130,7 @@ export async function ensureDefaultAccount(env: AccountEnv, db: D1Database): Pro
   }
 
   await backfillLegacyRows(db, accountId);
+  if (env.TOKEN_ENCRYPTION_KEY) await db.prepare('DELETE FROM ig_token_state WHERE id=1').run();
 }
 
 /** Resolve the acting account for an API request: ?account_id= or default. */
@@ -161,6 +164,7 @@ export async function getAccountClient(
   db: D1Database,
   account: IgAccount,
 ): Promise<InstagramClient> {
+  account = { ...account, access_token: await openToken(account.access_token, account.ig_user_id, env.TOKEN_ENCRYPTION_KEY) };
   let token = account.access_token;
   try {
     const refreshed = await refreshAccountTokenIfNeeded(env, db, account);

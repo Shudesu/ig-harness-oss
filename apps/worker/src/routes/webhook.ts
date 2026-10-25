@@ -1,3 +1,5 @@
+import { armScheduler } from '../lib/scheduler-client.js';
+import { beginActivity, endActivity } from '../lib/activity.js';
 import { Hono } from 'hono';
 import {
   InstagramClient,
@@ -19,9 +21,12 @@ import {
 import { buildIgMessage, expandVariables } from '../services/step-delivery.js';
 import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention } from '../services/engagement-gate.js';
 import type { IgAccountRef } from '../services/line-cross-link.js';
-import { listIgAccounts } from '@ig-harness/db';
+import { listIgAccounts, getIgAccountById } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import { recordWebhookReceived } from '../lib/health.js';
+import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
+import { enqueueCommentRuleJob, processCommentRuleJobs } from '../services/comment-rule-jobs.js';
+import type { IgAccount } from '@ig-harness/db';
 import type { Env } from '../index.js';
 
 export type PostbackPayload =
@@ -81,9 +86,11 @@ webhook.post('/webhook', async (c) => {
   }
 
   let valid = false;
+  let matchedSecret = '';
   for (const secret of secrets) {
     if (await verifyWebhookSignature(rawBody, signature, secret)) {
       valid = true;
+      matchedSecret = secret;
       break;
     }
   }
@@ -107,52 +114,64 @@ webhook.post('/webhook', async (c) => {
     return c.json({ status: 'ok' }, 200);
   }
 
-  // Process asynchronously — Meta expects quick response
-  const processingPromise = (async () => {
-    for (const entry of body.entry) {
-      // entry.id is the receiving business account's IG user id — resolve
-      // which managed account this entry belongs to before any processing.
-      const account = pickAccountForEntry(accounts, entry.id);
-      if (!account) {
-        console.warn(`[webhook] no account matches entry.id=${entry.id} (accounts=${accounts.length}); skipping entry`);
-        continue;
-      }
-      // Register on waitUntil: the enclosing promise can settle before this
-      // D1 write completes (e.g. entries with no messaging work).
-      c.executionCtx.waitUntil(recordWebhookReceived(db, account.id).catch(() => {}));
-      const igClient = await getAccountClient(c.env, db, account);
-      const igAccount: IgAccountRef = toIgAccountRef(account);
-
-      // Handle DM messaging events (messaging = primary, standby = secondary receiver)
-      const messagingEvents = entry.messaging ?? entry.standby ?? [];
-      for (const event of messagingEvents) {
-        try {
-          await handleMessagingEvent(db, igClient, event, c.env.WORKER_URL, igAccount, account.id);
-        } catch (err) {
-          console.error('Error handling messaging event:', err);
-        }
-      }
-
-      // Handle comment/mention change events
-      if (entry.changes) {
-        for (const change of entry.changes) {
-          try {
-            if (change.field === 'comments') {
-              await handleCommentEvent(db, igClient, change.value, account.ig_user_id, c.env.WORKER_URL, igAccount, account.id);
-            } else if (change.field === 'mentions') {
-              await handleMentionEvent(db, igClient, change.value, igAccount, account.id);
-            }
-          } catch (err) {
-            console.error('Error handling change event:', err);
-          }
-        }
-      }
+  if (!Array.isArray(body.entry)) return c.json({ error: 'Invalid entries' }, 400);
+  const accepted: IgAccount[] = [];
+  for (const entry of body.entry) {
+    const account = pickAccountForEntry(accounts, entry.id);
+    if (!account || account.ig_user_id !== entry.id || (account.app_secret || c.env.IG_APP_SECRET) !== matchedSecret) continue;
+    const events = [
+      ...(entry.messaging ?? entry.standby ?? []).map((value) => ({ kind: 'messaging', value })),
+      ...(entry.changes ?? []).map((change) => ({ kind: change.field, value: change.value })),
+    ];
+    // Acknowledge only after durable ingestion succeeds. A D1 error returns
+    // non-2xx and Meta can retry; previously accepted events deduplicate.
+    await queueWebhookEvents(db, account.id, events);
+    c.executionCtx.waitUntil(recordWebhookReceived(db, account.id).catch(() => {}));
+    accepted.push(account);
+  }
+  if (accepted.length && c.env.TENANT_SCHEDULER) await armScheduler(c.env);
+  c.executionCtx.waitUntil((async () => {
+    for (const account of accepted) {
+      const activity = await beginActivity(db);
+      if (!activity) continue;
+      try {
+        const current = await getIgAccountById(db, account.id);
+        if (!current || !current.is_active) continue;
+        const client = await getAccountClient(c.env, db, current);
+        await processQueuedWebhooks(db, client, current, c.env.WORKER_URL);
+      } finally { await endActivity(db, activity); }
     }
-  })();
-
-  c.executionCtx.waitUntil(processingPromise);
+  })());
   return c.json({ status: 'ok' }, 200);
 });
+
+export async function processQueuedWebhooks(db: D1Database, client: InstagramClient, account: IgAccount, workerUrl?: string): Promise<void> {
+  await drainWebhookEvents(db, account.id, async (event) => {
+    const value = JSON.parse(event.payload);
+    const ref = toIgAccountRef(account);
+    if (event.kind === 'messaging') await handleMessagingEvent(db, client, value, workerUrl, ref, account.id);
+    else if (event.kind === 'comments') await handleCommentEvent(db, client, value, account.ig_user_id, workerUrl, ref, account.id);
+    else if (event.kind === 'mentions') await handleMentionEvent(db, client, value, ref, account.id);
+  });
+  await processCommentRuleJobs(db, client, account.id);
+}
+
+export async function getOrRefreshFollower(db: D1Database, client: InstagramClient, igsid: string, accountId?: string, username?: string) {
+  const existing = await getFriendByIgsid(db, igsid);
+  if (existing && existing.account_id !== accountId) throw new Error('Follower account mismatch');
+  const freshness = await db.prepare('SELECT profile_fetched_at FROM followers WHERE igsid=?').bind(igsid).first<{ profile_fetched_at: string | null }>();
+  if (existing && freshness?.profile_fetched_at && Date.parse(freshness.profile_fetched_at) > Date.now() - 86_400_000) return existing;
+  let profile;
+  try { profile = await client.getUserProfile(igsid); } catch { /* keep the last known profile */ }
+  if (!profile && existing) return existing;
+  const follower = await upsertFriend(db, {
+    igsid, username: profile?.username ?? username ?? null, displayName: profile?.name ?? null,
+    pictureUrl: profile?.profile_pic ?? null, isFollowing: profile?.is_user_follow_business ?? false,
+    followerCount: profile?.follower_count ?? null, isVerified: profile?.is_verified_user ?? false, accountId,
+  });
+  if (profile) await db.prepare('UPDATE followers SET profile_fetched_at=? WHERE id=?').bind(new Date().toISOString(), follower.id).run();
+  return follower;
+}
 
 async function handleMessagingEvent(
   db: D1Database,
@@ -167,24 +186,13 @@ async function handleMessagingEvent(
   // Skip echo messages (our own outgoing messages)
   if (event.message?.is_echo) return;
 
-  // Upsert follower (get profile from IG)
-  let profile;
-  try {
-    profile = await igClient.getUserProfile(senderId);
-  } catch (err) {
-    console.error('Failed to get profile for', senderId, err);
+  const follower = await getOrRefreshFollower(db, igClient, senderId, accountId);
+  // Use the event timestamp, not retry/processing time, to avoid extending the
+  // messaging window when old webhooks are replayed or drain after downtime.
+  if ((event.message || event.postback) && Number.isFinite(event.timestamp) && event.timestamp > 0 && event.timestamp <= Date.now() + 300_000) {
+    const inbound = new Date(Math.min(event.timestamp, Date.now())).toISOString();
+    await db.prepare(`UPDATE followers SET last_inbound_at=? WHERE id=? AND (last_inbound_at IS NULL OR julianday(last_inbound_at)<julianday(?))`).bind(inbound, follower.id, inbound).run();
   }
-
-  const follower = await upsertFriend(db, {
-    igsid: senderId,
-    username: profile?.username ?? null,
-    displayName: profile?.name ?? null,
-    pictureUrl: profile?.profile_pic ?? null,
-    isFollowing: profile?.is_user_follow_business ?? false,
-    followerCount: profile?.follower_count ?? null,
-    isVerified: profile?.is_verified_user ?? false,
-    accountId,
-  });
 
   if (event.message?.text) {
     const incomingText = event.message.text;
@@ -306,6 +314,10 @@ async function handleMessagingEvent(
 
   }
 
+  if (event.message?.attachments?.some((attachment) => attachment.type === 'story_mention')) {
+    await handleMentionEvent(db, igClient, { mentioned_user_id: senderId }, igAccount, accountId);
+  }
+
   // Handle postback events
   if (event.postback) {
     const payload = parsePostbackPayload(event.postback.payload ?? '');
@@ -357,24 +369,7 @@ async function handleCommentEvent(
     return;
   }
 
-  // Upsert follower
-  let profile;
-  try {
-    profile = await igClient.getUserProfile(senderId);
-  } catch {
-    // Profile fetch may fail for non-followers
-  }
-
-  const follower = await upsertFriend(db, {
-    igsid: senderId,
-    username: value.from.username ?? profile?.username ?? null,
-    displayName: profile?.name ?? null,
-    pictureUrl: profile?.profile_pic ?? null,
-    isFollowing: profile?.is_user_follow_business ?? false,
-    followerCount: profile?.follower_count ?? null,
-    isVerified: profile?.is_verified_user ?? false,
-    accountId,
-  });
+  const follower = await getOrRefreshFollower(db, igClient, senderId, accountId, value.from.username);
 
   // Engagement gate trigger — runs FIRST so a configured gate takes precedence
   // over the legacy comment-rule flow. If a gate fires, we skip the rule loop
@@ -453,37 +448,17 @@ async function handleCommentEvent(
     }
 
     if (isMatch) {
-      // Apply delay if configured
-      if (rule.delay_seconds > 0) {
-        await new Promise((resolve) => setTimeout(resolve, rule.delay_seconds * 1000));
-      }
-
-      // Reply to the comment itself
-      try {
-        const replyText = (rule as any).reply_text
-          ? (rule as any).reply_text.replace('{{username}}', value.from.username)
-          : `@${value.from.username} コメントありがとう！📩 DMを送りました！`;
-        await igClient.replyToComment(value.id, replyText);
-      } catch (err) {
-        console.error('Comment reply failed:', err);
-      }
-
-      // Send DM to commenter (expand variables in response body)
+      if (!accountId) throw new Error('Comment rule requires an account');
       const expandedBody = rule.response_body
         .replace(/\{\{igsid\}\}/g, senderId)
         .replace(/\{\{username\}\}/g, value.from.username)
         .replace(/\{\{follower_id\}\}/g, String(follower.id));
-      const responseBody = JSON.parse(expandedBody);
-      await sendIgResponse(igClient, senderId, rule.response_type, responseBody);
-
-      // Log outgoing message
-      await db
-        .prepare(
-          `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
-           VALUES (?, 'out', ?, ?, 'comment_rule')`,
-        )
-        .bind(follower.id, rule.response_type, rule.response_body)
-        .run();
+      const replyText = (rule as { reply_text?: string }).reply_text?.replace('{{username}}', value.from.username)
+        ?? `@${value.from.username} コメントありがとう！📩 DMを送りました！`;
+      await enqueueCommentRuleJob(db, {
+        accountId, ruleId: rule.id, commentId: value.id, followerId: follower.id,
+        messageType: rule.response_type, body: expandedBody, replyText, delaySeconds: rule.delay_seconds,
+      });
 
       break; // Only send first matching rule
     }

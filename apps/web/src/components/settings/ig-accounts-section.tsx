@@ -38,7 +38,7 @@ export default function IgAccountsSection() {
   const [tokenSaving, setTokenSaving] = useState(false)
 
   useEffect(() => {
-    setIsOwner(localStorage.getItem('lh_staff_role') === 'owner')
+    setIsOwner(sessionStorage.getItem('igh_staff_role') === 'owner')
   }, [])
 
   const load = useCallback(async () => {

@@ -1,8 +1,11 @@
+import { randomBytes } from "node:crypto";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { ensureAuth } from "../steps/auth.js";
 import { setAccountId, wrangler } from "../lib/wrangler.js";
+import { backupDatabase } from "../steps/backup.js";
+import { migrateDatabase } from "../steps/database.js";
 import { deployWorker } from "../steps/deploy-worker.js";
 import { join } from "node:path";
 import { execa } from "execa";
@@ -15,6 +18,9 @@ interface DeployedState {
   d1DatabaseId?: string;
   d1DatabaseName?: string;
   accountId?: string;
+  r2BucketName?: string;
+  adminProjectName?: string;
+  tokenEncryptionKey?: string;
 }
 
 function loadDeployedState(repoDir: string): DeployedState | null {
@@ -37,53 +43,52 @@ export async function runUpdate(repoDir: string): Promise<void> {
   await ensureAuth();
 
   const deployedState = loadDeployedState(repoDir);
-  if (!deployedState) {
-    p.log.warn(
-      [
-        ".ig-harness-deployed.json が見つかりません。",
-        "初回セットアップ済みの repo で `create-ig-harness update --repo-dir <path>` を実行するか、",
-        "~/.ig-harness/.ig-harness-deployed.json に deployed state を配置してください。",
-      ].join("\n"),
-    );
+  if (!deployedState?.d1DatabaseId || !deployedState.d1DatabaseName || !deployedState.accountId || !deployedState.workerName || !deployedState.r2BucketName) {
+    throw new Error("保存済みの配信先情報がありません。.ig-harness-deployed.json を復元してください。接続先を推測して更新しません。");
   }
   if (deployedState?.accountId) setAccountId(deployedState.accountId);
   const s = p.spinner();
 
   // Run pending migrations against the user's actual D1 (use saved name)
-  const dbName = deployedState?.d1DatabaseName ?? "ig-harness";
+  const dbName = deployedState.d1DatabaseName;
+  s.start("D1 バックアップ中...");
+  const backupPath = await backupDatabase(repoDir, dbName);
+  s.stop(`D1 バックアップ: ${backupPath}`);
   s.start("マイグレーション確認中...");
   try {
-    await wrangler(
-      ["d1", "migrations", "apply", dbName, "--remote"],
-      { cwd: join(repoDir, "packages/db") },
-    );
+    await migrateDatabase(repoDir, dbName, deployedState.d1DatabaseId);
     s.stop("マイグレーション完了");
-  } catch {
-    s.stop("マイグレーション完了（変更なし）");
+  } catch (error) {
+    s.stop("マイグレーション失敗（更新を中断）");
+    p.log.error(`復旧用バックアップ: ${backupPath}`);
+    throw error;
   }
 
-  // Redeploy Worker. The committed wrangler.toml is a TEMPLATE with our dev
-  // bindings, so we MUST overwrite it with the user's saved D1/R2/account
-  // bindings before deploying. Falls back to a plain `wrangler deploy` only
-  // when no deployed state is available (legacy installs from before this
-  // file was written).
-  s.start("Worker 再デプロイ中...");
-  if (
-    deployedState?.workerName &&
-    deployedState?.d1DatabaseId &&
-    deployedState?.d1DatabaseName &&
-    deployedState?.accountId
-  ) {
-    await deployWorker({
-      repoDir,
-      d1DatabaseId: deployedState.d1DatabaseId,
-      d1DatabaseName: deployedState.d1DatabaseName,
-      workerName: deployedState.workerName,
-      accountId: deployedState.accountId,
-    });
-  } else {
-    await wrangler(["deploy"], { cwd: join(repoDir, "apps/worker") });
+  const secrets = JSON.parse(await wrangler(['secret', 'list', '--name', deployedState.workerName]));
+  if (!secrets.some((secret: { name: string }) => secret.name === 'TOKEN_ENCRYPTION_KEY')) {
+    const counts = JSON.parse(await wrangler(['d1', 'execute', dbName, '--remote', '--json', '--command', "SELECT COUNT(*) AS n FROM ig_accounts WHERE access_token LIKE 'enc:v1:%'"]));
+    const rows = counts.flatMap((entry: { results?: Array<{ n: number }> }) => entry.results ?? []);
+    if (rows.length !== 1 || !Number.isSafeInteger(rows[0]?.n)) throw new Error('Could not verify stored token encryption state; update aborted.');
+    const encryptedCount = rows[0].n;
+    if (encryptedCount > 0 && !deployedState.tokenEncryptionKey) throw new Error('Encrypted tokens exist but TOKEN_ENCRYPTION_KEY is missing. Restore the original key; do not generate a replacement.');
+    deployedState.tokenEncryptionKey ??= randomBytes(32).toString('base64');
+    const statePath = join(repoDir, '.ig-harness-deployed.json');
+    writeFileSync(statePath, JSON.stringify(deployedState, null, 2) + '\n', { mode: 0o600 }); chmodSync(statePath, 0o600);
+    await wrangler(['secret', 'put', 'TOKEN_ENCRYPTION_KEY', '--name', deployedState.workerName], { input: deployedState.tokenEncryptionKey });
   }
+  if (deployedState.workerUrl) await wrangler(['secret', 'put', 'WORKER_URL', '--name', deployedState.workerName], { input: deployedState.workerUrl });
+  if (deployedState.adminUrl) await wrangler(['secret', 'put', 'ADMIN_ORIGINS', '--name', deployedState.workerName], { input: new URL(deployedState.adminUrl).origin });
+
+  // Deploy only to the fully recorded destination, preserving D1/R2 bindings.
+  s.start("Worker 再デプロイ中...");
+  await deployWorker({
+    repoDir,
+    d1DatabaseId: deployedState.d1DatabaseId,
+    d1DatabaseName: deployedState.d1DatabaseName,
+    workerName: deployedState.workerName,
+    r2BucketName: deployedState.r2BucketName,
+    accountId: deployedState.accountId,
+  });
   s.stop("Worker 再デプロイ完了");
 
   // Rebuild and redeploy Admin UI
@@ -93,8 +98,10 @@ export async function runUpdate(repoDir: string): Promise<void> {
   await execa("pnpm", ["run", "build"], { cwd: webDir });
 
   // Attempt to list Pages projects and find the ih-admin-* project
-  let adminProjectName = "ig-harness-admin";
-  if (deployedState?.apiKey) {
+  let adminProjectName = deployedState.adminProjectName ?? "ig-harness-admin";
+  if (deployedState.adminProjectName) {
+    // Stable non-secret project name recorded by current installers.
+  } else if (deployedState?.apiKey) {
     adminProjectName = `ih-admin-${deployedState.apiKey.slice(0, 8)}`;
   } else {
     try {
