@@ -56,3 +56,14 @@ test('does not trust a completion ledger when the real schema has drifted', asyn
   await assert.rejects(applyMigrations(adapter(db)), /Schema verification failed: followers.profile_fetched_at/);
   db.close();
 });
+
+test('adopts legacy repeat-delivery history without recreating the removed unique index', async () => {
+  const db = new DatabaseSync(':memory:');
+  await assert.rejects(applyMigrations(adapter(db, sql => sql.includes('CREATE TABLE broadcast_runs'))), /0018/);
+  db.exec("DELETE FROM ig_schema_migrations; INSERT INTO followers(id,igsid) VALUES(1,'test-user'); INSERT INTO engagement_gates(id,name,trigger_type,initial_dm_text,follow_reminder_dm_text,reward_dm_text,allow_repeat) VALUES('g','Test','comment_on_post','Hi','Follow','Reward',1); INSERT INTO gate_deliveries(id,gate_id,follower_id,igsid) VALUES('one','g',1,'test-user'),('two','g',1,'test-user')");
+  await applyMigrations(adapter(db));
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM gate_deliveries').get().n, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='uq_gate_deliveries_gate_follower'").get().n, 0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM ig_schema_migrations').get().n, 22);
+  db.close();
+});
