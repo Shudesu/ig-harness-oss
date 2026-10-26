@@ -22,7 +22,7 @@ interface CommentRuleRow {
 
 function serialize(row: CommentRuleRow) {
   return {
-    id: row.id,
+    id: String(row.id),
     name: row.name,
     triggerType: row.trigger_type,
     mediaId: row.media_id,
@@ -36,6 +36,14 @@ function serialize(row: CommentRuleRow) {
     updatedAt: row.updated_at,
   };
 }
+
+// Recent delivery outcomes, scoped to the selected account. No message bodies.
+commentRules.get('/api/comment-rule-deliveries', async c => {
+  const account=await resolveAccount(c); if (!account) return c.json({success:false,error:'account not found'},404);
+  const rows=await c.env.DB.prepare(`SELECT j.id,j.status,j.reason,j.delivery_mode AS deliveryMode,j.error_code AS errorCode,j.error_subcode AS errorSubcode,f.username
+    FROM comment_rule_jobs j JOIN followers f ON f.id=j.follower_id WHERE j.account_id=? ORDER BY j.rowid DESC LIMIT 30`).bind(account.id).all();
+  return c.json({success:true,data:rows.results});
+});
 
 // GET /api/comment-rules - list all
 commentRules.get('/api/comment-rules', async (c) => {
@@ -93,16 +101,14 @@ commentRules.post('/api/comment-rules', async (c) => {
       );
     }
 
-    const id = crypto.randomUUID();
     const now = jstNow();
 
-    await c.env.DB
+    const inserted = await c.env.DB
       .prepare(
-        `INSERT INTO comment_rules (id, name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, is_active, account_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+        `INSERT INTO comment_rules (name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, is_active, account_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) RETURNING id`,
       )
       .bind(
-        id,
         body.name,
         body.triggerType || 'comment',
         body.mediaId || null,
@@ -115,11 +121,11 @@ commentRules.post('/api/comment-rules', async (c) => {
         now,
         now,
       )
-      .run();
+      .first<{ id: number }>();
 
     const row = await c.env.DB
       .prepare(`SELECT * FROM comment_rules WHERE id = ?`)
-      .bind(id)
+      .bind(inserted!.id)
       .first<CommentRuleRow>();
 
     return c.json({ success: true, data: serialize(row!) }, 201);

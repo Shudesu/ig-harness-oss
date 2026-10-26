@@ -1,3 +1,5 @@
+import { messagingEligibility } from '../services/messaging-window.js';
+import { getFriendByIgsid } from '@ig-harness/db';
 import { Hono } from 'hono';
 import {
   createRichMessage,
@@ -245,6 +247,8 @@ richMessages.post('/api/rich-messages/:id/test-send', async (c) => {
 
   const account = await resolveAccount(c);
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const follower=await getFriendByIgsid(c.env.DB,body.to_igsid);
+  if (!follower || follower.account_id!==account.id || await messagingEligibility(c.env.DB,follower.id,account.id)!=='eligible') return c.json({success:false,error:'テスト送信先から24時間以内にDMを受信し、このアプリが応答を担当している必要があります。'},409);
   const igClient = await getAccountClient(c.env, c.env.DB, account);
 
   try {

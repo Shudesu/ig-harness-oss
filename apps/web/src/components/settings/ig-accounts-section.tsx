@@ -25,7 +25,6 @@ export default function IgAccountsSection() {
 
   // New account form
   const [igUserId, setIgUserId] = useState('')
-  const [username, setUsername] = useState('')
   const [accessToken, setAccessToken] = useState('')
   const [appSecret, setAppSecret] = useState('')
   const [verifyToken, setVerifyToken] = useState('')
@@ -64,19 +63,17 @@ export default function IgAccountsSection() {
   }, [load, refreshAccounts])
 
   const handleAdd = async () => {
-    if (!igUserId.trim() || !accessToken.trim()) return
+    if (!accessToken.trim()) return
     setSaving(true)
     setError('')
     try {
       await accountsApi.create({
-        igUserId: igUserId.trim(),
+        igUserId: igUserId.trim() || undefined,
         accessToken: accessToken.trim(),
-        ...(username.trim() ? { username: username.trim().replace(/^@/, '') } : {}),
         ...(appSecret.trim() ? { appSecret: appSecret.trim() } : {}),
         ...(verifyToken.trim() ? { verifyToken: verifyToken.trim() } : {}),
       })
       setIgUserId('')
-      setUsername('')
       setAccessToken('')
       setAppSecret('')
       setVerifyToken('')
@@ -246,30 +243,22 @@ export default function IgAccountsSection() {
       {isOwner && (
         <div className="mt-5 pt-5 border-t border-kumo-line">
           <h3 className="text-xs font-semibold text-kumo-default mb-3">アカウントを追加</h3>
+          <p className="text-xs text-kumo-subtle mb-3">保存前にInstagramへ接続し、User IDを確認します。DM・コメント・投稿の権限はMeta側でも確認してください。長期トークンを使用してください。接頭辞だけで種類や有効期限は判定しません。</p>
           <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-xs font-medium text-kumo-subtle mb-1">
-                  IG User ID <span className="text-red-400">*</span>
+                  IG User ID（任意・空欄なら自動取得）
                 </label>
                 <input
                   type="text"
                   value={igUserId}
                   onChange={(e) => setIgUserId(e.target.value)}
-                  placeholder="17841400000000000"
+                  placeholder="空欄で自動取得"
                   className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-kumo-subtle mb-1">ユーザーネーム（任意）</label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="my_second_account"
-                  className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
-                />
-              </div>
+
             </div>
             <div>
               <label className="block text-xs font-medium text-kumo-subtle mb-1">
@@ -279,7 +268,7 @@ export default function IgAccountsSection() {
                 type="password"
                 value={accessToken}
                 onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="IGAAxxxxxxxxxxxxx"
+                placeholder="Instagram Login access token"
                 className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>
@@ -334,7 +323,7 @@ export default function IgAccountsSection() {
               <button
                 type="button"
                 onClick={handleAdd}
-                disabled={saving || !igUserId.trim() || !accessToken.trim()}
+                disabled={saving || !accessToken.trim()}
                 className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
                 style={{ backgroundColor: ACCENT }}
               >

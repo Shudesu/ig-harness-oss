@@ -1,5 +1,7 @@
 'use client'
 
+import DeliveryStatus from '@/components/delivery-status'
+
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api'
@@ -103,6 +105,8 @@ export default function DashboardPage() {
           {error}
         </div>
       )}
+
+      <div className="mb-6"><DeliveryStatus /></div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">

@@ -3,10 +3,10 @@ import { sha256 } from '../lib/security.js';
 export type QueuedEvent = { account_id: string; event_key: string; kind: string; payload: string; subject_id: string | null };
 
 export async function eventKey(kind: string, value: Record<string, any>): Promise<string | null> {
-  if (kind === 'messaging') {
+  if (kind === 'messaging' || kind === 'standby') {
     if (value.message?.is_echo || (!value.message && !value.postback)) return null;
     const mid = value.message?.mid ?? value.postback?.mid;
-    return mid ? `message:${await sha256(String(mid))}` : `postback:${await sha256(JSON.stringify(value))}`;
+    return mid ? `${kind === 'standby' ? 'standby' : 'message'}:${await sha256(String(mid))}` : `postback:${await sha256(JSON.stringify(value))}`;
   }
   if (kind === 'comments' && value.id) return `comment:${await sha256(String(value.id))}`;
   if (kind === 'mentions') return `mention:${await sha256(JSON.stringify(value))}`;

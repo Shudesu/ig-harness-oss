@@ -15,7 +15,7 @@ import { setSecrets } from "../steps/secrets.js";
 import { generateMcpConfig } from "../steps/mcp-config.js";
 import { showWebhookGuide } from "../steps/webhook-guide.js";
 import { generateApiKey } from "../lib/crypto.js";
-import { subscribeInstagramAccount, validateInstagramToken } from "../steps/instagram-api.js";
+import { subscribeInstagramAccount, validateInstagramToken, WEBHOOK_FIELDS } from "../steps/instagram-api.js";
 import { setAccountId, wrangler } from "../lib/wrangler.js";
 
 interface SetupState {
@@ -112,7 +112,7 @@ export async function runSetup(repoDir: string): Promise<void> {
     markDone(state, "credentials");
     saveState(repoDir, state);
   } else {
-    const verified = await validateInstagramToken(state.metaAccessToken!);
+    const verified = await validateInstagramToken(state.metaAccessToken!,state.metaAppSecret);
     state.igUserId = verified.userId;
     state.igUsername = verified.username;
     saveState(repoDir, state);
@@ -224,7 +224,7 @@ export async function runSetup(repoDir: string): Promise<void> {
 
   await configureAdminAuth(workerName, state.adminUrl!, state.workerUrl!);
   if (!isDone(state, 'account-subscription')) {
-    await subscribeInstagramAccount(state.metaAccessToken!, state.igUserId!);
+    await subscribeInstagramAccount(state.metaAccessToken!, state.igUserId!,state.metaAppSecret);
     markDone(state, 'account-subscription'); saveState(repoDir, state);
   }
 
@@ -249,7 +249,7 @@ export async function runSetup(repoDir: string): Promise<void> {
       `   Callback URL: ${pc.cyan(`${state.workerUrl}/webhook`)}`,
       `   Verify Token: ${pc.cyan(state.metaVerifyToken!)}`,
       `   → developers.facebook.com/apps → Webhooks → Instagram`,
-      `   → messages, messaging_postbacks, comments を購読`,
+      `   → ${WEBHOOK_FIELDS.join(", ")} を購読`,
       "",
       `${pc.bold("② Meta App 公開時に Dashboard へ貼り付ける URL:")}`,
       `   Privacy Policy URL:   ${pc.cyan(`${state.workerUrl}/privacy-policy`)}`,

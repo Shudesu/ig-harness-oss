@@ -1,5 +1,7 @@
 'use client'
 
+import DeliveryStatus from '@/components/delivery-status'
+
 import { useState, useEffect, useCallback } from 'react'
 import type { CommentRule, MatchType, ResponseType } from '@ig-harness/shared'
 import { api, postsApi, type MediaItem } from '@/lib/api'
@@ -289,6 +291,7 @@ export default function CommentRulesPage() {
           </button>
         }
       />
+      <div className="px-4 py-3"><DeliveryStatus /></div>
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>

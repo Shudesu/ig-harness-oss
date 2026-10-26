@@ -42,11 +42,12 @@ export async function recordTokenValidity(
   db: D1Database,
   accountId: string,
   ok: boolean,
+  reason?: string,
 ): Promise<void> {
   await upsertSetting(
     db,
     `health:token_valid:${accountId}`,
-    JSON.stringify({ ok, checked_at: new Date().toISOString() }),
+    JSON.stringify({ ok, checked_at: new Date().toISOString(), reason }),
   );
 }
 
@@ -59,8 +60,11 @@ export interface AccountHealth {
   /** Result of the last real Graph API call (GET /me); null = never probed */
   token_api_ok: boolean | null;
   token_api_checked_at: string | null;
+  token_api_reason?: string | null;
   last_webhook_event_at: string | null;
   dm_failures_today: number;
+  graph_usage?: Record<string, number> | null;
+  graph_backoff_until?: string | null;
 }
 
 export interface HealthSnapshot {
@@ -92,17 +96,24 @@ export async function getHealthSnapshot(db: D1Database): Promise<HealthSnapshot>
     const accountHealth: AccountHealth[] = accounts.map((a) => {
       let tokenApiOk: boolean | null = null;
       let tokenApiCheckedAt: string | null = null;
+      let tokenApiReason: string | null = null;
       const validity = map.get(`health:token_valid:${a.id}`);
       if (validity) {
         try {
-          const parsed = JSON.parse(validity) as { ok?: boolean; checked_at?: string };
+          const parsed = JSON.parse(validity) as { ok?: boolean; checked_at?: string; reason?: string };
           tokenApiOk = parsed.ok ?? null;
           tokenApiCheckedAt = parsed.checked_at ?? null;
+          tokenApiReason = parsed.reason ?? null;
         } catch {
           // Malformed value — treat as never probed.
         }
       }
+      let usage: Record<string,number> | null=null;
+      try { usage=JSON.parse(map.get(`health:graph_usage:${a.id}`) ?? 'null'); } catch { /* no valid snapshot */ }
+      const backoff=Number(map.get(`health:graph_backoff_until:${a.id}`) ?? 0);
       return {
+        graph_usage: usage,
+        graph_backoff_until: Number.isFinite(backoff) && backoff>Date.now() ? new Date(backoff).toISOString() : null,
         account_id: a.id,
         username: a.username ?? null,
         token_expires_at: a.token_expires_at ?? null,
@@ -112,6 +123,7 @@ export async function getHealthSnapshot(db: D1Database): Promise<HealthSnapshot>
             : null,
         token_api_ok: tokenApiOk,
         token_api_checked_at: tokenApiCheckedAt,
+        token_api_reason: tokenApiReason,
         last_webhook_event_at: map.get(`health:last_webhook_at:${a.id}`) ?? null,
         dm_failures_today: Number(map.get(`health:dm_failures:${a.id}:${day}`) ?? '0'),
       };
@@ -137,7 +149,7 @@ export async function getHealthSnapshot(db: D1Database): Promise<HealthSnapshot>
       ) &&
       // A probed-dead token (checkpoint/freeze, code 190) is unhealthy even
       // when its expiry timestamp is still in the future.
-      accountHealth.every((a) => a.token_api_ok !== false);
+      accountHealth.every((a) => a.token_api_ok !== false && !a.graph_backoff_until);
 
     return {
       ok: allTokensValid,

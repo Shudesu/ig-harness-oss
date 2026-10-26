@@ -1,15 +1,20 @@
+import { createAppSecretProof, InstagramApiError } from '@ig-harness/ig-sdk';
 import { sealToken } from './token-crypto.js';
 import { updateIgAccountToken, type IgAccount } from '@ig-harness/db';
 
 const REFRESH_WINDOW_SECONDS = 14 * 24 * 60 * 60;
 
 async function callRefresh(
-  token: string,
+  token: string, appSecret?: string,
 ): Promise<{ access_token: string; expires_in: number }> {
-  const url = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(token)}`;
+  const url = new URL('https://graph.instagram.com/refresh_access_token');
+  url.searchParams.set('grant_type','ig_refresh_token'); url.searchParams.set('access_token',token);
+  if (appSecret) url.searchParams.set('appsecret_proof',await createAppSecretProof(token,appSecret));
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) {
-    throw new Error(`IG token refresh failed: ${res.status}`);
+    let code: number | undefined;
+    try { code=(await res.json<{error?:{code?:number}}>()).error?.code; } catch {}
+    throw new InstagramApiError(`IG token refresh failed (${res.status})`,res.status,code);
   }
   const data = await res.json<{ access_token: string; expires_in: number }>();
   if (!data.access_token || !data.expires_in) {
@@ -28,7 +33,7 @@ async function callRefresh(
  * next cron tick.
  */
 export async function refreshAccountTokenIfNeeded(
-  env: { IG_ACCESS_TOKEN: string; TOKEN_ENCRYPTION_KEY?: string },
+  env: { IG_ACCESS_TOKEN: string; TOKEN_ENCRYPTION_KEY?: string; IG_REQUIRE_APPSECRET_PROOF?: string; IG_APP_SECRET?: string },
   db: D1Database,
   account: IgAccount,
 ): Promise<{ refreshed: boolean; token?: string; reason: string }> {
@@ -50,7 +55,9 @@ export async function refreshAccountTokenIfNeeded(
   let lastErr: unknown;
   for (const tok of candidates) {
     try {
-      data = await callRefresh(tok);
+      const secret=env.IG_REQUIRE_APPSECRET_PROOF==='true' ? account.app_secret || env.IG_APP_SECRET : undefined;
+      if (env.IG_REQUIRE_APPSECRET_PROOF==='true' && !secret) throw new Error('Instagram App Secret required for token refresh proof');
+      data = await callRefresh(tok,secret);
       break;
     } catch (err) {
       lastErr = err;

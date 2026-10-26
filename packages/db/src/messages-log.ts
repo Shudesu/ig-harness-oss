@@ -10,7 +10,7 @@ export async function logMessage(
     direction: 'in' | 'out';
     messageType: 'text' | 'image' | 'template' | 'quick_reply';
     body: string;
-    triggerSource: 'comment_rule' | 'scenario' | 'broadcast' | 'manual' | 'gate';
+    triggerSource: 'comment_rule' | 'scenario' | 'broadcast' | 'manual' | 'gate' | null;
   },
 ): Promise<void> {
   try {

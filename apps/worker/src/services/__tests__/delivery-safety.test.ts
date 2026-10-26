@@ -48,12 +48,12 @@ describe('durable delivery', () => {
   it('queues delayed comments without sleeping and skips expired windows', async () => {
     const { db, sqlite } = await fixture();
     sqlite.exec("INSERT INTO followers(id,igsid,account_id,last_inbound_at) VALUES (1,'123','a','2020-01-01')");
-    await enqueueCommentRuleJob(db, { accountId: 'a', ruleId: '1', commentId: 'comment1', followerId: 1, messageType: 'text', body: '{"text":"hello"}', replyText: 'sent', delaySeconds: 100 });
+    await enqueueCommentRuleJob(db, { accountId: 'a', ruleId: '1', commentId: 'comment1', followerId: 1, messageType: 'text', body: '{"text":"hello"}', replyText: 'sent', delaySeconds: 100, commentCreatedAt: '2020-01-01' });
     const ig = client(); await processCommentRuleJobs(db, ig as any, 'a'); expect(ig.sendText).not.toHaveBeenCalled();
     sqlite.exec("UPDATE comment_rule_jobs SET due_at='2020-01-01'");
     await processCommentRuleJobs(db, ig as any, 'a');
     expect(ig.sendText).not.toHaveBeenCalled(); expect(ig.replyToComment).not.toHaveBeenCalled();
-    expect(sqlite.prepare('SELECT status,reason FROM comment_rule_jobs').get()).toMatchObject({ status: 'skipped', reason: 'window_closed' });
+    expect(sqlite.prepare('SELECT status,reason FROM comment_rule_jobs').get()).toMatchObject({ status: 'skipped', reason: 'private_reply_expired' });
   });
   it('ends an expired scenario without an API call, preserving the reason', async () => {
     const { db, sqlite } = await fixture();

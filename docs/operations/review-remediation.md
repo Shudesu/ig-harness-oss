@@ -51,7 +51,7 @@ Worker observabilityを有効化。生のトークン・Webhook本文・Graphエ
 
 ローカルSQLite、ローカルD1、HTTPテスト、型検査、管理画面ビルド、MCP stdio handshakeで検証する。Metaの実Appによる署名・購読・実DM、リモートD1 import/export、本番E2Eはローカルテストでは証明しない。実送信は別途明示したテスト宛先・権限でのみ実施する。
 
-Grok指摘のうち、Webhookガイドの全文は元から枠の下に存在していた。独立したGraph版のハードコードは設定可能にしたが、既定v21.0を未検証の版へ勝手に上げない。更新時はMeta公式変更点とread/send/publishの契約を検証する。
+Grok指摘のうち、Webhookガイドの全文は元から枠の下に存在していた。Graph版は後続のMeta監査で公式の版テーブルを確認し、既定v25.0と環境上書きへ統一した。詳細はmeta-api-audit-20261026.md。
 
 タグは既存タグを動かさず、検証済み新バージョンへ追加する。CIチェックをbranch protectionの必須項目にし、GitHub private vulnerability reportingを有効化する設定は、リポジトリ公開操作の段階で確認する。
 
@@ -93,3 +93,6 @@ OSS mainは `52fbba3` のままで競合なし。Private側には別の未コミ
 Cookie属性と資格情報付きfetchは [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)、セッションに結び付けたCSRF検証は [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) を参照。HTTPテストとbuildはブラウザ固有のCookie制限や実Meta接続を証明するものではない。
 
 今回の移植後の確認: Worker 192件、ig-sdk 20件、SDK 46件、installer 14件、migration/policy/read-retry 8件、MCP stdio 1件（計281件）を通過。全対象のtypecheck、管理画面・Worker・installerのbuildも通過。既存のローカルD1へ0020/0021を適用し、スキーマ確認を通過した。リモートD1・実ブラウザ・実Meta送信は操作していない。
+
+
+Meta仕様に関する追加監査と、0022・private reply・standby・カルーセル・接続時検証の変更は [Meta API監査の照合](meta-api-audit-20261026.md) を参照。以前の通常DMコメント処理・ドリップ期限に関する記述は、その修正後の仕様で更新される。

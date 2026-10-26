@@ -1,3 +1,4 @@
+import { messagingEligibility } from '../services/messaging-window.js';
 import { armScheduler } from '../lib/scheduler-client.js';
 import { beginActivity, endActivity } from '../lib/activity.js';
 import { Hono } from 'hono';
@@ -13,19 +14,16 @@ import {
   getScenarios,
   enrollFriendInScenario,
   getScenarioSteps,
-  advanceFriendScenario,
-  completeFriendScenario,
-  jstNow,
   logMessage,
 } from '@ig-harness/db';
-import { buildIgMessage, expandVariables } from '../services/step-delivery.js';
-import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention } from '../services/engagement-gate.js';
+import { processSingleDelivery } from '../services/step-delivery.js';
+import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeyword, triggerGateForStoryMention, resumeCommentGate } from '../services/engagement-gate.js';
 import type { IgAccountRef } from '../services/line-cross-link.js';
 import { listIgAccounts, getIgAccountById } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import { recordWebhookReceived } from '../lib/health.js';
 import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
-import { enqueueCommentRuleJob, processCommentRuleJobs } from '../services/comment-rule-jobs.js';
+import { enqueueCommentRuleJob, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
 import type { IgAccount } from '@ig-harness/db';
 import type { Env } from '../index.js';
 
@@ -120,7 +118,8 @@ webhook.post('/webhook', async (c) => {
     const account = pickAccountForEntry(accounts, entry.id);
     if (!account || account.ig_user_id !== entry.id || (account.app_secret || c.env.IG_APP_SECRET) !== matchedSecret) continue;
     const events = [
-      ...(entry.messaging ?? entry.standby ?? []).map((value) => ({ kind: 'messaging', value })),
+      ...(entry.messaging ?? []).map((value) => ({ kind: 'messaging', value })),
+      ...(entry.standby ?? []).map((value) => ({ kind: 'standby', value })),
       ...(entry.changes ?? []).map((change) => ({ kind: change.field, value: change.value })),
     ];
     // Acknowledge only after durable ingestion succeeds. A D1 error returns
@@ -149,7 +148,7 @@ export async function processQueuedWebhooks(db: D1Database, client: InstagramCli
   await drainWebhookEvents(db, account.id, async (event) => {
     const value = JSON.parse(event.payload);
     const ref = toIgAccountRef(account);
-    if (event.kind === 'messaging') await handleMessagingEvent(db, client, value, workerUrl, ref, account.id);
+    if (event.kind === 'messaging' || event.kind === 'standby') await handleMessagingEvent(db, client, value, workerUrl, ref, account.id, event.kind === 'standby');
     else if (event.kind === 'comments') await handleCommentEvent(db, client, value, account.ig_user_id, workerUrl, ref, account.id);
     else if (event.kind === 'mentions') await handleMentionEvent(db, client, value, ref, account.id);
   });
@@ -173,31 +172,41 @@ export async function getOrRefreshFollower(db: D1Database, client: InstagramClie
   return follower;
 }
 
-async function handleMessagingEvent(
+export async function handleMessagingEvent(
   db: D1Database,
   igClient: InstagramClient,
   event: MessagingEvent,
   workerUrl?: string,
   igAccount?: IgAccountRef,
   accountId?: string,
+  observeOnly = false,
 ): Promise<void> {
   const senderId = event.sender.id;
 
   // Skip echo messages (our own outgoing messages)
   if (event.message?.is_echo) return;
 
-  const follower = await getOrRefreshFollower(db, igClient, senderId, accountId);
+  const follower = observeOnly
+    ? (await getFriendByIgsid(db,senderId)) ?? await upsertFriend(db,{ igsid:senderId,accountId })
+    : await getOrRefreshFollower(db, igClient, senderId, accountId);
+  if (accountId && follower.account_id !== accountId) throw new Error('Follower account mismatch');
   // Use the event timestamp, not retry/processing time, to avoid extending the
   // messaging window when old webhooks are replayed or drain after downtime.
   if ((event.message || event.postback) && Number.isFinite(event.timestamp) && event.timestamp > 0 && event.timestamp <= Date.now() + 300_000) {
     const inbound = new Date(Math.min(event.timestamp, Date.now())).toISOString();
-    await db.prepare(`UPDATE followers SET last_inbound_at=? WHERE id=? AND (last_inbound_at IS NULL OR julianday(last_inbound_at)<julianday(?))`).bind(inbound, follower.id, inbound).run();
+    await db.prepare(`UPDATE followers SET last_inbound_at=?,messaging_owner=? WHERE id=? AND (last_inbound_at IS NULL OR julianday(last_inbound_at)<=julianday(?))`).bind(inbound, observeOnly ? 'standby' : 'primary', follower.id, inbound).run();
   }
+
+  if (observeOnly && (!Number.isFinite(event.timestamp) || event.timestamp <= 0 || event.timestamp > Date.now()+300_000)) await db.prepare("UPDATE followers SET messaging_owner='standby' WHERE id=?").bind(follower.id).run();
+  const eligible = await messagingEligibility(db,follower.id,accountId);
+  if (observeOnly || eligible !== 'eligible') {
+    if (event.message || event.postback) await logMessage(db,{ followerId:follower.id,direction:'in',messageType:'text',triggerSource:null,body:JSON.stringify({ text:event.message?.text ?? event.postback?.title ?? '[attachment]', channel:observeOnly?'standby':'messaging' }) });
+    return;
+  }
+  if (accountId) await resumeCommentJobs(db,follower.id,accountId);
 
   if (event.message?.text) {
     const incomingText = event.message.text;
-    const now = jstNow();
-    const logId = crypto.randomUUID();
 
     // Log incoming message
     await db
@@ -243,6 +252,8 @@ async function handleMessagingEvent(
       return; // Don't process further
     }
 
+    if (accountId && await resumeCommentGate(db,igClient,{id:follower.id,igsid:senderId},accountId,igAccount)) return;
+
     // Engagement gate DM keyword trigger
     try {
       const triggered = await triggerGateForDmKeyword(db, igClient, {
@@ -280,30 +291,7 @@ async function handleMessagingEvent(
               const steps = await getScenarioSteps(db, scenario.id);
               const firstStep = steps[0];
               if (firstStep && firstStep.delay_minutes === 0 && friendScenario.status === 'active') {
-                try {
-                  const expandedContent = expandVariables(firstStep.body, follower);
-                  const parsed = JSON.parse(expandedContent);
-                  await sendIgResponse(igClient, senderId, firstStep.message_type, parsed);
-
-                  await db
-                    .prepare(
-                      `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
-                       VALUES (?, 'out', ?, ?, 'scenario')`,
-                    )
-                    .bind(follower.id, firstStep.message_type, firstStep.body)
-                    .run();
-
-                  const secondStep = steps[1] ?? null;
-                  if (secondStep) {
-                    const nextDeliveryDate = new Date(Date.now() + 9 * 60 * 60_000);
-                    nextDeliveryDate.setMinutes(nextDeliveryDate.getMinutes() + secondStep.delay_minutes);
-                    await advanceFriendScenario(db, friendScenario.id, firstStep.step_order, nextDeliveryDate.toISOString().slice(0, -1) + '+09:00');
-                  } else {
-                    await completeFriendScenario(db, friendScenario.id);
-                  }
-                } catch (err) {
-                  console.error('Failed immediate delivery for scenario', scenario.id, err);
-                }
+                await processSingleDelivery(db,igClient,{...friendScenario,id:String(friendScenario.id),follower_id:String(friendScenario.follower_id),scenario_id:String(friendScenario.scenario_id)},workerUrl,true);
               }
             }
             break;
@@ -312,6 +300,11 @@ async function handleMessagingEvent(
       }
     }
 
+  }
+
+  if (event.message && !event.message.text) {
+    await logMessage(db, { followerId: follower.id, direction: 'in', messageType: 'text', body: JSON.stringify({ text: '[attachment]' }), triggerSource: null });
+    if (accountId && await resumeCommentGate(db, igClient, { id: follower.id, igsid: senderId }, accountId, igAccount)) return;
   }
 
   if (event.message?.attachments?.some((attachment) => attachment.type === 'story_mention')) {
@@ -351,7 +344,7 @@ async function handleMessagingEvent(
 async function handleCommentEvent(
   db: D1Database,
   igClient: InstagramClient,
-  value: { id: string; text: string; from: { id: string; username: string }; media: { id: string }; created_time: string },
+  value: { id: string; text: string; from: { id: string; username: string }; media: { id: string; media_product_type?: string }; created_time?: string },
   igUserId: string,
   _workerUrl?: string,
   igAccount?: IgAccountRef,
@@ -369,7 +362,9 @@ async function handleCommentEvent(
     return;
   }
 
-  const follower = await getOrRefreshFollower(db, igClient, senderId, accountId, value.from.username);
+  // Comment-only users need no messaging-profile lookup before their private reply.
+  const follower = (await getFriendByIgsid(db,senderId)) ?? await upsertFriend(db,{ igsid:senderId,username:value.from.username,accountId });
+  if (accountId && follower.account_id !== accountId) throw new Error('Follower account mismatch');
 
   // Engagement gate trigger — runs FIRST so a configured gate takes precedence
   // over the legacy comment-rule flow. If a gate fires, we skip the rule loop
@@ -381,12 +376,15 @@ async function handleCommentEvent(
       commentText,
       follower: { id: follower.id, igsid: senderId },
       commentId: value.id,
+      commentCreatedAt: value.created_time,
+      isLive: value.media.media_product_type === 'LIVE',
       commenterUsername: value.from?.username,
       igAccount,
       accountId,
     });
   } catch (err) {
-    console.error('Engagement gate trigger failed:', err);
+    // A matched gate owns this comment. Never fall through to a second sender.
+    throw err;
   }
 
   // Check comment rules (match by keyword + optional media filter)
@@ -457,7 +455,7 @@ async function handleCommentEvent(
         ?? `@${value.from.username} コメントありがとう！📩 DMを送りました！`;
       await enqueueCommentRuleJob(db, {
         accountId, ruleId: rule.id, commentId: value.id, followerId: follower.id,
-        messageType: rule.response_type, body: expandedBody, replyText, delaySeconds: rule.delay_seconds,
+        messageType: rule.response_type, body: expandedBody, replyText, delaySeconds: rule.delay_seconds, mediaId, commentCreatedAt: value.created_time, isLive: value.media.media_product_type === 'LIVE',
       });
 
       break; // Only send first matching rule
@@ -476,45 +474,13 @@ async function handleCommentEvent(
           .bind(follower.id, scenario.id)
           .first<{ id: string }>();
         if (!existing) {
-          await enrollFriendInScenario(db, follower.id, scenario.id);
+          const enrollment = await enrollFriendInScenario(db, follower.id, scenario.id);
+          await db.prepare("UPDATE follower_scenarios SET next_step_at=NULL,end_reason='awaiting_inbound' WHERE id=? AND status='active'").bind(enrollment.id).run();
         }
       }
     }
   }
 
-}
-
-/**
- * Send an IG response based on message type.
- */
-async function sendIgResponse(
-  igClient: InstagramClient,
-  recipientId: string,
-  responseType: string,
-  body: Record<string, unknown>,
-): Promise<void> {
-  switch (responseType) {
-    case 'text':
-      await igClient.sendText(recipientId, body.text as string);
-      break;
-    case 'image':
-      await igClient.sendImage(recipientId, body.url as string);
-      break;
-    case 'template':
-      await igClient.sendGenericTemplate(recipientId, body.elements as never[]);
-      break;
-    case 'quick_reply':
-      await igClient.sendQuickReply(
-        recipientId,
-        body.text as string,
-        body.quick_replies as never[],
-      );
-      break;
-    default:
-      if (typeof body.text === 'string') {
-        await igClient.sendText(recipientId, body.text);
-      }
-  }
 }
 
 // ── Story/Post Mention Handler ──
@@ -539,6 +505,9 @@ async function handleMentionEvent(
     pictureUrl: null,
     accountId,
   });
+
+  // A caption/media mention is not itself an inbound DM.
+  if (await messagingEligibility(db,follower.id,accountId) !== 'eligible') return;
 
   // Engagement gate trigger (story_mention) — fires before the legacy thank-you DM
   // so a configured campaign takes precedence over the hard-coded reply.

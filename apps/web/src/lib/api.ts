@@ -332,7 +332,7 @@ export const accountsApi = {
     return res.data ?? []
   },
   create: async (input: {
-    igUserId: string
+    igUserId?: string
     accessToken: string
     username?: string
     appSecret?: string

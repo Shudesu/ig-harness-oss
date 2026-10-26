@@ -1,31 +1,14 @@
-import * as p from "@clack/prompts";
-import pc from "picocolors";
-
-interface WebhookGuideOptions {
-  workerUrl: string;
-  metaVerifyToken: string;
-}
-
+import * as p from '@clack/prompts';
+import { WEBHOOK_FIELDS } from './instagram-api.js';
+interface WebhookGuideOptions { workerUrl: string; metaVerifyToken: string }
 export function showWebhookGuide(options: WebhookGuideOptions): void {
-  const webhookUrl = `${options.workerUrl}/webhook`;
-
-  p.note(
-    [
-      "╔══════════════════════════════════════════════╗",
-      "║       Meta Webhook Setup Guide               ║",
-      "╠══════════════════════════════════════════════╣",
-      "║ 1. Go to developers.facebook.com/apps       ║",
-      "║ 2. Select your app → Webhooks               ║",
-      "║ 3. Subscribe to \"Instagram\" webhooks         ║",
-      `║ 4. Callback URL: ${webhookUrl.slice(0, 26).padEnd(26)} ║`,
-      `║ 5. Verify Token: ${options.metaVerifyToken.slice(0, 26).padEnd(26)} ║`,
-      "║ 6. Subscribe: messages, messaging_postbacks  ║",
-      "║ 7. Add \"comments\" field subscription         ║",
-      "╚══════════════════════════════════════════════╝",
-      "",
-      `Callback URL:  ${pc.cyan(webhookUrl)}`,
-      `Verify Token:  ${pc.cyan(options.metaVerifyToken)}`,
-    ].join("\n"),
-    "Meta Webhook の設定",
-  );
+  p.note([
+    'MetaアプリのInstagram Login用Webhook設定を確認してください。',
+    `Callback URL: ${options.workerUrl}/webhook`,
+    `Verify Token: ${options.metaVerifyToken}`,
+    `購読フィールド: ${WEBHOOK_FIELDS.join(', ')}`,
+    'App側の購読と、アカウント単位のsubscribed_appsの両方が必要です。',
+    'ストーリーDMのメンションはmessagesの添付イベントで処理します。live_commentsは現在未対応です。',
+    '利用対象・アプリロール・Access Levelに応じてApp Review要件を確認してください。',
+  ].join('\n'),'Meta Webhookの設定');
 }

@@ -1,3 +1,4 @@
+import { graphApiVersion } from '../../../../packages/ig-sdk/src/config.js';
 import * as p from "@clack/prompts";
 import { wrangler } from "../lib/wrangler.js";
 
@@ -27,6 +28,8 @@ export async function setSecrets(options: SecretsOptions): Promise<void> {
   const linkSecret = options.lineHarnessLinkSecret ?? generateSecret();
   const secrets: Record<string, string> = {
     IG_APP_SECRET: options.metaAppSecret,
+    IG_GRAPH_API_VERSION: graphApiVersion(process.env.IG_GRAPH_API_VERSION),
+    ...(process.env.IG_REQUIRE_APPSECRET_PROOF ? { IG_REQUIRE_APPSECRET_PROOF: process.env.IG_REQUIRE_APPSECRET_PROOF } : {}),
     IG_ACCESS_TOKEN: options.metaAccessToken,
     IG_VERIFY_TOKEN: options.metaVerifyToken,
     IG_USER_ID: options.igUserId,

@@ -1,3 +1,4 @@
+import { messagingEligibility } from '../services/messaging-window.js';
 import { Hono } from 'hono';
 import {
   getForms,
@@ -290,6 +291,7 @@ forms.post('/api/forms/:id/submit', async (c) => {
             ? await getIgAccountById(c.env.DB, form.account_id)
             : await resolveAccount(c);
           if (!account) { console.log('Form reply: no IG account configured'); return; }
+          if (friend.account_id !== account.id || await messagingEligibility(db,friend.id,account.id) !== 'eligible') return;
           const igClient = await getAccountClient(c.env, c.env.DB, account);
 
           // Build summary text from answers
@@ -313,18 +315,12 @@ forms.post('/api/forms/:id/submit', async (c) => {
             };
             const expanded = expandVariables(form.on_submit_message_content, friendData);
             const msgType = form.on_submit_message_type as string;
-            try {
-              const parsed = JSON.parse(expanded) as Record<string, unknown>;
-              if (msgType === 'text') {
-                await igClient.sendText(igsid, parsed.text as string || expanded);
-              } else if (msgType === 'image') {
-                await igClient.sendImage(igsid, parsed.url as string);
-              } else {
-                await igClient.sendText(igsid, expanded);
-              }
-            } catch {
-              await igClient.sendText(igsid, expanded);
-            }
+            let parsed: Record<string,unknown>;
+            try { parsed=JSON.parse(expanded); } catch { parsed={text:expanded}; }
+            // Parsing failures may fall back to text; network failures must not
+            // trigger a second send with a different representation.
+            if (msgType==='image' && typeof parsed.url==='string') await igClient.sendImage(igsid,parsed.url);
+            else await igClient.sendText(igsid,typeof parsed.text==='string'?parsed.text:expanded);
           }
         })(),
       );

@@ -1,3 +1,4 @@
+import { messagingEligibility } from './messaging-window.js';
 import { getBroadcastById } from '@ig-harness/db';
 import type { Broadcast } from '@ig-harness/db';
 import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
@@ -15,7 +16,7 @@ export function deliveryFailure(error: unknown): { status: 'failed' | 'uncertain
 }
 
 export async function broadcastSummary(db: D1Database, id: number | string) {
-  return (await db.prepare(`SELECT status, reason, COUNT(*) AS count FROM broadcast_recipients WHERE broadcast_id=? GROUP BY status, reason`).bind(id).all<{ status: string; reason: string | null; count: number }>()).results;
+  return (await db.prepare(`SELECT status, reason, error_code AS errorCode, error_subcode AS errorSubcode, COUNT(*) AS count FROM broadcast_recipients WHERE broadcast_id=? GROUP BY status, reason, error_code, error_subcode`).bind(id).all<{ status: string; reason: string | null; count: number; errorCode: number | null; errorSubcode: number | null }>()).results;
 }
 
 export async function processBroadcastSend(
@@ -61,17 +62,22 @@ export async function processBroadcastSend(
     db.prepare("UPDATE broadcast_recipients SET status='uncertain', reason='interrupted' WHERE broadcast_id=? AND status='processing' AND julianday(attempted_at)<julianday(?)")
       .bind(broadcast.id, new Date(Date.now() - 5 * 60_000).toISOString()),
   ]);
-  const recipients = await db.prepare(`SELECT r.follower_id, f.igsid FROM broadcast_recipients r JOIN followers f ON f.id=r.follower_id
-    WHERE r.broadcast_id=? AND r.status='pending' AND f.account_id=? ORDER BY r.follower_id LIMIT ?`)
-    .bind(broadcast.id, broadcast.account_id, BATCH_SIZE).all<{ follower_id: number; igsid: string }>();
+  const recipients = await db.prepare(`SELECT r.follower_id, r.attempt_count, f.igsid FROM broadcast_recipients r JOIN followers f ON f.id=r.follower_id
+    WHERE r.broadcast_id=? AND r.status='pending' AND (r.next_attempt_at IS NULL OR julianday(r.next_attempt_at)<=julianday('now')) AND f.account_id=? ORDER BY r.follower_id LIMIT ?`)
+    .bind(broadcast.id, broadcast.account_id, BATCH_SIZE).all<{ follower_id: number; igsid: string; attempt_count: number }>();
   const deadline = Date.now() + 15_000;
   for (const recipient of recipients.results) {
     if (Date.now() >= deadline) break;
+    const eligibility=await messagingEligibility(db,recipient.follower_id,broadcast.account_id);
+    if (eligibility!=='eligible') {
+      await db.prepare("UPDATE broadcast_recipients SET status='skipped',reason=? WHERE broadcast_id=? AND follower_id=? AND status='pending'").bind(eligibility,broadcast.id,recipient.follower_id).run();
+      continue;
+    }
     // Recheck the window at send time, not just at audience snapshot time.
     const claimed = await db.prepare(`UPDATE broadcast_recipients SET status=CASE
-      WHEN EXISTS (SELECT 1 FROM followers WHERE id=? AND julianday(last_inbound_at)>julianday(?)) THEN 'processing' ELSE 'skipped' END,
-      reason=CASE WHEN EXISTS (SELECT 1 FROM followers WHERE id=? AND julianday(last_inbound_at)>julianday(?)) THEN NULL ELSE 'window_closed' END,
-      attempted_at=? WHERE broadcast_id=? AND follower_id=? AND status='pending' AND NOT EXISTS (SELECT 1 FROM data_deletion_locks WHERE account_id=?) RETURNING status`)
+      WHEN EXISTS (SELECT 1 FROM followers WHERE id=? AND julianday(last_inbound_at)>julianday(?) AND messaging_owner!='standby') THEN 'processing' ELSE 'skipped' END,
+      reason=CASE WHEN EXISTS (SELECT 1 FROM followers WHERE id=? AND julianday(last_inbound_at)>julianday(?) AND messaging_owner!='standby') THEN NULL ELSE 'window_closed' END,
+      attempt_count=attempt_count+1, attempted_at=? WHERE broadcast_id=? AND follower_id=? AND status='pending' AND NOT EXISTS (SELECT 1 FROM data_deletion_locks WHERE account_id=?) RETURNING status`)
       .bind(recipient.follower_id, new Date(Date.now() - WINDOW_MS).toISOString(), recipient.follower_id, new Date(Date.now() - WINDOW_MS).toISOString(), new Date().toISOString(), broadcast.id, recipient.follower_id, broadcast.account_id)
       .first<{ status: string }>();
     if (claimed?.status !== 'processing') continue;
@@ -79,15 +85,17 @@ export async function processBroadcastSend(
       await sendIgMessage(igClient, recipient.igsid, broadcast.message_type, body);
     } catch (error) {
       const failure = deliveryFailure(error);
-      await db.prepare('UPDATE broadcast_recipients SET status=?, reason=? WHERE broadcast_id=? AND follower_id=? AND status=\'processing\'')
-        .bind(failure.status, failure.reason, broadcast.id, recipient.follower_id).run();
+      const retry = error instanceof InstagramApiError && error.status<500 && error.rateLimited && recipient.attempt_count<4;
+      const wait = error instanceof InstagramApiError && Number.isFinite(error.retryAfterMs) ? Math.max(1000,error.retryAfterMs!) : 60_000*2**recipient.attempt_count;
+      await db.prepare("UPDATE broadcast_recipients SET status=?,reason=?,next_attempt_at=?,error_code=?,error_subcode=? WHERE broadcast_id=? AND follower_id=? AND status='processing'")
+        .bind(retry?'pending':failure.status,failure.reason,retry?new Date(Date.now()+wait).toISOString():null,error instanceof InstagramApiError?error.code??null:null,error instanceof InstagramApiError?error.subcode??null:null,broadcast.id,recipient.follower_id).run();
       await recordDmFailure(db, broadcast.account_id).catch(() => {});
       continue;
     }
     // If recording fails after delivery, leave processing/uncertain. Never
     // reset the entire broadcast to draft or resend an ambiguous recipient.
     await db.batch([
-      db.prepare("UPDATE broadcast_recipients SET status='sent', sent_at=? WHERE broadcast_id=? AND follower_id=? AND status='processing'").bind(new Date().toISOString(), broadcast.id, recipient.follower_id),
+      db.prepare("UPDATE broadcast_recipients SET status='sent', reason=NULL, error_code=NULL, error_subcode=NULL, next_attempt_at=NULL, sent_at=? WHERE broadcast_id=? AND follower_id=? AND status='processing'").bind(new Date().toISOString(), broadcast.id, recipient.follower_id),
       db.prepare("INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source) VALUES (?, 'out', ?, ?, 'broadcast')").bind(recipient.follower_id, broadcast.message_type, broadcast.body),
       db.prepare("UPDATE broadcasts SET total_sent=(SELECT COUNT(*) FROM broadcast_recipients WHERE broadcast_id=? AND status='sent') WHERE id=?").bind(broadcast.id, broadcast.id),
     ]);

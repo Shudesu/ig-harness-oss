@@ -197,7 +197,7 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
     await processBroadcastSend(c.env.DB, igClient, existing.id, c.env.WORKER_URL, account.id);
 
     const result = await getBroadcastById(c.env.DB, existing.id);
-    return c.json({ success: true, data: result ? serializeBroadcast(result) : null });
+    return c.json({ success: true, data: result ? { ...serializeBroadcast(result), deliverySummary: await broadcastSummary(c.env.DB,result.id) } : null });
   } catch (err) {
     console.error('POST /api/broadcasts/:id/send error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

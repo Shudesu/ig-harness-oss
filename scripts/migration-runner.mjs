@@ -127,7 +127,7 @@ export async function runMigrations({ repoDir, runWrangler, remote, databaseName
 
 export async function verifyLatestSchema(query) {
   const required = {
-    followers: ['account_id','profile_fetched_at','last_inbound_at'],
+    followers: ['account_id','profile_fetched_at','last_inbound_at','messaging_owner'],
     staff_members: ['id','api_key','email','updated_at'],
     follower_scenarios: ['end_reason'],
     broadcast_runs: ['broadcast_id','started_at'],
@@ -137,6 +137,8 @@ export async function verifyLatestSchema(query) {
     data_deletion_requests: ['code','request_hash','status'],
     tracked_links: ['destination_url','ref_code','tag_id','scenario_id','is_active','updated_at'],
     link_clicks: ['link_id','follower_id'],
+    private_reply_attempts: ['account_id','comment_id','follower_id','status'],
+    media_posts: ['phase','phase_started_at','child_creation_ids'],
     admin_sessions: ['id_hash','staff_id','credential_hash','csrf_hash','expires_at'],
   };
   for (const [table, names] of Object.entries(required)) {

@@ -23,6 +23,8 @@ export interface MediaPost {
   published_media_id: string | null;
   attempt_count: number;
   error: string | null;
+  phase?: string;
+  phase_started_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -104,8 +106,8 @@ export async function getDueMediaPosts(
   const result = await db
     .prepare(
       `SELECT * FROM media_posts
-       WHERE account_id = ? AND status = 'scheduled' AND scheduled_at <= ?
-       ORDER BY scheduled_at ASC`,
+       WHERE account_id = ? AND status = 'scheduled' AND julianday(scheduled_at) <= julianday(?)
+       ORDER BY scheduled_at ASC LIMIT 3`,
     )
     .bind(accountId, now)
     .all<MediaPost>();
@@ -120,7 +122,7 @@ export async function getProcessingMediaPosts(
     .prepare(
       `SELECT * FROM media_posts
        WHERE account_id = ? AND status = 'processing'
-       ORDER BY scheduled_at ASC`,
+       ORDER BY scheduled_at ASC LIMIT 3`,
     )
     .bind(accountId)
     .all<MediaPost>();
@@ -137,6 +139,8 @@ export type UpdateMediaPostInput = Partial<
     | 'attempt_count'
     | 'error'
     | 'scheduled_at'
+    | 'phase'
+    | 'phase_started_at'
   >
 >;
 
@@ -155,6 +159,8 @@ export async function updateMediaPost(
     'attempt_count',
     'error',
     'scheduled_at',
+    'phase',
+    'phase_started_at',
   ] as const) {
     if (updates[key] !== undefined) {
       fields.push(`${key} = ?`);

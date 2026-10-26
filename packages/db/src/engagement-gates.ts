@@ -1,6 +1,7 @@
 // packages/db/src/engagement-gates.ts
 
 export interface EngagementGate {
+  account_id?: string | null;
   id: string;
   name: string;
   status: 'active' | 'paused' | 'archived';
@@ -365,6 +366,7 @@ export async function updateGateDelivery(
     last_check_at?: string | null;
     followup_step_sent?: number;
     next_followup_at?: string | null;
+    end_reason?: string | null;
   },
 ): Promise<void> {
   const fields = Object.keys(patch).filter((k) => (patch as Record<string, unknown>)[k] !== undefined);

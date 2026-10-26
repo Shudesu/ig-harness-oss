@@ -7,6 +7,9 @@ status: placeholder
 
 # 第3章 Engagement Gates 基本
 
+> **2026-10-26更新（未公開の修正後仕様）**: コメント起点の最初のDMはcomment_id宛てのprivate reply 1通です。現在の確認済み経路ではテキストと返信案内を送り、相手の返信後に元のカード・ボタン・画像を送ります。初回文面が「下のボタン」等になっている場合は、このフローに合うか公開前に確認してください。内容を削除・短縮しているわけではありません。続きは最終inboundから24時間内だけ送ります。詳細は [Meta API監査](../operations/meta-api-audit-20261026.md)。
+
+
 > 【tier: 無料】IG Harness の中核機能 Engagement Gates の挙動と、各ボタンが「何を起こすか」（What）を理解する。
 
 ## 章の目的

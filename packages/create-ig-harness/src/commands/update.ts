@@ -1,3 +1,4 @@
+import { graphApiVersion } from '../../../../packages/ig-sdk/src/config.js';
 import { randomBytes } from "node:crypto";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
@@ -82,6 +83,9 @@ export async function runUpdate(repoDir: string): Promise<void> {
     }
     if (deployedState.workerUrl) await wrangler(['secret', 'put', 'WORKER_URL', '--name', deployedState.workerName], { input: deployedState.workerUrl });
     await configureAdminAuth(deployedState.workerName, deployedState.adminUrl ?? `https://${adminProjectName}.pages.dev`, deployedState.workerUrl);
+
+    if (process.env.IG_GRAPH_API_VERSION) await wrangler(['secret','put','IG_GRAPH_API_VERSION','--name',deployedState.workerName],{input:graphApiVersion(process.env.IG_GRAPH_API_VERSION)});
+    if (process.env.IG_REQUIRE_APPSECRET_PROOF) await wrangler(['secret','put','IG_REQUIRE_APPSECRET_PROOF','--name',deployedState.workerName],{input:process.env.IG_REQUIRE_APPSECRET_PROOF});
 
     // Deploy only to the fully recorded destination, preserving D1/R2 bindings.
     s.start("Worker 再デプロイ中...");

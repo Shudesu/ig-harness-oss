@@ -8,7 +8,7 @@ export class InstagramApiError extends Error {
     public readonly retryAfterMs?: number,
   ) { super(message); this.name = 'InstagramApiError'; }
   get tokenExpired(): boolean { return this.code === 190; }
-  get rateLimited(): boolean { return this.status === 429 || [4, 17, 32, 613].includes(this.code ?? -1); }
+  get rateLimited(): boolean { return this.status === 429 || [4, 17, 32, 613, 80002].includes(this.code ?? -1); }
   get retryable(): boolean { return this.rateLimited || this.status >= 500; }
 }
 

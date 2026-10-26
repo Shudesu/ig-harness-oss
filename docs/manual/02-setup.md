@@ -10,7 +10,7 @@ pnpm --filter create-ig-harness build
 pnpm deploy:setup
 ```
 
-この実装は **Instagram API with Instagram Login** を利用する。Facebook Page tokenを求める古い案内は使用しない。MetaアプリのInstagramログイン用API設定から、Instagram App SecretとInstagramの長期access tokenを取得する。トークンは通常IGAAから始まるが、接頭辞だけでは判定せず、ウィザードが `graph.instagram.com/v21.0/me?fields=user_id,username` で確認する。`IG_USER_ID` は応答の `user_id`。`id` を手入力して取り違えない。
+この実装は **Instagram API with Instagram Login** を利用する。Facebook Page tokenを求める古い案内は使用しない。MetaアプリのInstagramログイン用API設定から、Instagram App SecretとInstagramの長期access tokenを取得する。IGAA/IGQVJ等の接頭辞で受け入れ可否を決めず、ウィザードが `graph.instagram.com/v25.0/me?fields=user_id,username` で確認する。`IG_USER_ID` は応答の `user_id`。`id` を手入力して取り違えない。
 
 ウィザードはD1 migration、R2、Worker、Pages管理画面、必要なsecret、アカウント単位のsubscribed_apps設定を処理する。App側のWebhook callback/verify tokenと購読フィールドは表示される手順でも確認する。`messages`、`messaging_postbacks`、`messaging_referral`、`comments` を使用する。ストーリーメンションのDM添付もmessages経路で扱う。
 
@@ -41,3 +41,25 @@ pnpm exec wrangler secret put ADMIN_ALLOW_CROSS_SITE --config apps/worker/wrangl
 セッションIDはランダム値で、D1にはそのハッシュだけを保存する。APIキー自体をCookieに入れない。CSRFはヘッダ・Cookie・DB内のセッションに結び付けたハッシュの一致を確認する。
 
 ブラウザがサードパーティCookieを拒否する場合、SameSite=NoneでもPages↔workers.devのログインは成立しないことがある。管理画面/APIを同一サイトの独自ドメイン、またはWorker ASSETSの同一originで提供する。ログイン後にCookieが届くことを確認するHTTP要求を行い、失敗したら画面に案内する。実ブラウザの制限確認は配信前に必要。
+
+
+## Metaの接続条件と権限（※Codex修正後の挙動）
+
+Instagramのプロアカウント（ビジネスまたはクリエイター）を使用する。個人アカウントの場合はInstagramアプリのアカウント設定からプロアカウントへ切り替える。Facebook Pageとの紐付けはInstagram Login方式の前提にしない。
+
+| 用途 | 確認するpermission |
+|---|---|
+| プロフィール・メディア取得 | instagram_business_basic |
+| DMの送受信 | instagram_business_manage_messages |
+| コメント・private reply | instagram_business_manage_comments（DM機能も使う場合はmanage_messagesも確認） |
+| 投稿 | instagram_business_content_publish |
+
+設定画面のアカウント追加では、User IDを空欄にするとtokenの実応答から取得する。入力した場合は一致を確認する。token更新も保存前に確認し、無効・別アカウントの場合は元のcredentialを保持する。usernameは実応答を使用する。
+
+長期token（通常60日）を使用する。refreshは発行後24時間以上経過し、未失効であることが前提。発行直後のrefresh失敗と、/meでのtoken無効は区別する。/meだけでは寿命や全permissionは確定しない。失効・パスワード変更・checkpoint等で使えなくなった場合は、新しい長期tokenを取得して設定画面へ登録し直す。
+
+既定Graph APIはv25.0。`IG_GRAPH_API_VERSION`で固定できる。Meta側でApp Secret Proofを必須にした場合は `IG_REQUIRE_APPSECRET_PROOF=true` と正しいInstagram App Secretを設定する。設定値はsecret管理へ置き、チャットやGitにtokenを貼らない。
+
+アプリ側Webhookとaccount側subscribed_appsの両方を確認する。現在の標準購読はmessages、messaging_postbacks、messaging_referral、comments。ストーリーDMのメンションはmessages添付経路で処理する。legacyのmentions通知を通常DMウィンドウの開始とはみなさない。live_commentsは未対応なので購読を案内しない。
+
+アプリのロール、tester承認、Liveモード、対象アカウントの所有・管理条件、Access LevelをMeta側で確認する。他者への提供やCloudテナント運用は、セルフホストの本人アカウント運用と同じ条件だと仮定しない。[公式資料と今回の判断](../operations/meta-api-audit-20261026.md)を参照。

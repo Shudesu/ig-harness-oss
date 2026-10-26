@@ -196,11 +196,11 @@ describe('POST /api/friends/:id/messages account-scope (FIX-A)', () => {
       prepare: (sql: string) => ({
         bind: (..._args: unknown[]) => ({
           run: async () => ({ meta: {} }),
-          first: async () => null,
+          first: async () => sql.includes('last_inbound_at') ? {last_inbound_at:new Date().toISOString(),messaging_owner:'primary'} : null,
           all: async () => ({ results: [] }),
         }),
         run: async () => ({ meta: {} }),
-        first: async () => null,
+        first: async () => sql.includes('last_inbound_at') ? {last_inbound_at:new Date().toISOString(),messaging_owner:'primary'} : null,
         all: async () => ({ results: [] }),
       }),
     } as unknown as D1Database;

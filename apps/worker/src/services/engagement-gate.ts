@@ -1,3 +1,6 @@
+import { InstagramApiError } from '@ig-harness/ig-sdk';
+import { messagingEligibility } from './messaging-window.js';
+import { enqueueCommentRuleJob } from './comment-rule-jobs.js';
 import { listEngagementGates, createGateDelivery, updateGateDelivery, getGateDelivery, getEngagementGate, getRichMessage, parseFollowupSequence, logMessage } from '@ig-harness/db';
 import type { EngagementGate, GateDelivery } from '@ig-harness/db';
 import type { UserProfile, RichMessageBlock, RichMessageContext } from '@ig-harness/ig-sdk';
@@ -47,6 +50,8 @@ export function wrapClickTracking(
 }
 
 interface IgClientLike {
+  sendPrivateReply(commentId: string, text: string): Promise<{ message_id?: string }>;
+  getCommentTimestamp(commentId: string): Promise<string>;
   sendGenericTemplate(recipientId: string, elements: unknown[]): Promise<unknown>;
   sendQuickReply(recipientId: string, text: string, items: unknown[]): Promise<unknown>;
   sendText(recipientId: string, text: string): Promise<unknown>;
@@ -76,6 +81,8 @@ export async function triggerGateForComment(
     /** Instagram comment id. Used to post a public reply when the matching
      *  gate has comment_reply_text configured. */
     commentId?: string;
+    commentCreatedAt?: string;
+    isLive?: boolean;
     /** @username of the commenter, for {{username}} placeholder expansion. */
     commenterUsername?: string;
     /** Public worker origin (e.g. https://ig-harness.noda-c40.workers.dev).
@@ -139,42 +146,19 @@ export async function triggerGateForComment(
     // current status (cta_sent, pending_follow, delivered, dropped).
     // Idempotent skip — but allow_repeat=1 gates always proceed so the
     // same follower can run the CTA → reward flow again (demo/nurture).
-    if (gate.allow_repeat !== 1 && delivery.status !== 'triggered') {
+    if (gate.allow_repeat !== 1 && (delivery.status !== 'triggered' || JSON.parse(delivery.metadata || '{}').private_reply_queued)) {
       return true;
     }
 
-    await sendCtaDm(db, igClient, gate, delivery, args.igAccount);
-    await updateGateDelivery(db, delivery.id, { status: 'cta_sent' });
-
-    // Optional public comment. Posted after the DM so a failure doesn't
-    // block delivery.
-    //
-    // Why postCommentToMedia instead of replyToComment:
-    //   /{comment_id}/replies requires Advanced Access for external
-    //   commenters' comments — under Standard Access it always returns
-    //   "Object does not exist". Top-level comment with @username has
-    //   identical UX (visible mention to the commenter) and works under
-    //   Standard Access since the app owner is posting on their own media.
-    //
-    // Supports rotation: comment_reply_text can be a plain string OR a
-    // JSON array of strings. When it's an array, a random entry is
-    // picked per delivery so the replies don't look robotic.
-    if (gate.comment_reply_text) {
-      const patterns = parseCommentReplyPatterns(gate.comment_reply_text);
-      if (patterns.length > 0) {
-        const picked = patterns[Math.floor(Math.random() * patterns.length)]!;
-        const replyText = picked.replace(
-          /\{\{\s*username\s*\}\}/g,
-          args.commenterUsername ?? '',
-        );
-        try {
-          await igClient.postCommentToMedia(args.postId, replyText);
-        } catch (err) {
-          console.error('[gate] comment post failed:', err);
-        }
-      }
-    }
-
+    if (!args.commentId || !args.accountId) throw new Error('Comment ID and owning account are required for private replies');
+    const patterns = gate.comment_reply_text ? parseCommentReplyPatterns(gate.comment_reply_text) : [];
+    const reply = patterns.length ? patterns[Math.floor(Math.random() * patterns.length)]!.replace(/\{\{\s*username\s*\}\}/g,args.commenterUsername ?? '') : null;
+    await enqueueCommentRuleJob(db, {
+      accountId: args.accountId, ruleId: `gate:${gate.id}`, commentId: args.commentId, followerId: args.follower.id,
+      messageType: 'text', body: JSON.stringify({ text: `${gate.initial_dm_text}\n\n続けるには、このメッセージに返信してください。` }),
+      replyText: reply, delaySeconds: 0, mediaId: args.postId, commentCreatedAt: args.commentCreatedAt,
+      gateDeliveryId: delivery.id, isLive: args.isLive,
+    });
     return true; // Only one gate per comment
   }
   return false;
@@ -317,6 +301,27 @@ async function sendCtaDm(
   });
 }
 
+export async function resumeCommentGate(db: D1Database, client: IgClientLike, follower: FollowerRef, accountId: string, igAccount?: IgAccountRef): Promise<boolean> {
+  if (await messagingEligibility(db,follower.id,accountId) !== 'eligible') return false;
+  const delivery = await db.prepare(`SELECT d.* FROM gate_deliveries d JOIN engagement_gates g ON g.id=d.gate_id
+    WHERE d.follower_id=? AND d.igsid=? AND g.account_id=? AND g.status='active' AND d.status='cta_sent'
+    AND json_extract(d.metadata,'$.awaiting_reply')=1 ORDER BY d.triggered_at DESC LIMIT 1`)
+    .bind(follower.id,follower.igsid,accountId).first<GateDelivery>();
+  if (!delivery) return false;
+  const gate = await getEngagementGate(db,delivery.gate_id);
+  if (!gate) return false;
+  const claimed = await db.prepare("UPDATE gate_deliveries SET metadata=json_set(metadata,'$.awaiting_reply',0,'$.cta_send_status','processing') WHERE id=? AND json_extract(metadata,'$.awaiting_reply')=1 RETURNING id").bind(delivery.id).first();
+  if (!claimed) return true;
+  try {
+    await sendCtaDm(db,client,gate,delivery,igAccount);
+    await db.prepare("UPDATE gate_deliveries SET metadata=json_set(metadata,'$.cta_send_status','sent') WHERE id=?").bind(delivery.id).run();
+  } catch (error) {
+    await db.prepare("UPDATE gate_deliveries SET metadata=json_set(metadata,'$.cta_send_status','uncertain') WHERE id=?").bind(delivery.id).run();
+    throw error;
+  }
+  return true;
+}
+
 export async function handleFollowCheckPostback(
   db: D1Database,
   igClient: IgClientLike,
@@ -326,7 +331,8 @@ export async function handleFollowCheckPostback(
     getEngagementGate(db, args.gateId),
     getGateDelivery(db, args.deliveryId),
   ]);
-  if (!gate || !delivery) return;
+  if (!gate || !delivery || delivery.gate_id !== gate.id || delivery.igsid !== args.igsid) return;
+  if (await messagingEligibility(db,delivery.follower_id,gate.account_id ?? undefined) !== 'eligible') return;
   if (delivery.status === 'delivered' || delivery.status === 'dropped') return;
   // Honour the operator pause/archive switch even for already-issued CTAs.
   if (gate.status !== 'active') return;
@@ -544,7 +550,7 @@ export function nextFollowupAt(
  *
  * 24h-window guard: Meta only allows sending outside the 24h window for
  * certain tags, so we refuse any step whose fire time is more than 24h
- * after the reward delivery. That keeps operators who typed 1500 minutes
+ * after the latest inbound interaction. That keeps operators who typed 1500 minutes
  * (instead of 150) from getting their DMs silently rejected / flagged.
  */
 export async function processFollowupDrip(
@@ -592,6 +598,7 @@ export async function processFollowupDrip(
       skipped++;
       continue;
     }
+    if (gate.status !== 'active') { skipped++; continue; }
     const steps = parseFollowupSequence(gate.followup_dm_sequence);
     const stepIdx = d.followup_step_sent;
     const step = steps[stepIdx];
@@ -601,16 +608,13 @@ export async function processFollowupDrip(
       continue;
     }
 
-    // 24h guard: don't send past the Meta messaging window.
-    if (d.delivered_at) {
-      const deliveredAt = new Date(d.delivered_at).getTime();
-      if (Date.now() - deliveredAt > 24 * 60 * 60_000) {
-        await updateGateDelivery(db, d.id, { next_followup_at: null });
-        skipped++;
-        continue;
-      }
+    const eligibility = await messagingEligibility(db,d.follower_id,accountId ?? gate.account_id ?? undefined);
+    if (eligibility !== 'eligible') {
+      await updateGateDelivery(db,d.id,{ next_followup_at: null, end_reason: eligibility });
+      skipped++; continue;
     }
-
+    const claim = await db.prepare("UPDATE gate_deliveries SET next_followup_at=NULL,end_reason='delivery_in_progress' WHERE id=? AND followup_step_sent=? AND next_followup_at=? AND EXISTS(SELECT 1 FROM engagement_gates WHERE id=gate_deliveries.gate_id AND status='active') RETURNING id").bind(d.id,d.followup_step_sent,d.next_followup_at).first();
+    if (!claim) { skipped++; continue; }
     let sendOk = false;
     try {
       await sendFollowupStep(db, igClient, d.igsid, step, gate, workerBaseUrl, igAccount, d.follower_id);
@@ -621,10 +625,8 @@ export async function processFollowupDrip(
         err,
       );
       await recordDmFailure(db, accountId ?? 'unknown').catch(() => {});
-      // Do NOT advance the step — leave next_followup_at unchanged so the
-      // next cron tick retries the same step. This prevents silent message drops
-      // on transient IG API errors. If the error is permanent the 24h guard
-      // above will eventually clear the delivery.
+      const retry = err instanceof InstagramApiError && err.status<500 && err.rateLimited;
+      await updateGateDelivery(db,d.id,{end_reason:retry?'rate_limited':'outcome_unknown',next_followup_at:retry?new Date(Date.now()+Math.max(60_000,err.retryAfterMs ?? 60_000)).toISOString():null});
     }
 
     if (!sendOk) {
@@ -635,6 +637,7 @@ export async function processFollowupDrip(
     const nextStep = stepIdx + 1;
     const nextAt = nextFollowupAt(gate, nextStep, new Date().toISOString().slice(0, 19) + 'Z');
     await updateGateDelivery(db, d.id, {
+      end_reason: null,
       followup_step_sent: nextStep,
       next_followup_at: nextAt,
     });

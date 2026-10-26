@@ -1,3 +1,5 @@
+import { InstagramApiError } from '@ig-harness/ig-sdk';
+import { deliveryStatus } from './routes/delivery-status.js';
 import { resolveCorsOrigin, warnMissingAdminOrigin } from './middleware/admin-auth-config.js';
 import { adminAuth } from './routes/admin-auth.js';
 import { publicPageHeaders } from './lib/html.js';
@@ -53,6 +55,8 @@ export type Env = {
     // so callers MUST guard `env.ASSETS` before invoking `.fetch` (see notFound below).
     ASSETS?: Fetcher;
     TOKEN_ENCRYPTION_KEY?: string;
+    IG_GRAPH_API_VERSION?: string;
+    IG_REQUIRE_APPSECRET_PROOF?: string;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
     IG_USER_ID: string;
@@ -136,6 +140,7 @@ app.route('/', scenarios);
 app.route('/', broadcasts);
 app.route('/', commentRules);
 app.route('/', health);
+app.route('/', deliveryStatus);
 app.route('/', trackedLinks);
 app.route('/', forms);
 app.route('/', staff);
@@ -304,21 +309,25 @@ export async function runScheduledJobs(
     ]);
     if (!work || work.deletion_locked) continue;
     let lastChecked = 0;
-    try { lastChecked = Date.parse(JSON.parse(lastProbe?.value ?? '{}').checked_at) || 0; } catch { /* invalid probe record */ }
-    const probeDue = lastChecked <= Date.now() - 60 * 60_000;
+    let lastHealthy: boolean | undefined;
+    try { const diagnostic=JSON.parse(lastProbe?.value ?? '{}'); lastChecked = Date.parse(diagnostic.checked_at) || 0; lastHealthy=diagnostic.ok; } catch { /* invalid probe record */ }
+    const probeDue = lastChecked <= Date.now() - (lastHealthy===false?5:60) * 60_000;
+    if (lastHealthy===false && !probeDue) continue;
     if (!probeDue && ![work.steps, work.broadcasts, work.followups, work.media, work.webhooks, work.comments].some(Boolean)) continue;
     const activity = await beginActivity(env.DB);
     if (!activity) continue;
     try {
       const current = await getIgAccountById(env.DB, account.id);
       if (!current || !current.is_active) continue;
-      const igClient = await getAccountClient(env, env.DB, current);
+      const igClient = await getAccountClient(env, env.DB, current, {forHealthProbe:probeDue});
       if (probeDue) {
         try {
           const me = await igClient.getMe();
-          await recordTokenValidity(env.DB, account.id, true);
-          if (me.username && me.username !== account.username) await updateIgAccount(env.DB, account.id, { username: me.username });
-        } catch { await recordTokenValidity(env.DB, account.id, false); }
+          const identityMatches=me.user_id===current.ig_user_id;
+          await recordTokenValidity(env.DB, account.id, identityMatches,identityMatches?undefined:'account_id_mismatch');
+          if (!identityMatches) continue;
+          if (identityMatches && me.username && me.username !== account.username) await updateIgAccount(env.DB, account.id, { username: me.username });
+        } catch (error) { await recordTokenValidity(env.DB, account.id, false,error instanceof InstagramApiError && error.tokenExpired?'token_expired':'api_unavailable'); continue; }
       }
       const ref = toIgAccountRef(account);
       const tasks: Array<[string, Promise<unknown>]> = [];

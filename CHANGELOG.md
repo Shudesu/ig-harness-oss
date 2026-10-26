@@ -1,3 +1,11 @@
+## Unreleased — Meta API audit (2026-10-26)
+
+- Default Graph API v25.0, configurable through IG_GRAPH_API_VERSION; version setting shared by SDK, Worker and installer. Meta's general Graph version table lists v21.0 expiry as 2027-01-21.
+- Validate account tokens and user_id before saving, support automatic ID lookup, and expose usage/backoff/reconnect diagnostics without raw credentials.
+- Send one comment_id private reply first; preserve rich content until a primary inbound response. Gate/drip/scenario windows use last_inbound_at; standby notifications do not trigger sends.
+- Persist carousel child IDs and wait for FINISHED before the parent. Claim mutation phases and do not automatically repeat unknown publications.
+- Add migration 0022 and delivery-status UI. See docs/operations/meta-api-audit-20261026.md for compatibility, review/access conditions and live validation still required.
+
 # Changelog
 
 ## [0.12.0] - 2026-07-23

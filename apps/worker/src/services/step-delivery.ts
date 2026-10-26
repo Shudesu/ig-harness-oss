@@ -1,3 +1,4 @@
+import { messagingEligibility } from './messaging-window.js';
 import {
   getFriendScenariosDueForDelivery,
   getScenarioSteps,
@@ -6,7 +7,7 @@ import {
   getFriendById,
   jstNow,
 } from '@ig-harness/db';
-import type { InstagramClient } from '@ig-harness/ig-sdk';
+import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
 import { jitterDeliveryTime, addJitter, sleep } from './delivery-timing.js';
 import { recordDmFailure } from '../lib/health.js';
 
@@ -88,20 +89,20 @@ export async function processSingleDelivery(
     next_step_at: string | null;
   },
   _workerUrl?: string,
+  immediate = false,
 ): Promise<void> {
   const friend = await getFriendById(db, fs.follower_id);
   if (!friend) {
     await completeFriendScenario(db, fs.id);
     return;
   }
-  const window = await db.prepare('SELECT last_inbound_at FROM followers WHERE id=?').bind(friend.id).first<{ last_inbound_at: string | null }>();
-  const inbound = window?.last_inbound_at ? Date.parse(window.last_inbound_at) : NaN;
-  if (!Number.isFinite(inbound) || inbound <= Date.now() - 86_400_000 || inbound > Date.now()) {
-    await db.prepare("UPDATE follower_scenarios SET status='completed', next_step_at=NULL, end_reason='window_expired', updated_at=? WHERE id=? AND status='active'").bind(new Date().toISOString(), fs.id).run();
+  const eligibility = await messagingEligibility(db, friend.id, friend.account_id ?? undefined);
+  if (eligibility !== 'eligible') {
+    await db.prepare("UPDATE follower_scenarios SET status='completed', next_step_at=NULL, end_reason=?, updated_at=? WHERE id=? AND status='active'").bind(eligibility === 'standby' ? 'standby' : 'window_expired',new Date().toISOString(),fs.id).run();
     return;
   }
   const jstHour = new Date(Date.now() + 9 * 60 * 60_000).getUTCHours();
-  if (jstHour < DEFAULT_START_HOUR || jstHour >= DEFAULT_END_HOUR) return;
+  if (!immediate && (jstHour < DEFAULT_START_HOUR || jstHour >= DEFAULT_END_HOUR)) return;
   const metadata = JSON.parse((friend as { metadata?: string }).metadata || '{}') as Record<string, unknown>;
   const preferredHour = typeof metadata.preferred_hour === 'number' ? metadata.preferred_hour : undefined;
 
@@ -153,7 +154,14 @@ export async function processSingleDelivery(
   // Send via Instagram Messaging API
   const igsid = friend.igsid;
   const parsed = JSON.parse(expandedContent);
-  await sendIgMessage(igClient, igsid, currentStep.message_type, parsed);
+  const claim = await db.prepare("UPDATE follower_scenarios SET next_step_at=NULL,end_reason='delivery_in_progress' WHERE id=? AND status='active' AND current_step=? AND next_step_at IS ? RETURNING id").bind(fs.id,fs.current_step,fs.next_step_at).first();
+  if (!claim) return;
+  try { await sendIgMessage(igClient, igsid, currentStep.message_type, parsed); }
+  catch (error) {
+    const retry = error instanceof InstagramApiError && error.status<500 && error.rateLimited;
+    await db.prepare('UPDATE follower_scenarios SET next_step_at=?,end_reason=? WHERE id=?').bind(retry?new Date(Date.now()+Math.max(60_000,error.retryAfterMs ?? 60_000)).toISOString():null,retry?'rate_limited':'outcome_unknown',fs.id).run();
+    throw error;
+  }
 
   // Log outgoing message
   await db

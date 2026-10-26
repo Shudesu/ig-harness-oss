@@ -1,5 +1,6 @@
+import { assertGraphAvailable, graphObserver } from './graph-observation.js';
 import { sealToken, openToken } from './token-crypto.js';
-import { InstagramClient } from '@ig-harness/ig-sdk';
+import { InstagramClient, InstagramApiError } from '@ig-harness/ig-sdk';
 import {
   getDefaultIgAccount,
   getIgAccountById,
@@ -17,6 +18,9 @@ export type AccountEnv = {
   IG_USERNAME?: string;
   IG_ACCESS_TOKEN: string;
   TOKEN_ENCRYPTION_KEY?: string;
+  IG_GRAPH_API_VERSION?: string;
+  IG_REQUIRE_APPSECRET_PROOF?: string;
+  IG_APP_SECRET?: string;
 };
 
 const BACKFILL_TABLES = [
@@ -163,7 +167,16 @@ export async function getAccountClient(
   env: AccountEnv,
   db: D1Database,
   account: IgAccount,
+  options: { forHealthProbe?: boolean } = {},
 ): Promise<InstagramClient> {
+  await assertGraphAvailable(db,account.id);
+  if (!options.forHealthProbe) {
+    const state=await db.prepare('SELECT value FROM integration_settings WHERE key=?').bind(`health:token_valid:${account.id}`).first<{value:string}>();
+    let reason: string | undefined;
+    try { const value=JSON.parse(state?.value ?? '{}'); if(value.ok===false) reason=value.reason; } catch { /* no trustworthy diagnostic */ }
+    if (reason==='token_expired') throw new InstagramApiError('Instagram token requires reconnection',401,190);
+    if (reason==='account_id_mismatch') throw new InstagramApiError('Stored Instagram user_id does not match the token',400,100);
+  }
   account = { ...account, access_token: await openToken(account.access_token, account.ig_user_id, env.TOKEN_ENCRYPTION_KEY) };
   let token = account.access_token;
   try {
@@ -175,5 +188,15 @@ export async function getAccountClient(
       err,
     );
   }
-  return new InstagramClient({ accessToken: token, igUserId: account.ig_user_id });
+  const proofSecret=env.IG_REQUIRE_APPSECRET_PROOF==='true' ? account.app_secret || env.IG_APP_SECRET : undefined;
+  if (env.IG_REQUIRE_APPSECRET_PROOF==='true' && !proofSecret) throw new Error('Instagram App Secret required for appsecret_proof');
+  let blockedUntil=0;
+  const observe=graphObserver(db,account.id);
+  return new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
+    beforeRequest:()=>{if(blockedUntil>Date.now())throw new InstagramApiError('Instagram API is cooling down',429,613,undefined,blockedUntil-Date.now());},
+    onResponse:async observation=>{
+      if(observation.status===429 || [4,17,32,613,80002].includes(observation.code ?? -1)) blockedUntil=Date.now()+(Number.isFinite(observation.retryAfterMs)?Math.max(1000,observation.retryAfterMs!):60_000);
+      await observe(observation);
+    },
+  });
 }

@@ -9,6 +9,7 @@ function createMockDb() {
   function makeStatement(sql: string, params: unknown[]) {
     return {
       async first() {
+        if (sql.includes('FROM followers')) return {last_inbound_at:new Date().toISOString(),messaging_owner:'primary'};
         if (sql.includes('FROM engagement_gates')) {
           return gates.find((g) => g.id === params[0]) ?? null;
         }

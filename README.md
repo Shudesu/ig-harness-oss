@@ -52,7 +52,7 @@ IG Harnessの製品名、開発者、運営法人、公開コード、研究資�
 | Claude Code (AI) 対応 | ❌ | ❌ | **MCP server 同梱** |
 | LINE 公式アカウント連携 | ❌ | ❌ | **UUID クロスリンク** |
 | マルチアカウント | 別契約 | 別契約 | **標準搭載** |
-| Meta 審査 | 不要 | 不要 | **不要（Standard Access で動作）** |
+| Meta 審査 | 提供元の条件に従う | 提供元の条件に従う | **機能・接続対象・Access Levelにより必要** |
 | ソースコード | 非公開 | 非公開 | **MIT (このリポ)** |
 
 ---
@@ -88,14 +88,14 @@ CLI が以下を全部やる:
 ### エンゲージメント（集客の主力）
 - **エンゲージメントゲート** — A社 スタイルの「コメント → DM → フォロー確認 → 特典配布」ループ。フォロー未完了なら "フォローしてから戻ってきて" DM を送り、フォロー確認後に特典 DM を自動配布
 - **コメント → DM 自動配布** — 特定投稿 / リールへのコメントをトリガーに DM で特典配布（全投稿 or 個別指定）
-- **コメント自動リプライ** — キーワードごとのコメント自動返信（@mention 付きトップレベル投下方式、Standard Access で動作）
+- **コメント自動リプライ** — キーワードごとの返信。ゲートのトップレベル投稿とルールのスレッド返信を扱い、対象アカウントに応じたMeta権限が必要
 - **ストーリーメンション → DM** — メンション検知で自動 DM
 - **DM キーワードトリガー** — 特定キーワードの DM 受信でゲート発火
 
 ### 配信
 - **ステップ配信** — キーワードトリガーで時間差 DM 連続送信
 - **追い DM（フォローアップドリップ）** — 特典配布後に分単位の遅延で最大 3 通まで
-- **一斉配信** — 全フォロワー or タグ絞り込みで DM 一斉送信、予約対応
+- **一斉配信（API/MCP）** — 最終inboundから24時間以内かつ本アプリが応答を担当する相手に限定。タグ絞り込み・予約・宛先別結果に対応
 - **リッチメッセージ** — ボタン付きカード、カルーセル、クイックリプライ
 
 ### CRM
@@ -154,13 +154,11 @@ CLI が以下を全部やる:
 
 ## Standard Access の壁について
 
-Instagram Messaging API は、自分が所有・管理するプロアカウントであれば **Standard Access（Meta App Review 不要）** で DM 配信・エンゲージメントゲート・擬似コメント返信まで動作します。
+MetaのStandard/Advanced Accessは、対象のInstagramプロアカウントの所有・管理とApp Dashboardへの登録等で条件が変わります。全機能が無条件に審査不要とは保証しません。トップレベルコメントは審査やpermissionを回避する仕組みではありません。
 
-**Advanced Access（App Review 必須）が要るのは以下のみ**:
-- 親コメント直下にネストされる本物のスレッド型 reply
-- 自分が所有・管理しないアカウント（顧客のアカウント）をホストするマルチテナント運用
+自分が所有・管理し、App Dashboardに登録したプロアカウントのStandard Accessと、他者のアカウントへ提供する際のAdvanced Accessを区別してください。App Review・Business Verification・個別permissionの条件はMetaの現行資料で確認します。
 
-IG Harness のコメント返信は `@mention` 付きトップレベル投下方式で実装されており、Standard Access のまま動きます。
+ゲートはトップレベルのmention、コメントルールはスレッド返信を使用します。どちらもpermissionを回避する仕組みではありません。[Meta API監査の照合](docs/operations/meta-api-audit-20261026.md)に一次資料と今回の判断を記載しています。
 
 ---
 
@@ -205,3 +203,6 @@ Issue / PR 歓迎。OSS リポへの PR は `Shudesu/ig-harness-oss` (このリ�
 MCPへowner/adminキーを渡すと、DM送信・一斉配信を含む管理権限を渡します。`IG_HARNESS_READ_ONLY=true` では書き込みツールを登録しません。[MCP設定](docs/manual/08-mcp.md)を確認してください。
 
 管理画面はセットアップが表示するPages URLです。環境API_KEYがownerであり、手動でowner行をINSERTする必要はありません。更新前バックアップ、migration、暗号化鍵、24時間枠、保持期間、ログ、削除受付の運用は [レビュー対応と更新手順](docs/operations/review-remediation.md) にまとめています。脆弱性は [SECURITY.md](SECURITY.md) の非公開窓口へ報告してください。
+
+
+Meta連携はInstagram Login方式です。コメントからの初回DMはprivate reply 1通で、その後の通常DMは相手の応答が必要です。既存の画像・テンプレート・特典内容は返信後まで待機します。登録時に確認するのはtokenのprofile取得とuser_idの一致であり、全permissionの保証ではありません。[Meta監査の照合と移行注意](docs/operations/meta-api-audit-20261026.md)を参照してください。
