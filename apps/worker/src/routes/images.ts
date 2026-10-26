@@ -68,6 +68,15 @@ images.post('/api/images', async (c) => {
       );
     }
 
+    if (c.req.query('purpose') === 'reel-cover') {
+      // Reject mislabeled uploads before a scheduled post reaches Meta.
+      const bytes = new Uint8Array(data);
+      if (mimeType !== 'image/jpeg' || bytes.length < 4 ||
+          bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+        return c.json({ success: false, error: '表紙はJPEG画像（5MBまで）をアップロードしてください' }, 400);
+      }
+    }
+
     const subtype = mimeType.split('/')[1];
     const ext = subtype === 'jpeg' ? 'jpg' : subtype === 'quicktime' ? 'mov' : subtype;
     const id = crypto.randomUUID();
@@ -78,7 +87,7 @@ images.post('/api/images', async (c) => {
       customMetadata: { originalFilename: filename ?? key },
     });
 
-    const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+    const workerUrl = (c.env.WORKER_URL || new URL(c.req.url).origin).replace(/\/+$/, '');
     const url = `${workerUrl}/images/${key}`;
 
     return c.json({
@@ -103,7 +112,7 @@ images.get('/api/images', async (c) => {
   // delimitedPrefixes instead of polluting `objects`. Pagination stays
   // correct because the cache keys never enter the object listing.
   const listed = await c.env.IMAGES.list({ limit, cursor, delimiter: '/' });
-  const workerUrl = c.env.WORKER_URL || new URL(c.req.url).origin;
+  const workerUrl = (c.env.WORKER_URL || new URL(c.req.url).origin).replace(/\/+$/, '');
 
   const items = listed.objects.map((obj) => ({
     key: obj.key,

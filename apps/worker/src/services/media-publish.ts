@@ -43,7 +43,7 @@ async function startPost(db: D1Database, client: InstagramClient, post: MediaPos
         const item = media[0]!;
         const created = await client.createMediaContainer({
             imageUrl: item.type === 'image' ? item.url : undefined, videoUrl: item.type === 'video' ? item.url : undefined,
-            ...(post.post_type === 'reel' ? { mediaType: 'REELS' as const } : post.post_type === 'story' ? { mediaType: 'STORIES' as const } : {}),
+            ...(post.post_type === 'reel' ? { mediaType: 'REELS' as const, coverUrl: item.coverUrl, thumbOffset: item.thumbOffset } : post.post_type === 'story' ? { mediaType: 'STORIES' as const } : {}),
             ...(post.post_type === 'story' ? {} : { caption: post.caption ?? undefined }),
         });
         await updateMediaPost(db, post.id, { status: 'processing', phase: 'polling', creation_id: created.id, error: null });

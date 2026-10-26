@@ -219,6 +219,10 @@ export interface CreateContainerParams {
   caption?: string;
   children?: string[];
   isCarouselItem?: boolean;
+  /** REELS only. Public cover image URL; takes precedence over thumbOffset. */
+  coverUrl?: string;
+  /** REELS only. Cover frame position in milliseconds, including 0. */
+  thumbOffset?: number;
 }
 
 export interface ContainerStatus {

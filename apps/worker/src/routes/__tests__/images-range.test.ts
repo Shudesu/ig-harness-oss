@@ -157,3 +157,34 @@ describe('parseByteRange', () => {
     expect(parseByteRange('bytes=-', 1000)).toBeNull();
   });
 });
+
+
+describe('reel cover upload', () => {
+  it.each(['https://test.workers.dev', 'https://test.workers.dev/'])('stores JPEG with a normalized public URL for %s', async (workerUrl) => {
+    const put = vi.fn().mockResolvedValue({});
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const res = await images.fetch(new Request('https://worker.example.com/api/images?purpose=reel-cover', {
+      method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: bytes,
+    }), { ...mockEnv({ put }), WORKER_URL: workerUrl }, executionCtx);
+    expect(res.status).toBe(201);
+    expect(put).toHaveBeenCalledWith(expect.stringMatching(/\.jpg$/), expect.any(ArrayBuffer), expect.objectContaining({ httpMetadata: { contentType: 'image/jpeg' } }));
+    const body = await res.json() as { data: { url: string } };
+    expect(body.data.url).toMatch(/^https:\/\/test.workers.dev\/images\/.+\.jpg$/);
+  });
+  it.each(['image/png', 'image/jpeg'])('rejects non-JPEG bytes even with a %s label', async (mimeType) => {
+    const put = vi.fn();
+    const res = await images.fetch(new Request('https://worker.example.com/api/images?purpose=reel-cover', {
+      method: 'POST', headers: { 'Content-Type': mimeType }, body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+    }), mockEnv({ put }), executionCtx);
+    expect(res.status).toBe(400);
+    expect(put).not.toHaveBeenCalled();
+  });
+  it('rejects a cover larger than 5MB', async () => {
+    const put = vi.fn();
+    const res = await images.fetch(new Request('https://worker.example.com/api/images?purpose=reel-cover', {
+      method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: new Uint8Array(5 * 1024 * 1024 + 1),
+    }), mockEnv({ put }), executionCtx);
+    expect(res.status).toBe(400);
+    expect(put).not.toHaveBeenCalled();
+  });
+});

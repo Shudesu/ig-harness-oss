@@ -71,6 +71,39 @@ describe('InstagramClient content publishing', () => {
     expect(parsed.searchParams.get('is_carousel_item')).toBe('true');
   });
 
+  it.each([0, 1500])('sends a reel frame offset of %s milliseconds', async (thumbOffset) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'reel' }));
+    await client.createMediaContainer({ mediaType: 'REELS', videoUrl: 'https://example.com/v.mp4', thumbOffset });
+    const params = new URL(fetchMock.mock.calls[0][0] as string).searchParams;
+    expect(params.get('thumb_offset')).toBe(String(thumbOffset));
+    expect(params.has('cover_url')).toBe(false);
+  });
+
+  it('sends cover_url intact and gives it precedence over thumb_offset', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'reel' }));
+    const coverUrl = 'https://example.com/cover.jpg?x=1&y=2';
+    await client.createMediaContainer({ mediaType: 'REELS', coverUrl, thumbOffset: 0 });
+    const params = new URL(fetchMock.mock.calls[0][0] as string).searchParams;
+    expect(params.get('cover_url')).toBe(coverUrl);
+    expect(params.has('thumb_offset')).toBe(false);
+  });
+
+  it.each(['STORIES', 'VIDEO', 'CAROUSEL'] as const)('does not send reel cover fields for %s', async (mediaType) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'other' }));
+    await client.createMediaContainer({ mediaType, coverUrl: 'https://example.com/c.jpg', thumbOffset: 0 });
+    const params = new URL(fetchMock.mock.calls[0][0] as string).searchParams;
+    expect(params.has('cover_url')).toBe(false);
+    expect(params.has('thumb_offset')).toBe(false);
+  });
+
+  it('preserves the default reel request without cover options', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'reel' }));
+    await client.createMediaContainer({ mediaType: 'REELS', videoUrl: 'https://example.com/v.mp4' });
+    const params = new URL(fetchMock.mock.calls[0][0] as string).searchParams;
+    expect(params.has('cover_url')).toBe(false);
+    expect(params.has('thumb_offset')).toBe(false);
+  });
+
   it('getContainerStatus requests status_code,status fields', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ id: 'container-1', status_code: 'FINISHED' }),

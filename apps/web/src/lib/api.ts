@@ -5,11 +5,13 @@ import type {
   StaffMember,
 } from '@ig-harness/shared'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
-if (!API_URL) {
+// Cloud tenants share one static build and call their own origin. Standalone
+// Pages builds must still specify the API destination explicitly.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NEXT_PUBLIC_SAME_ORIGIN_API === '1' ? '' : undefined)
+if (API_URL === undefined) {
   throw new Error(
     'NEXT_PUBLIC_API_URL is not set. Build cannot proceed without a valid API URL. ' +
-    'Set it in .env.production (local) or GitHub Secrets (CI).'
+    'Set it in .env.production (local) or GitHub Secrets (CI), or use NEXT_PUBLIC_SAME_ORIGIN_API=1 for a same-origin Cloud build.'
   )
 }
 
@@ -515,6 +517,10 @@ export type MediaPostStatus = 'scheduled' | 'processing' | 'published' | 'failed
 export interface MediaPostMediaItem {
   url: string
   type: 'image' | 'video'
+  /** Reel only: public JPEG URL; must remain accessible until publishing completes. */
+  coverUrl?: string
+  /** Reel only: frame position in milliseconds. Choose this OR coverUrl. */
+  thumbOffset?: number
 }
 
 export interface MediaPostApi {
@@ -549,7 +555,9 @@ export const mediaPostsApi = {
       method: 'POST',
       body: JSON.stringify({
         post_type: input.postType,
-        media: input.media,
+        media: input.media.map(({ url, type, coverUrl, thumbOffset }) => ({
+          url, type, cover_url: coverUrl, thumb_offset: thumbOffset,
+        })),
         caption: input.caption,
         scheduled_at: input.scheduledAt,
       }),
@@ -575,8 +583,9 @@ export const mediaPostsApi = {
     return res.data
   },
   /** Binary upload (images AND videos) to /api/images — returns the public URL. */
-  uploadMedia: async (file: File): Promise<{ url: string; key: string }> => {
-    const res = await fetchApi<ApiResponse<{ url: string; key: string }>>('/api/images', {
+  uploadMedia: async (file: File, purpose?: 'reel-cover'): Promise<{ url: string; key: string }> => {
+    const path = purpose ? `/api/images?purpose=${purpose}` : '/api/images'
+    const res = await fetchApi<ApiResponse<{ url: string; key: string }>>(path, {
       method: 'POST',
       headers: { 'Content-Type': file.type },
       body: file,
