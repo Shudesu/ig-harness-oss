@@ -1,3 +1,5 @@
+import { resolveCorsOrigin, warnMissingAdminOrigin } from './middleware/admin-auth-config.js';
+import { adminAuth } from './routes/admin-auth.js';
 import { publicPageHeaders } from './lib/html.js';
 import { beginActivity, endActivity } from './lib/activity.js';
 import { scheduledWork } from './lib/scheduled-work.js';
@@ -60,6 +62,9 @@ export type Env = {
     IG_USERNAME?: string;
     CONTACT_EMAIL?: string;
     ADMIN_ORIGINS?: string;
+    ADMIN_ORIGIN?: string;
+    ADMIN_ALLOW_CROSS_SITE?: string;
+    ADMIN_COOKIE_SAMESITE?: string;
     MESSAGES_RETENTION_DAYS?: string;
     LINE_ADD_URL?: string;
     LINE_LIFF_ID?: string;
@@ -67,20 +72,33 @@ export type Env = {
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
+    csrfToken?: string;
   };
 };
 
 const app = new Hono<Env>();
 
-// Same-origin by default; Pages/custom admin origins must be explicit.
-app.use('*', cors({ origin: (origin, c) => {
-  const allowed = (c.env.ADMIN_ORIGINS ?? '').split(',').map((s: string) => s.trim()).filter(Boolean);
-  allowed.push(new URL(c.req.url).origin);
-  return allowed.includes(origin) ? origin : null;
-} }));
+app.use('*', async (c, next) => {
+  warnMissingAdminOrigin(c.env, c.req.url);
+  if (c.req.path.startsWith('/api/auth/')) { c.header('Cache-Control', 'no-store'); c.header('Referrer-Policy', 'no-referrer'); }
+  await next();
+});
+
+// Exact configured origins and the same Pages project's previews may send cookies.
+app.use('*', cors({
+  origin: (origin, c) => resolveCorsOrigin(c.env, origin, c.req.url),
+  credentials: true,
+  allowMethods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowHeaders: ['Content-Type','Authorization','X-CSRF-Token'],
+  maxAge: 600,
+}));
 
 app.use('*', async (c, next) => {
   if (['/connect','/line','/data-deletion','/privacy-policy','/terms-of-service'].includes(c.req.path)) publicPageHeaders(c);
+  if (c.req.path.startsWith('/images/')) {
+    c.header('Content-Security-Policy', "default-src 'none'; sandbox; frame-ancestors 'none'");
+    c.header('X-Content-Type-Options', 'nosniff');
+  }
   await next();
 });
 
@@ -109,6 +127,7 @@ app.use('/api/*', async (c, next) => {
 });
 
 // Mount route groups
+app.route('/', adminAuth);
 app.route('/', webhook);
 app.route('/', dataDeletion);
 app.route('/', friends);
@@ -138,7 +157,7 @@ app.get('/connect', (c) => {
   if (!uid || !token || !/^[A-Za-z0-9_-]{8,128}$/.test(token)) {
     return c.html(`<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Invalid link</h1></body></html>`, 400);
   }
-  if (c.env.IG_USERNAME && !/^[A-Za-z0-9._]{1,30}$/.test(c.env.IG_USERNAME)) return c.text('Invalid Instagram username configuration', 503);
+  if (!c.env.IG_USERNAME || !/^[A-Za-z0-9._]{1,30}$/.test(c.env.IG_USERNAME)) return c.text('Invalid Instagram username configuration', 503);
   // Show page that instructs user to send the token via IG DM
   return c.html(`<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -153,7 +172,7 @@ p { color: #666; line-height: 1.6; }
 <h1>📱 Instagram連携</h1>
 <p>以下のコードをInstagramのDMで送信してください</p>
 <div class="token-box">CONNECT:${escapeHtml(token)}</div>
-<a class="btn" href="https://ig.me/m/${encodeURIComponent(c.env.IG_USERNAME ?? 'your_ig_username')}">DMを開く</a>
+<a class="btn" href="https://ig.me/m/${encodeURIComponent(c.env.IG_USERNAME)}">DMを開く</a>
 <p style="margin-top:24px; font-size:13px; color:#999;">このコードを送信すると、LINEアカウントとInstagramアカウントが連携されます。</p>
 </body></html>`);
 });

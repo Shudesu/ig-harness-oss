@@ -19,7 +19,7 @@ test('fresh install, second run, staff hashing and account ownership preservatio
   await applyMigrations(adapter(db));
   assert.match(db.prepare('SELECT api_key FROM staff_members').get().api_key, /^sha256:[a-f0-9]{64}$/);
   assert.equal(db.prepare('SELECT account_id FROM comment_rules').get().account_id, 'account-a');
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 19);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 21);
   db.close();
 });
 test('a failed file has no success marker and can resume without losing earlier migrations', async () => {
@@ -48,5 +48,11 @@ test('adopts an untracked partially upgraded DB without dropping staff metadata 
   assert.equal(db.prepare('SELECT account_id FROM comment_rules').get().account_id, 'account-a');
   assert.deepEqual({ ...db.prepare('SELECT id,email,updated_at FROM staff_members').get() }, { id: '1', email: 'owner@example.invalid', updated_at: '2026-01-01' });
   await applyMigrations(adapter(db));
+  db.close();
+});
+test('does not trust a completion ledger when the real schema has drifted', async () => {
+  const db = new DatabaseSync(':memory:'); await applyMigrations(adapter(db));
+  db.exec('ALTER TABLE followers DROP COLUMN profile_fetched_at');
+  await assert.rejects(applyMigrations(adapter(db)), /Schema verification failed: followers.profile_fetched_at/);
   db.close();
 });

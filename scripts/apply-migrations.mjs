@@ -1,3 +1,4 @@
+import { isTransientD1Error } from './d1-read-retry.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runMigrations } from './migration-runner.mjs';
@@ -11,7 +12,11 @@ try {
     repoDir: fileURLToPath(new URL('../', import.meta.url)), remote: args[0] === '--remote',
     runWrangler: (argv, options) => {
       try { return execFileSync('pnpm', ['exec', 'wrangler', ...argv], { ...options, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 }); }
-      catch { throw new Error('Wrangler D1 execution failed. Check the selected account, D1 binding and local Wrangler logs; no success was recorded.'); }
+      catch (cause) {
+        const error = new Error('Wrangler D1 execution failed. Check the selected account, D1 binding and local Wrangler logs; no success was recorded.');
+        error.transient = isTransientD1Error(cause);
+        throw error;
+      }
     },
   });
 } catch (error) {

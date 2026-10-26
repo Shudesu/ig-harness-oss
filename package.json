@@ -25,9 +25,10 @@
     "db:migrate:local": "node scripts/apply-migrations.mjs --local",
     "deploy:setup": "node packages/create-ig-harness/dist/index.js",
     "deploy:update": "node packages/create-ig-harness/dist/index.js update",
-    "test:migrations": "node --test scripts/migration-runner.test.mjs",
+    "test:migrations": "node --test scripts/migration-runner.test.mjs scripts/migration-policy.test.mjs",
     "check:versions": "node scripts/check-versions.mjs",
-    "test:mcp": "node --test scripts/mcp-readonly.test.mjs"
+    "test:mcp": "node --test scripts/mcp-readonly.test.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs"
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {

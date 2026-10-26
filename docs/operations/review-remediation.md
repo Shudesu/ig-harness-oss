@@ -30,7 +30,7 @@ Webhookは200応答の前にイベントを保存し、accountとmid/comment id�
 - API_KEYが空でも空Bearerでは認証できない。環境キーの比較は固定長ハッシュ比較。スタッフキーはSHA-256保存、新規キーは `igh_`、既存 `lh_` キーも元の値で認証できる。
 - `TOKEN_ENCRYPTION_KEY` は32バイト乱数のbase64。セットアップが生成し、updateは既存secretを確認して未設定時だけ作る。新規・変更・refresh時のIG tokenはaccount IDをAADにしたAES-GCMで保存。既存の平文はcronで1回20件まで移行し、既定アカウントの旧singleton tokenを除去する。旧DBにキー未設定の間は読み取り互換が残るが、新規credential保存にはキーが必要。鍵を失うと復号できないので安全にバックアップし、安易にローテーションしない。
 - env tokenは初期seedと既定accountのrefresh復旧候補。通常の再接続はownerによる `PATCH /api/accounts/:id` の `accessToken`。envを変えただけで新しいDB tokenを上書きしない。refresh失敗/期限不明時の試行は1時間に1回まで。
-- CORSは同一originと `ADMIN_ORIGINS`（カンマ区切りの正確なorigin）のみ。setup/updateは保存済み管理画面originを設定する。独自ドメインを追加した場合は再確認する。管理画面のキーはsessionStorageとし旧localStorageキーを除去する。これはXSSを無害化する仕組みではない。
+- CORS・ブラウザ認証は下記「LINE移植ガイドの反映」でHttpOnlyセッション方式に更新。以前のADMIN_ORIGINSとBearerクライアントは互換維持。
 - `/line` は明示的なLINE_LIFF_IDまたはHTTPSのLINE_ADD_URLが必須。公開testページと作者個人のデフォルト値は削除。
 
 削除callbackはHMAC-SHA256 signed_requestを検証し、受付と確認コードをDBに保存する。Metaのapp-scoped user_idをIGSIDと同一視しない。このインストーラはOAuth identity mappingを保持していないため、自動で人物を推測せず `pending_identity` を表示する。
@@ -74,3 +74,22 @@ Grok指摘のうち、Webhookガイドの全文は元から枠の下に存在し
 - 回帰ケースを11件追加。`pnpm -r test`はinstaller 11件、ig-sdk 18件、SDK 46件、Worker 171件の計246件が通過。対象全packageのtypecheckも通過。
 
 OSS mainは `52fbba3` のままで競合なし。Private側には別の未コミット作業があるため上書きしていない。Privateへの統合、本番反映、タグ・npm公開、GitHubの必須チェック設定は公開後の別工程として扱う。
+
+
+## LINE移植ガイドの反映（※Codex修正後の挙動）
+
+対象はIGのみ。参照元LINEと別作業のThreadsは変更していない。
+
+- Cookie認証に先立ち `/t/:id` の保存型XSSを修正。HTTP(S) URLを作成時と遷移時の両方で検証し、JavaScript文字列はJSONシリアライズ＋ `<` / U+2028 / U+2029のエスケープを行う。CSP nonceを使う。`/connect`のtoken/username、`/line`のLIFF IDも形式検証し、公開HTMLのCSPを設定する。IG_USERNAMEが未設定の場合は503とし、仮のInstagramアカウントへ誘導しない。
+- 比較は固定長SHA-256へ統一し、空値は不一致。IG webhook challengeとLINE連携secretの呼び出しをasync/awaitへ変更。HMAC署名検証の正常系は維持する。SDKのverifyWebhookChallengeを直接使う利用者はawaitが必要。
+- CORSはLINEの主要ホスティングsuffix・Pagesプレビュー判定を参照し、ADMIN_ORIGINと資格情報付きリクエストへ対応。旧ADMIN_ORIGINSは互換名。設定不足を警告し、起動済みWorkerの既存origin secretはinstallerが上書きしない。手動で[vars]に置いたADMIN_*は更新前に同じ値をsecretへ移す。Worker更新には --keep-vars を付ける。
+- ブラウザはランダムIDのHttpOnly Cookieセッションに移行。APIキーをCookieやブラウザ永続領域へ保存しない。D1にはsession/credential/CSRFのハッシュを保存。CSRF二重送信に加えてsessionとの対応を検証し、Originも許可リストで確認する。キー再発行・スタッフ無効化・権限変更は次のリクエストに反映される。logoutはセッションを失効させる。
+- login本文は読み込み中に8KBで制限し、超過は保存処理前に413で止める。loginは10回/分/IP、全体は3000回/分/IP、Cookie・Bearerはcredential全体のハッシュで制限する。これはisolate内のバースト抑止であり、全拠点をまたぐ厳密な共有quotaではない。
+- `0020_admin_sessions.sql` は追加的なsession table。`0021_tracked_link_actions.sql` は実DBテストで見つかった旧tracked-link helperとcanonical schemaの不整合を直す補助列。既存の整数ID、destination_url、ref_code、click履歴を保持し、API側で従来のoriginalUrl等の名前に整える。リンク先タグ/シナリオが削除されたら参照だけNULLにする。
+- 既存のmigration ledger・SHA-256形式・staff鍵保存方式を維持。名前をLINE風へ変えるためだけのDB更新はしない。従来の0019修復を含む履歴をchecksum manifestで固定し、0020以降の破壊的DDLをCI・runnerで拒否する。SQLの文字列・識別子・コメントを考慮して判定する。
+- 適用後はcritical table/columnを実スキーマから確認し、履歴だけで成功扱いにしない。一時的なD1読み取りは最大3回。書き込みは既に成功している可能性があるため盲目的に再試行しない。
+- staff鍵は前回実装のCLI一括hash化を維持。ログイン待ちで平文を残す遅延移行や、別のhash列・rehash APIは追加しない。
+
+Cookie属性と資格情報付きfetchは [MDN Set-Cookie](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)、セッションに結び付けたCSRF検証は [OWASP CSRF Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html) を参照。HTTPテストとbuildはブラウザ固有のCookie制限や実Meta接続を証明するものではない。
+
+今回の移植後の確認: Worker 192件、ig-sdk 20件、SDK 46件、installer 14件、migration/policy/read-retry 8件、MCP stdio 1件（計281件）を通過。全対象のtypecheck、管理画面・Worker・installerのbuildも通過。既存のローカルD1へ0020/0021を適用し、スキーマ確認を通過した。リモートD1・実ブラウザ・実Meta送信は操作していない。

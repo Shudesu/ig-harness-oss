@@ -64,7 +64,7 @@ crons = ["*/5 * * * *"]
   try {
     let workerUrl: string;
     try {
-      const output = await wrangler(["deploy", "--config", deployTomlName], {
+      const output = await wrangler(["deploy", "--keep-vars", "--config", deployTomlName], {
         cwd: workerDir,
       });
       const urlMatch = output.match(WORKERS_DEV_URL);
@@ -79,12 +79,12 @@ crons = ["*/5 * * * *"]
       if (!isAuthError) throw firstError;
 
       s.stop("wrangler 認証更新のため対話モードで再実行します...");
-      await wrangler(["deploy", "--config", deployTomlName], {
+      await wrangler(["deploy", "--keep-vars", "--config", deployTomlName], {
         cwd: workerDir,
         tty: true,
       });
 
-      const output = await wrangler(["deploy", "--config", deployTomlName], {
+      const output = await wrangler(["deploy", "--keep-vars", "--config", deployTomlName], {
         cwd: workerDir,
       });
       const urlMatch = output.match(WORKERS_DEV_URL);

@@ -1,3 +1,5 @@
+import { ADMIN_SESSION_COOKIE, readCookie } from '../lib/admin-session.js';
+import { sha256 } from '../lib/security.js';
 /**
  * In-memory sliding window rate limiter for Cloudflare Workers.
  *
@@ -100,6 +102,13 @@ export async function rateLimitMiddleware(c: Context<Env>, next: Next): Promise<
     return next();
   }
 
+  const ip = getClientIp(c);
+  const ceiling = check(`ceiling:${ip}`, 3000, 60_000);
+  if (!ceiling.ok) return c.json({ success: false, error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(ceiling.retryAfter) } });
+  if (path === '/api/auth/login' && c.req.method === 'POST') {
+    const login = check(`login:${ip}`, 10, 60_000);
+    if (!login.ok) return c.json({ success: false, error: 'Too many login attempts' }, { status: 429, headers: { 'Retry-After': String(login.retryAfter) } });
+  }
   let key: string;
   let max: number;
   let windowMs: number;
@@ -112,10 +121,10 @@ export async function rateLimitMiddleware(c: Context<Env>, next: Next): Promise<
   } else {
     // Key by API key for authenticated endpoints
     const authHeader = c.req.header('Authorization');
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : readCookie(c, ADMIN_SESSION_COOKIE);
     if (token) {
-      // Use first 16 chars of token as key to avoid storing full secrets
-      key = `key:${token.slice(0, 16)}`;
+      // Hash the complete credential so shared prefixes cannot share/bypass buckets.
+      key = `key:${await sha256(token)}`;
       max = AUTHENTICATED_MAX;
       windowMs = AUTHENTICATED_WINDOW;
     } else {
@@ -140,3 +149,5 @@ export async function rateLimitMiddleware(c: Context<Env>, next: Next): Promise<
 
   c.header('X-RateLimit-Remaining', String(result.remaining));
 }
+
+export function resetRateLimitsForTests(): void { store.clear(); lastPrune = Date.now(); }

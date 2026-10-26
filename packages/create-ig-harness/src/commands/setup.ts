@@ -10,6 +10,7 @@ import { createDatabase } from "../steps/database.js";
 import { createR2Bucket } from "../steps/r2-bucket.js";
 import { deployWorker } from "../steps/deploy-worker.js";
 import { deployAdmin } from "../steps/deploy-admin.js";
+import { configureAdminAuth } from "../steps/admin-auth.js";
 import { setSecrets } from "../steps/secrets.js";
 import { generateMcpConfig } from "../steps/mcp-config.js";
 import { showWebhookGuide } from "../steps/webhook-guide.js";
@@ -221,7 +222,7 @@ export async function runSetup(repoDir: string): Promise<void> {
     p.log.success(`Admin UI: デプロイ済み（${state.adminUrl}）`);
   }
 
-  await wrangler(['secret', 'put', 'ADMIN_ORIGINS', '--name', workerName], { input: state.adminUrl! });
+  await configureAdminAuth(workerName, state.adminUrl!, state.workerUrl!);
   if (!isDone(state, 'account-subscription')) {
     await subscribeInstagramAccount(state.metaAccessToken!, state.igUserId!);
     markDone(state, 'account-subscription'); saveState(repoDir, state);

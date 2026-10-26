@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
 import { prepareRepository } from "../steps/clone-repo.js";
 import { ensureAuth } from "../steps/auth.js";
 import { setAccountId, wrangler } from "../lib/wrangler.js";
+import { configureAdminAuth } from "../steps/admin-auth.js";
 import { backupDatabase } from "../steps/backup.js";
 import { migrateDatabase } from "../steps/database.js";
 import { deployWorker } from "../steps/deploy-worker.js";
@@ -80,7 +81,7 @@ export async function runUpdate(repoDir: string): Promise<void> {
       await wrangler(['secret', 'put', 'TOKEN_ENCRYPTION_KEY', '--name', deployedState.workerName], { input: deployedState.tokenEncryptionKey });
     }
     if (deployedState.workerUrl) await wrangler(['secret', 'put', 'WORKER_URL', '--name', deployedState.workerName], { input: deployedState.workerUrl });
-    if (deployedState.adminUrl) await wrangler(['secret', 'put', 'ADMIN_ORIGINS', '--name', deployedState.workerName], { input: new URL(deployedState.adminUrl).origin });
+    await configureAdminAuth(deployedState.workerName, deployedState.adminUrl ?? `https://${adminProjectName}.pages.dev`, deployedState.workerUrl);
 
     // Deploy only to the fully recorded destination, preserving D1/R2 bindings.
     s.start("Worker 再デプロイ中...");

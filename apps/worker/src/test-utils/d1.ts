@@ -34,7 +34,11 @@ export async function testDatabase() {
   const db = { prepare: adapt, batch: async (statements: any[]) => {
     sqlite.exec('BEGIN');
     try {
-      const results = statements.map((s) => ({ success: true, results: [], meta: { changes: Number(sqlite.prepare(s.sql).run(...s.args).changes) } }));
+      const results = statements.map((s) => {
+        const prepared = sqlite.prepare(s.sql);
+        if (/\bRETURNING\b/i.test(s.sql)) return { success: true, results: prepared.all(...s.args), meta: { changes: Number(sqlite.prepare('SELECT changes() AS n').get()?.n ?? 0) } };
+        return { success: true, results: [], meta: { changes: Number(prepared.run(...s.args).changes) } };
+      });
       sqlite.exec('COMMIT'); return results;
     } catch (e) { sqlite.exec('ROLLBACK'); throw e; }
   } } as unknown as D1Database;

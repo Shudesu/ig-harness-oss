@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { loginAdmin } from '@/lib/api'
 import { BrandMark } from '@/components/brand'
 import { useRouter } from 'next/navigation'
 
@@ -15,39 +16,11 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL
-      if (!apiUrl) {
-        setError('NEXT_PUBLIC_API_URL is not set in build env')
-        setLoading(false)
-        return
-      }
-      const res = await fetch(`${apiUrl}/api/friends/count`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      })
-
-      if (res.ok) {
-        sessionStorage.setItem('igh_api_key', apiKey)
-        // Fetch staff profile for name display
-        try {
-          const profileRes = await fetch(`${apiUrl}/api/staff/me`, {
-            headers: { Authorization: `Bearer ${apiKey}` },
-          })
-          if (profileRes.ok) {
-            const profileData = await profileRes.json()
-            if (profileData.success && profileData.data) {
-              sessionStorage.setItem('igh_staff_name', profileData.data.name)
-              sessionStorage.setItem('igh_staff_role', profileData.data.role)
-            }
-          }
-        } catch {
-          // Profile fetch is best-effort
-        }
-        router.push('/')
-      } else {
-        setError('APIキーが正しくありません')
-      }
-    } catch {
-      setError('接続に失敗しました')
+      await loginAdmin(apiKey)
+      setApiKey('')
+      router.push('/')
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '接続に失敗しました')
     } finally {
       setLoading(false)
     }

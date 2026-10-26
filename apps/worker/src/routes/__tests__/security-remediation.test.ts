@@ -20,11 +20,17 @@ async function signed(secret: string, userId = '123') {
   return `${sig}.${payload}`;
 }
 it('escapes connect tokens, refuses fake deletion codes, and has no personal LINE default', async () => {
-  const { request } = await fixture(); const attack = '<script>alert(1)</script>';
+  const { request, env } = await fixture(); const attack = '<script>alert(1)</script>';
   const html = await (await request(`/connect?uid=x&token=${encodeURIComponent(attack)}`)).text();
   expect(html).not.toContain(attack); expect((await request(`/connect?uid=x&token=${encodeURIComponent(attack)}`)).status).toBe(400);
   expect((await request(`/data-deletion?code=${encodeURIComponent(attack)}`)).status).toBe(404);
   expect((await request('/line')).status).toBe(503); expect((await request('/line?test=1')).status).toBe(404);
+  expect((await request('/connect?uid=x&token=valid-token-123')).status).toBe(503);
+  env.IG_USERNAME = 'configured_account';
+  const connected = await request('/connect?uid=x&token=valid-token-123');
+  expect(connected.status).toBe(200); expect(await connected.text()).toContain('https://ig.me/m/configured_account');
+  env.IG_USERNAME = 'bad"><script>';
+  expect((await request('/connect?uid=x&token=valid-token-123')).status).toBe(503);
 });
 it('fails closed for blank bearer tokens and rejects disallowed origins', async () => {
   const { request, env } = await fixture(); env.API_KEY = '';

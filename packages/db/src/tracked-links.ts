@@ -36,7 +36,7 @@ export async function getTrackedLinks(
     binds.push(opts.accountId);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const stmt = db.prepare(`SELECT * FROM tracked_links ${where} ORDER BY created_at DESC`);
+  const stmt = db.prepare(`SELECT CAST(id AS TEXT) AS id, name, destination_url AS original_url, CAST(tag_id AS TEXT) AS tag_id, CAST(scenario_id AS TEXT) AS scenario_id, is_active, click_count, account_id, created_at, updated_at FROM tracked_links ${where} ORDER BY created_at DESC`);
   const result = binds.length > 0
     ? await stmt.bind(...binds).all<TrackedLink>()
     : await stmt.all<TrackedLink>();
@@ -48,7 +48,7 @@ export async function getTrackedLinkById(
   id: string,
 ): Promise<TrackedLink | null> {
   return db
-    .prepare(`SELECT * FROM tracked_links WHERE id = ?`)
+    .prepare(`SELECT CAST(id AS TEXT) AS id, name, destination_url AS original_url, CAST(tag_id AS TEXT) AS tag_id, CAST(scenario_id AS TEXT) AS scenario_id, is_active, click_count, account_id, created_at, updated_at FROM tracked_links WHERE id = ?`)
     .bind(id)
     .first<TrackedLink>();
 }
@@ -66,18 +66,14 @@ export async function createTrackedLink(
   db: D1Database,
   input: CreateTrackedLinkInput,
 ): Promise<TrackedLink> {
-  const id = crypto.randomUUID();
   const now = jstNow();
-
-  await db
-    .prepare(
-      `INSERT INTO tracked_links (id, name, original_url, tag_id, scenario_id, is_active, click_count, account_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
-    )
-    .bind(id, input.name, input.originalUrl, input.tagId ?? null, input.scenarioId ?? null, input.accountId ?? null, now, now)
-    .run();
-
-  return (await getTrackedLinkById(db, id))!;
+  const inserted = await db.prepare(`INSERT INTO tracked_links
+    (name,destination_url,ref_code,tag_id,scenario_id,is_active,click_count,account_id,created_at,updated_at)
+    VALUES(?,?,?,?,?,1,0,?,?,?) RETURNING id`)
+    .bind(input.name,input.originalUrl,crypto.randomUUID(),input.tagId ?? null,input.scenarioId ?? null,input.accountId ?? null,now,now)
+    .first<{ id: number }>();
+  if (!inserted) throw new Error('Tracked link creation failed');
+  return (await getTrackedLinkById(db, String(inserted.id)))!;
 }
 
 export async function deleteTrackedLink(db: D1Database, id: string): Promise<void> {
@@ -91,28 +87,12 @@ export async function recordLinkClick(
   trackedLinkId: string,
   friendId?: string | null,
 ): Promise<LinkClick> {
-  const id = crypto.randomUUID();
   const now = jstNow();
-
-  await db
-    .prepare(
-      `INSERT INTO link_clicks (id, tracked_link_id, friend_id, clicked_at)
-       VALUES (?, ?, ?, ?)`,
-    )
-    .bind(id, trackedLinkId, friendId ?? null, now)
-    .run();
-
-  await db
-    .prepare(
-      `UPDATE tracked_links SET click_count = click_count + 1, updated_at = ? WHERE id = ?`,
-    )
-    .bind(now, trackedLinkId)
-    .run();
-
-  return (await db
-    .prepare(`SELECT * FROM link_clicks WHERE id = ?`)
-    .bind(id)
-    .first<LinkClick>())!;
+  const results = await db.batch([
+    db.prepare('INSERT INTO link_clicks(link_id,follower_id,clicked_at) VALUES(?,?,?) RETURNING CAST(id AS TEXT) AS id, CAST(link_id AS TEXT) AS tracked_link_id, CAST(follower_id AS TEXT) AS friend_id, clicked_at').bind(trackedLinkId, friendId ?? null, now),
+    db.prepare('UPDATE tracked_links SET click_count=click_count+1, updated_at=? WHERE id=?').bind(now, trackedLinkId),
+  ]);
+  return results[0]!.results[0] as unknown as LinkClick;
 }
 
 export interface LinkClickWithFriend extends LinkClick {
@@ -125,10 +105,10 @@ export async function getLinkClicks(
 ): Promise<LinkClickWithFriend[]> {
   const result = await db
     .prepare(
-      `SELECT lc.*, f.name as friend_display_name
+      `SELECT CAST(lc.id AS TEXT) AS id, CAST(lc.link_id AS TEXT) AS tracked_link_id, CAST(lc.follower_id AS TEXT) AS friend_id, lc.clicked_at, f.name as friend_display_name
        FROM link_clicks lc
-       LEFT JOIN followers f ON f.id = lc.friend_id
-       WHERE lc.tracked_link_id = ?
+       LEFT JOIN followers f ON f.id = lc.follower_id
+       WHERE lc.link_id = ?
        ORDER BY lc.clicked_at DESC`,
     )
     .bind(trackedLinkId)
