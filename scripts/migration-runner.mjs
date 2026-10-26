@@ -21,6 +21,13 @@ export async function planLegacyMigration(name, sql, query) {
   if (name === '0016_messages_log_gate_source.sql' && (await tableSql(query, 'messages_log')).includes("'gate'")) return [];
   const planned = [];
   for (let statement of splitSql(sql)) {
+    // 0013 intentionally removed this index to retain repeat deliveries. An
+    // untracked DB may already contain those valid repeats; never recreate an
+    // obsolete constraint while adopting its historical migration ledger.
+    if (name === '0001_engagement_gates.sql' && /^CREATE UNIQUE INDEX IF NOT EXISTS uq_gate_deliveries_gate_follower\b/i.test(statement)) {
+      const columns = await query('PRAGMA table_info(engagement_gates)');
+      if (columns.some(column => column.name === 'allow_repeat')) continue;
+    }
     const add = statement.match(/^ALTER TABLE (\w+) ADD COLUMN (\w+) (\w+)/i);
     if (add) {
       const columns = await query(`PRAGMA table_info(${add[1]})`);
