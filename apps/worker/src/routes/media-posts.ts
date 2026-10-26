@@ -65,6 +65,27 @@ export function validateMediaPostInput(
     if (item.type !== 'image' && item.type !== 'video') {
       return "each media item type must be 'image' or 'video'";
     }
+    if (item.coverUrl !== undefined || item.thumbOffset !== undefined) {
+      if (postType !== 'reel') return 'coverUrl / thumbOffset はリール専用です';
+      if (item.coverUrl !== undefined && item.thumbOffset !== undefined) {
+        return '表紙画像 (coverUrl) と動画内の位置 (thumbOffset) はどちらか一方を指定してください';
+      }
+      if (item.coverUrl !== undefined) {
+        try {
+          if (typeof item.coverUrl !== 'string') throw new Error('invalid URL');
+          const url = new URL(item.coverUrl);
+          if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) {
+            throw new Error('invalid URL');
+          }
+        } catch {
+          return 'coverUrl は認証情報やフラグメントを含まない公開 http(s) URL を指定してください';
+        }
+      }
+      if (item.thumbOffset !== undefined &&
+          (typeof item.thumbOffset !== 'number' || !Number.isSafeInteger(item.thumbOffset) || item.thumbOffset < 0)) {
+        return 'thumbOffset は0以上の整数（ミリ秒）を指定してください';
+      }
+    }
   }
   switch (postType) {
     case 'feed_image':
@@ -126,7 +147,7 @@ mediaPosts.post('/api/media-posts', async (c) => {
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   let body: {
     post_type?: MediaPostType;
-    media?: MediaPostMediaItem[];
+    media?: Array<{ url: string; type: 'image' | 'video'; cover_url?: string; thumb_offset?: number }>;
     caption?: string;
     scheduled_at?: string;
   };
@@ -135,7 +156,16 @@ mediaPosts.post('/api/media-posts', async (c) => {
   } catch {
     return c.json({ success: false, error: 'invalid JSON body' }, 400);
   }
-  const validationError = validateMediaPostInput(body.post_type as MediaPostType, body.media ?? []);
+  if (!body || typeof body !== 'object') {
+    return c.json({ success: false, error: 'JSON body must be an object' }, 400);
+  }
+  const media: MediaPostMediaItem[] = Array.isArray(body.media) ? body.media.map((item) => item && ({
+    url: item.url,
+    type: item.type,
+    coverUrl: item.cover_url,
+    thumbOffset: item.thumb_offset,
+  })) : [];
+  const validationError = validateMediaPostInput(body.post_type as MediaPostType, media);
   if (validationError) return c.json({ success: false, error: validationError }, 400);
   let normalizedScheduledAt: string | null = null;
   if (body.scheduled_at) {
@@ -149,7 +179,7 @@ mediaPosts.post('/api/media-posts', async (c) => {
   const post = await createMediaPost(c.env.DB, {
     accountId: account.id,
     postType: body.post_type as MediaPostType,
-    media: body.media as MediaPostMediaItem[],
+    media,
     caption: body.caption ?? null,
     // Normalize to JST (+09:00) — due-check is a SQL string compare, so a
     // client-sent "Z" timestamp must not be stored as-is (see Task 1 note).

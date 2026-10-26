@@ -6,6 +6,10 @@ export type MediaPostStatus = 'scheduled' | 'processing' | 'published' | 'failed
 export interface MediaPostMediaItem {
   url: string;
   type: 'image' | 'video';
+  /** Reel only: public JPEG URL; must remain accessible until publishing completes. */
+  coverUrl?: string;
+  /** Reel only: frame position in milliseconds. Choose this OR coverUrl. */
+  thumbOffset?: number;
 }
 
 export interface MediaPost {

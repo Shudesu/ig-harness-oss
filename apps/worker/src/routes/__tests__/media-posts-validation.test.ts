@@ -51,6 +51,26 @@ describe('validateMediaPostInput', () => {
   });
 });
 
+describe('reel cover validation', () => {
+  it('accepts an image URL or a frame offset including zero', () => {
+    for (const option of [{ coverUrl: 'https://example.com/cover.jpg' }, { thumbOffset: 0 }, { thumbOffset: 1500 }]) {
+      expect(validateMediaPostInput('reel', [{ ...vid, ...option }])).toBeNull();
+    }
+  });
+  it('rejects both choices instead of silently ignoring the frame', () => {
+    expect(validateMediaPostInput('reel', [{ ...vid, coverUrl: 'https://example.com/c.jpg', thumbOffset: 0 }])).toMatch(/どちらか/);
+  });
+  it.each(['story', 'feed_image', 'carousel'] as const)('rejects reel options on %s', (postType) => {
+    expect(validateMediaPostInput(postType, [{ ...img, thumbOffset: 0 }])).toMatch(/リール専用/);
+  });
+  it.each(['', 'not a url', 'https://', 'data:image/jpeg;base64,AA', 'file:///c.jpg', 'https://user:pass@example.com/c.jpg', 'https://example.com/c.jpg#preview', null, 1])('rejects invalid cover URL %s', (coverUrl) => {
+    expect(validateMediaPostInput('reel', [{ ...vid, coverUrl } as never])).toMatch(/coverUrl/);
+  });
+  it.each([-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1000', null])('rejects invalid frame offset %s', (thumbOffset) => {
+    expect(validateMediaPostInput('reel', [{ ...vid, thumbOffset } as never])).toMatch(/thumbOffset/);
+  });
+});
+
 describe('normalizeScheduledAt', () => {
   it('interprets an offset-less string as JST', () => {
     const result = normalizeScheduledAt('2026-07-24T09:00:00');

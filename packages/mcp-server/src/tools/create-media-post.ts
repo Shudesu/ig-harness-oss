@@ -19,6 +19,12 @@ export function registerCreateMediaPost(server: McpServer): void {
           z.object({
             url: z.string().url().describe("Public http(s) URL of the media file"),
             type: z.enum(["image", "video"]),
+            cover_url: z.string().url().optional().describe(
+              "Reel only: public JPEG cover image URL. Must remain accessible until publishing completes. Choose this OR thumb_offset.",
+            ),
+            thumb_offset: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional().describe(
+              "Reel only: cover frame position in milliseconds (0 = first frame), within video duration. Choose this OR cover_url.",
+            ),
           }),
         )
         .min(1)
@@ -36,7 +42,9 @@ export function registerCreateMediaPost(server: McpServer): void {
         const client = getClient();
         const post = await client.mediaPosts.create({
           postType: post_type,
-          media,
+          media: media.map(({ url, type, cover_url, thumb_offset }) => ({
+            url, type, coverUrl: cover_url, thumbOffset: thumb_offset,
+          })),
           caption,
           scheduledAt: scheduled_at,
         });

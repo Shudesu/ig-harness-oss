@@ -132,3 +132,28 @@ finally {
 it('does not leave an incomplete legacy processing carousel spinning forever',async()=>{
  const f=await fixture('carousel');try{f.sqlite.exec("UPDATE media_posts SET status='processing',phase='pending',creation_id=NULL,child_creation_ids=NULL");await processMediaPosts(f.db,f.client as any,'a');expect((await f.row())?.status).toBe('failed');expect(f.client.createMediaContainer).not.toHaveBeenCalled();}finally{f.sqlite.close();}
 });
+
+
+it.each([{ coverUrl: 'https://example.com/cover.jpg' }, { thumbOffset: 0 }, { thumbOffset: 1250 }])('preserves persisted reel options during scheduled publishing: %j', async (options) => {
+  const f = await fixture('reel');
+  try {
+    f.sqlite.prepare('UPDATE media_posts SET media=?').run(JSON.stringify([{ url: 'https://example.com/v.mp4', type: 'video', ...options }]));
+    await processMediaPosts(f.db, f.client as any, 'a');
+    expect(f.client.createMediaContainer).toHaveBeenCalledWith(expect.objectContaining({ mediaType: 'REELS', ...options }));
+    expect((await f.row())?.status).toBe('published');
+  } finally { f.sqlite.close(); }
+});
+it('keeps the cover for immediate publication and never retries an unknown creation without it', async () => {
+  const f = await fixture('reel');
+  try {
+    const coverUrl = 'https://example.com/cover.jpg';
+    f.sqlite.prepare('UPDATE media_posts SET media=?').run(JSON.stringify([{ url: 'https://example.com/v.mp4', type: 'video', coverUrl }]));
+    f.client.createMediaContainer.mockRejectedValueOnce(new Error('network disconnected'));
+    await kickImmediate(f.db, f.client as any, f.post.id);
+    await kickImmediate(f.db, f.client as any, f.post.id);
+    expect(f.client.createMediaContainer).toHaveBeenCalledOnce();
+    expect(f.client.createMediaContainer).toHaveBeenCalledWith(expect.objectContaining({ coverUrl }));
+    expect(f.client.publishMedia).not.toHaveBeenCalled();
+    expect((await f.row())?.phase).toBe('uncertain');
+  } finally { f.sqlite.close(); }
+});

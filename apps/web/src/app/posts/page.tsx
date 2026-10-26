@@ -8,6 +8,7 @@ import {
   type MediaPostType,
 } from '@/lib/api'
 import Header from '@/components/layout/header'
+import { prepareReelCover } from '@/lib/reel-cover'
 
 const TYPE_LABELS: Record<MediaPostType, string> = {
   feed_image: 'フィード画像',
@@ -53,6 +54,11 @@ export default function PostsPage() {
   const [postType, setPostType] = useState<MediaPostType>('feed_image')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [mediaItems, setMediaItems] = useState<MediaPostMediaItem[]>([])
+  const [coverMode, setCoverMode] = useState<'auto' | 'image' | 'frame'>('auto')
+  const [coverUrl, setCoverUrl] = useState('')
+  const [thumbSeconds, setThumbSeconds] = useState('0')
+  const [videoDuration, setVideoDuration] = useState<number | null>(null)
+  const [coverUploading, setCoverUploading] = useState(false)
   const [caption, setCaption] = useState('')
   const [mode, setMode] = useState<'now' | 'schedule'>('now')
   const [scheduledAt, setScheduledAt] = useState('')
@@ -92,11 +98,28 @@ export default function PostsPage() {
         const { url } = await mediaPostsApi.uploadMedia(file)
         uploaded.push({ url, type: file.type.startsWith('video/') ? 'video' : 'image' })
       }
-      setMediaItems((prev) => [...prev, ...uploaded])
+      setVideoDuration(null)
+      setMediaItems((prev) => postType === 'carousel' ? [...prev, ...uploaded] : uploaded)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'アップロードに失敗しました')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleCover = async (file: File | undefined) => {
+    if (!file) return
+    setCoverUploading(true)
+    setCoverUrl('')
+    setFormError('')
+    try {
+      const jpeg = await prepareReelCover(file)
+      const { url } = await mediaPostsApi.uploadMedia(jpeg, 'reel-cover')
+      setCoverUrl(url)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : '表紙のアップロードに失敗しました')
+    } finally {
+      setCoverUploading(false)
     }
   }
 
@@ -110,15 +133,37 @@ export default function PostsPage() {
       setFormError('予約日時を指定してください')
       return
     }
+    let media = mediaItems
+    if (postType === 'reel') {
+      if (coverMode === 'image' && !coverUrl) {
+        setFormError('表紙画像をアップロードしてください')
+        return
+      }
+      const offset = Math.round(Number(thumbSeconds) * 1000)
+      if (coverMode === 'frame' && (!thumbSeconds.trim() || !Number.isSafeInteger(offset) || Number(thumbSeconds) < 0 ||
+          (videoDuration !== null && offset >= videoDuration * 1000))) {
+        setFormError('表紙の位置は0秒以上、動画の長さ未満で指定してください')
+        return
+      }
+      media = mediaItems.map((item) => ({
+        ...item,
+        ...(coverMode === 'image' ? { coverUrl } : {}),
+        ...(coverMode === 'frame' ? { thumbOffset: offset } : {}),
+      }))
+    }
     setSubmitting(true)
     try {
       await mediaPostsApi.create({
         postType,
-        media: mediaItems,
+        media,
         caption: caption || undefined,
         scheduledAt: mode === 'schedule' ? new Date(scheduledAt).toISOString() : undefined,
       })
       setMediaItems([])
+      setCoverMode('auto')
+      setCoverUrl('')
+      setThumbSeconds('0')
+      setVideoDuration(null)
       setCaption('')
       setScheduledAt('')
       setMode('now')
@@ -169,9 +214,14 @@ export default function PostsPage() {
             {(Object.keys(TYPE_LABELS) as MediaPostType[]).map((t) => (
               <button
                 key={t}
+                disabled={uploading || coverUploading || submitting}
                 onClick={() => {
                   setPostType(t)
                   setMediaItems([])
+                  setCoverMode('auto')
+                  setCoverUrl('')
+                  setThumbSeconds('0')
+                  setVideoDuration(null)
                 }}
                 style={{
                   padding: '6px 14px',
@@ -199,13 +249,13 @@ export default function PostsPage() {
               // allow re-selecting the same file after removal
               e.target.value = ''
             }}
-            disabled={uploading}
+            disabled={uploading || coverUploading || submitting}
             style={{ display: 'none' }}
           />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || coverUploading || submitting}
             style={{
               width: '100%',
               padding: '20px 16px',
@@ -239,10 +289,15 @@ export default function PostsPage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={item.url} alt="" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8 }} />
                   ) : (
-                    <video src={item.url} style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8 }} />
+                    <video src={item.url} preload="metadata" muted playsInline
+                      onLoadedMetadata={(e) => {
+                        if (postType === 'reel' && Number.isFinite(e.currentTarget.duration)) setVideoDuration(e.currentTarget.duration)
+                      }}
+                      style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8 }} />
                   )}
                   <button
-                    onClick={() => setMediaItems((prev) => prev.filter((_, j) => j !== i))}
+                    disabled={uploading || coverUploading || submitting}
+                    onClick={() => { setMediaItems((prev) => prev.filter((_, j) => j !== i)); setVideoDuration(null) }}
                     style={{ position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, border: 'none', background: '#111827', color: 'white', fontSize: 11, cursor: 'pointer' }}
                     aria-label="削除"
                   >
@@ -251,6 +306,42 @@ export default function PostsPage() {
                 </div>
               ))}
             </div>
+          )}
+
+          {postType === 'reel' && (
+            <fieldset disabled={coverUploading || uploading || submitting} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, margin: '16px 0' }}>
+              <legend style={{ fontSize: 14, fontWeight: 600 }}>リールの表紙</legend>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>
+                <label><input type="radio" name="reel-cover" checked={coverMode === 'auto'} onChange={() => setCoverMode('auto')} /> 自動</label>
+                <label><input type="radio" name="reel-cover" checked={coverMode === 'image'} onChange={() => setCoverMode('image')} /> 画像をアップロード</label>
+                <label><input type="radio" name="reel-cover" checked={coverMode === 'frame'} onChange={() => setCoverMode('frame')} /> 動画内の位置を指定</label>
+              </div>
+              {coverMode === 'image' && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: 'block', fontSize: 13 }}>
+                    表紙画像（JPG / PNG / WebP、5MBまで）
+                    <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'block', marginTop: 8 }} onChange={(e) => {
+                      void handleCover(e.target.files?.[0])
+                      e.target.value = ''
+                    }} />
+                  </label>
+                  {coverUploading && <p role="status" style={{ fontSize: 13 }}>表紙をアップロード中…</p>}
+                  {coverUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={coverUrl} alt="選択したリールの表紙" style={{ width: 108, height: 192, objectFit: 'contain', marginTop: 8, borderRadius: 6 }} />
+                  )}
+                  <p style={{ fontSize: 12, color: '#6B7280', marginTop: 8 }}>縦長9:16を推奨します。画像は予約投稿用に保存されます。公開が完了するまで画像一覧から削除しないでください。</p>
+                </div>
+              )}
+              {coverMode === 'frame' && (
+                <label style={{ display: 'block', fontSize: 13, marginTop: 12 }}>
+                  動画の先頭から
+                  <input type="number" min="0" step="0.001" value={thumbSeconds} onChange={(e) => setThumbSeconds(e.target.value)} style={{ width: 100, margin: '0 8px', padding: 6, border: '1px solid #D1D5DB', borderRadius: 6 }} />
+                  秒のフレームを表紙にする
+                  {videoDuration !== null && <span style={{ display: 'block', color: '#6B7280', marginTop: 4 }}>動画の長さ: {videoDuration.toFixed(2)}秒（指定位置はこの長さ未満）</span>}
+                </label>
+              )}
+            </fieldset>
           )}
 
           {postType !== 'story' && (
@@ -289,7 +380,7 @@ export default function PostsPage() {
 
           <button
             onClick={() => void submit()}
-            disabled={submitting || uploading}
+            disabled={submitting || uploading || coverUploading}
             style={{ marginTop: 16, padding: '10px 24px', borderRadius: 8, border: 'none', background: '#E1306C', color: 'white', fontWeight: 600, cursor: 'pointer', opacity: submitting ? 0.6 : 1 }}
           >
             {submitting ? '送信中…' : mode === 'now' ? '投稿する' : '予約する'}
@@ -309,9 +400,9 @@ export default function PostsPage() {
               const badge = STATUS_BADGES[post.status] ?? STATUS_BADGES.canceled
               return (
                 <div key={post.id} style={{ border: '1px solid #E5E7EB', borderRadius: 12, padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                  {post.media[0] && post.media[0].type === 'image' ? (
+                  {post.media[0] && (post.media[0].type === 'image' || post.media[0].coverUrl) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={post.media[0].url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+                    <img src={post.media[0].coverUrl || post.media[0].url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
                   ) : (
                     <div style={{ width: 72, height: 72, borderRadius: 8, background: '#F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>🎬</div>
                   )}
@@ -323,6 +414,11 @@ export default function PostsPage() {
                         <span style={{ fontSize: 12, color: '#9CA3AF' }}>{post.media.length}枚</span>
                       )}
                     </div>
+                    {post.postType === 'reel' && (
+                      <p style={{ fontSize: 12, color: '#6B7280', margin: '4px 0' }}>
+                        {post.media[0]?.coverUrl ? '表紙: アップロード画像' : post.media[0]?.thumbOffset !== undefined ? `表紙: 動画の${post.media[0].thumbOffset / 1000}秒` : '表紙: 自動'}
+                      </p>
+                    )}
                     {post.caption && (
                       <p style={{ fontSize: 13, color: '#4B5563', margin: '4px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.caption}</p>
                     )}

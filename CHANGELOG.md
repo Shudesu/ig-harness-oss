@@ -6,6 +6,8 @@
 - Persist carousel child IDs and wait for FINISHED before the parent. Claim mutation phases and do not automatically repeat unknown publications.
 - Add migration 0022 and delivery-status UI. See docs/operations/meta-api-audit-20261026.md for compatibility, review/access conditions and live validation still required.
 
+- Preserve the existing production reel-cover controls and cover_url / thumb_offset through scheduled and immediate publication.
+
 # Changelog
 
 ## [0.12.0] - 2026-07-23

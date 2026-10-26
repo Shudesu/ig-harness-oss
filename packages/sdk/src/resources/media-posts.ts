@@ -13,7 +13,9 @@ export class MediaPostsResource {
   async create(input: CreateMediaPostInput): Promise<MediaPost> {
     const res = await this.http.post<ApiResponse<MediaPost>>('/api/media-posts', {
       post_type: input.postType,
-      media: input.media,
+      media: input.media.map(({ url, type, coverUrl, thumbOffset }) => ({
+        url, type, cover_url: coverUrl, thumb_offset: thumbOffset,
+      })),
       caption: input.caption,
       scheduled_at: input.scheduledAt,
     })

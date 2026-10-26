@@ -327,6 +327,10 @@ export class InstagramClient {
       qs.set('children', params.children.join(','));
     }
     if (params.isCarouselItem) qs.set('is_carousel_item', 'true');
+    if (params.mediaType === 'REELS') {
+      if (params.coverUrl) qs.set('cover_url', params.coverUrl);
+      else if (params.thumbOffset !== undefined) qs.set('thumb_offset', String(params.thumbOffset));
+    }
     const result=await this.request<{id:string}>('POST', `/${this.igUserId}/media?${qs.toString()}`);
     if (typeof result?.id!=='string' || !result.id) throw new InstagramTransportError(false);
     return result;
