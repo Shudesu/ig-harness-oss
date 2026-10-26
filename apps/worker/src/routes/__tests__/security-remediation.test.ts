@@ -22,7 +22,7 @@ async function signed(secret: string, userId = '123') {
 it('escapes connect tokens, refuses fake deletion codes, and has no personal LINE default', async () => {
   const { request } = await fixture(); const attack = '<script>alert(1)</script>';
   const html = await (await request(`/connect?uid=x&token=${encodeURIComponent(attack)}`)).text();
-  expect(html).not.toContain(attack); expect(html).toContain('&lt;script&gt;');
+  expect(html).not.toContain(attack); expect((await request(`/connect?uid=x&token=${encodeURIComponent(attack)}`)).status).toBe(400);
   expect((await request(`/data-deletion?code=${encodeURIComponent(attack)}`)).status).toBe(404);
   expect((await request('/line')).status).toBe(503); expect((await request('/line?test=1')).status).toBe(404);
 });

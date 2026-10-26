@@ -7,7 +7,8 @@ export async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function constantTimeEqual(left: string, right: string): Promise<boolean> {
+export async function constantTimeEqual(left: string | null | undefined, right: string | null | undefined): Promise<boolean> {
+  if (!left || !right) return false;
   const [a, b] = await Promise.all([sha256(left), sha256(right)]);
   let difference = 0;
   for (let i = 0; i < a.length; i++) difference |= a.charCodeAt(i) ^ b.charCodeAt(i);

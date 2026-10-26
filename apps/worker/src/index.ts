@@ -1,3 +1,4 @@
+import { publicPageHeaders } from './lib/html.js';
 import { beginActivity, endActivity } from './lib/activity.js';
 import { scheduledWork } from './lib/scheduled-work.js';
 import { encryptLegacyAccountTokens } from './lib/token-crypto.js';
@@ -78,6 +79,11 @@ app.use('*', cors({ origin: (origin, c) => {
   return allowed.includes(origin) ? origin : null;
 } }));
 
+app.use('*', async (c, next) => {
+  if (['/connect','/line','/data-deletion','/privacy-policy','/terms-of-service'].includes(c.req.path)) publicPageHeaders(c);
+  await next();
+});
+
 // Rate limiting — runs before auth to block abuse early
 app.use('*', rateLimitMiddleware);
 
@@ -129,9 +135,10 @@ app.route('/', mediaPosts);
 app.get('/connect', (c) => {
   const uid = c.req.query('uid');
   const token = c.req.query('token');
-  if (!uid || !token) {
+  if (!uid || !token || !/^[A-Za-z0-9_-]{8,128}$/.test(token)) {
     return c.html(`<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Invalid link</h1></body></html>`, 400);
   }
+  if (c.env.IG_USERNAME && !/^[A-Za-z0-9._]{1,30}$/.test(c.env.IG_USERNAME)) return c.text('Invalid Instagram username configuration', 503);
   // Show page that instructs user to send the token via IG DM
   return c.html(`<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -159,7 +166,7 @@ app.get('/line', (c) => {
   const liffId = c.env.LINE_LIFF_ID;
   const lineAddUrl = c.env.LINE_ADD_URL;
   if (!liffId && !lineAddUrl) return c.text('LINE integration is not configured', 503);
-  if (liffId && !/^[A-Za-z0-9-]+$/.test(liffId)) return c.text('Invalid LINE configuration', 503);
+  if (liffId && !/^\d+-[A-Za-z0-9]+$/.test(liffId)) return c.text('Invalid LINE configuration', 503);
   let target: URL;
   try {
     target = new URL(liffId ? `https://liff.line.me/${liffId}` : lineAddUrl!);

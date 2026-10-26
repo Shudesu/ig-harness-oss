@@ -27,21 +27,21 @@ function createMockDb() {
 }
 
 describe('verifyLinkSecret', () => {
-  it('returns true when header matches secret (timing-safe)', () => {
-    expect(verifyLinkSecret('secret-abc', 'secret-abc')).toBe(true);
+  it('returns true when header matches secret (timing-safe)', async () => {
+    expect(await verifyLinkSecret('secret-abc', 'secret-abc')).toBe(true);
   });
 
-  it('returns false on mismatch', () => {
-    expect(verifyLinkSecret('secret-abc', 'wrong')).toBe(false);
+  it('returns false on mismatch', async () => {
+    expect(await verifyLinkSecret('secret-abc', 'wrong')).toBe(false);
   });
 
-  it('returns false when header missing', () => {
-    expect(verifyLinkSecret('secret-abc', undefined)).toBe(false);
-    expect(verifyLinkSecret('secret-abc', '')).toBe(false);
+  it('returns false when header missing', async () => {
+    expect(await verifyLinkSecret('secret-abc', undefined)).toBe(false);
+    expect(await verifyLinkSecret('secret-abc', '')).toBe(false);
   });
 
-  it('returns false when configured secret is empty', () => {
-    expect(verifyLinkSecret('', 'whatever')).toBe(false);
+  it('returns false when configured secret is empty', async () => {
+    expect(await verifyLinkSecret('', 'whatever')).toBe(false);
   });
 });
 

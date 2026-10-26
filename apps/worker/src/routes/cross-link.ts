@@ -9,7 +9,7 @@ const crossLink = new Hono<Env>();
 crossLink.post('/api/followers/link-line', async (c) => {
   const provided = c.req.header('X-LINE-HARNESS-LINK-SECRET');
   const configured = c.env.LINE_HARNESS_LINK_SECRET ?? '';
-  if (!verifyLinkSecret(configured, provided)) {
+  if (!await verifyLinkSecret(configured, provided)) {
     return c.json({ success: false, error: 'unauthorized' }, 401);
   }
   let body: { igsid?: string; line_friend_uuid?: string };

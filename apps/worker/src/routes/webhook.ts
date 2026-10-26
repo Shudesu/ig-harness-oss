@@ -59,7 +59,7 @@ webhook.get('/webhook', async (c) => {
   const expectedTokens = [c.env.IG_VERIFY_TOKEN, ...accounts.map((a) => a.verify_token)]
     .filter((t): t is string => !!t);
   for (const expected of expectedTokens) {
-    const result = verifyWebhookChallenge(mode, token, challenge, expected);
+    const result = await verifyWebhookChallenge(mode, token, challenge, expected);
     if (result) {
       return c.text(result, 200);
     }
