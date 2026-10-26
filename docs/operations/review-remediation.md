@@ -62,3 +62,15 @@ Grok指摘のうち、Webhookガイドの全文は元から枠の下に存在し
 - `pnpm install --frozen-lockfile` を確認。ローカルD1で全19 migrationを適用し、再実行時に重複適用しないことを確認。
 - 外部ディスクでのテスト並列I/Oによる5秒timeoutを確認したため、fixtureのスキーマ読み取りをプロセス単位で再利用しWorkerテスト並列数を2に制限。DB自体はテストごとに新規作成し、タイムアウト値を延ばして隠す変更はしていない。
 - 本番DB・実配信・公開リポジトリ設定は変更していない。
+
+
+## 継続確認: 初期導入・更新・配信開始の競合
+
+- `--repo-dir`指定とrepo内からのsetupでも、固定lockfileで依存を導入しライブラリをbuildする。明示指定の作業コピーをgit pullしない。別製品のworkspaceは拒否する。
+- updateは保存済みWorker URLで管理画面を先にbuildし、成功してからバックアップ・migration・反映へ進む。ローカルbuild失敗時はリモート変更を開始しない。
+- Pages反映先は保存済みadminProjectName、または保存済みの正規 `*.pages.dev` URLから確定する。APIキー断片・一覧の先頭プロジェクトから推測しない。独自ドメインだけを保存している旧構成では、実在するadminProjectNameを補う。
+- migration成功後にWorker/Pages反映が失敗した場合も、バックアップの保存先と一部反映の可能性を表示する。
+- broadcastの開始は状態更新と行取得を一つのSQLで実行する。先に成立した編集を含む本文を使用し、開始後の編集・削除はDBの条件付き更新でも拒否する。不正なtag filterは開始前に止める。
+- 回帰ケースを11件追加。`pnpm -r test`はinstaller 11件、ig-sdk 18件、SDK 46件、Worker 171件の計246件が通過。対象全packageのtypecheckも通過。
+
+OSS mainは `52fbba3` のままで競合なし。Private側には別の未コミット作業があるため上書きしていない。Privateへの統合、本番反映、タグ・npm公開、GitHubの必須チェック設定は公開後の別工程として扱う。

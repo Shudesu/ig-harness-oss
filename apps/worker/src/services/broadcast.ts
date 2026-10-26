@@ -22,18 +22,27 @@ export async function processBroadcastSend(
   db: D1Database, igClient: InstagramClient, broadcastId: number | string,
   _workerUrl?: string, accountId?: string,
 ): Promise<Broadcast> {
-  const broadcast = await getBroadcastById(db, broadcastId);
+  let broadcast = await getBroadcastById(db, broadcastId);
   if (!broadcast) throw new Error(`Broadcast ${broadcastId} not found`);
   if (!broadcast.account_id || (accountId && broadcast.account_id !== accountId)) throw new Error('Broadcast account mismatch');
   if (broadcast.status === 'sent') return broadcast;
+  // Validate before claiming, then use the row returned by the atomic claim:
+  // an edit may have won after our initial read. Editing/deleting helpers also
+  // check status in SQL, so the claimed message stays immutable during resume.
+  validateBroadcastMessage(broadcast.message_type, JSON.parse(broadcast.body));
+  parseBroadcastTagFilter(broadcast.tag_filter);
+  if (broadcast.status === 'draft' || broadcast.status === 'scheduled') {
+    const claimed = await db.prepare("UPDATE broadcasts SET status='sending', updated_at=? WHERE id=? AND account_id=? AND status IN ('draft','scheduled') RETURNING *")
+      .bind(new Date().toISOString(), broadcast.id, broadcast.account_id).first<Broadcast>();
+    broadcast = claimed ?? await getBroadcastById(db, broadcast.id);
+    if (!broadcast) throw new Error('Broadcast was deleted before delivery started');
+    if (broadcast.status === 'sent') return broadcast;
+    if (broadcast.status !== 'sending') throw new Error('Broadcast could not be claimed');
+  }
+  if (!broadcast.account_id || (accountId && broadcast.account_id !== accountId)) throw new Error('Broadcast account mismatch');
   const body = JSON.parse(broadcast.body) as Record<string, unknown>;
   validateBroadcastMessage(broadcast.message_type, body);
-  let tagId: string | number | undefined;
-  if (broadcast.tag_filter) {
-    const filter = JSON.parse(broadcast.tag_filter);
-    if (!filter.tagId || !['string', 'number'].includes(typeof filter.tagId)) throw new Error('tag_filter must contain tagId');
-    tagId = filter.tagId;
-  }
+  const tagId = parseBroadcastTagFilter(broadcast.tag_filter);
   const now = new Date().toISOString();
   const cutoff = new Date(Date.now() - WINDOW_MS).toISOString();
   // A single transactional INSERT SELECT snapshots recipients in D1 without
@@ -49,7 +58,6 @@ export async function processBroadcastSend(
       AND NOT EXISTS (SELECT 1 FROM broadcast_runs WHERE broadcast_id=?)`)
       .bind(broadcast.id, cutoff, cutoff, broadcast.account_id, ...(tagId !== undefined ? [tagId] : []), broadcast.id),
     db.prepare('INSERT OR IGNORE INTO broadcast_runs (broadcast_id, started_at) VALUES (?, ?)').bind(broadcast.id, now),
-    db.prepare("UPDATE broadcasts SET status='sending', updated_at=? WHERE id=? AND status IN ('draft','scheduled')").bind(now, broadcast.id),
     db.prepare("UPDATE broadcast_recipients SET status='uncertain', reason='interrupted' WHERE broadcast_id=? AND status='processing' AND julianday(attempted_at)<julianday(?)")
       .bind(broadcast.id, new Date(Date.now() - 5 * 60_000).toISOString()),
   ]);
@@ -99,6 +107,15 @@ export async function processScheduledBroadcasts(db: D1Database, client: Instagr
     try { await processBroadcastSend(db, client, row.id, workerUrl, accountId); }
     catch (error) { console.error(`Broadcast processing failed: ${row.id}`, error); }
   }
+}
+
+export function parseBroadcastTagFilter(raw: string | null | undefined): string | number | undefined {
+  if (raw === null || raw === undefined || raw === '') return undefined;
+  if (typeof raw !== 'string') throw new Error('tag_filter must be a JSON string');
+  const tagId: unknown = JSON.parse(raw)?.tagId;
+  if (typeof tagId === 'string' && tagId.trim()) return tagId;
+  if (typeof tagId === 'number' && Number.isSafeInteger(tagId) && tagId > 0) return tagId;
+  throw new Error('tag_filter must contain a valid tagId');
 }
 
 export function validateBroadcastMessage(type: string, body: Record<string, unknown>): void {

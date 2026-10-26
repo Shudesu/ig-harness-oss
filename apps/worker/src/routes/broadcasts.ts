@@ -8,7 +8,7 @@ import {
   getIgAccountById,
 } from '@ig-harness/db';
 import type { Broadcast as DbBroadcast, BroadcastMessageType } from '@ig-harness/db';
-import { processBroadcastSend, broadcastSummary, validateBroadcastMessage } from '../services/broadcast.js';
+import { processBroadcastSend, broadcastSummary, validateBroadcastMessage, parseBroadcastTagFilter } from '../services/broadcast.js';
 import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
@@ -89,6 +89,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
     try {
       validateBroadcastMessage(reqBody.messageType, JSON.parse(reqBody.body));
       if (reqBody.scheduledAt && !Number.isFinite(Date.parse(reqBody.scheduledAt))) throw new Error('Invalid scheduledAt');
+      parseBroadcastTagFilter(reqBody.tagFilter);
     } catch { return c.json({ success: false, error: 'Invalid message body or scheduledAt' }, 400); }
     const broadcast = await createBroadcast(c.env.DB, {
       name: reqBody.name,
@@ -134,6 +135,11 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       statusUpdate = reqBody.scheduledAt ? 'scheduled' : 'draft';
     }
 
+    try {
+      validateBroadcastMessage(reqBody.messageType ?? existing.message_type, JSON.parse(reqBody.body ?? existing.body));
+      if (reqBody.scheduledAt && !Number.isFinite(Date.parse(reqBody.scheduledAt))) throw new Error();
+      parseBroadcastTagFilter(reqBody.tagFilter ?? existing.tag_filter);
+    } catch { return c.json({ success: false, error: 'Invalid message body, tag filter or scheduledAt' }, 400); }
     const updated = await updateBroadcast(c.env.DB, id, {
       name: reqBody.name,
       message_type: reqBody.messageType,
@@ -143,7 +149,8 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       ...(statusUpdate !== undefined ? { status: statusUpdate } : {}),
     });
 
-    return c.json({ success: true, data: updated ? serializeBroadcast(updated) : null });
+    if (!updated) return c.json({ success: false, error: 'Broadcast changed or delivery already started' }, 409);
+    return c.json({ success: true, data: serializeBroadcast(updated) });
   } catch (err) {
     console.error('PUT /api/broadcasts/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -157,7 +164,7 @@ broadcasts.delete('/api/broadcasts/:id', async (c) => {
     const existing = await scopedBroadcast(c, id);
     if (!existing) return c.json({ success: false, error: 'Broadcast not found' }, 404);
     if (existing.status === 'sending') return c.json({ success: false, error: 'Cannot delete an active broadcast' }, 409);
-    await deleteBroadcast(c.env.DB, id);
+    if (!await deleteBroadcast(c.env.DB, id)) return c.json({ success: false, error: 'Broadcast changed or delivery already started' }, 409);
     return c.json({ success: true, data: null });
   } catch (err) {
     console.error('DELETE /api/broadcasts/:id error:', err);

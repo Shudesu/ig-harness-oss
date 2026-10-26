@@ -134,17 +134,19 @@ export async function updateBroadcast(
     fields.push('updated_at = ?');
     values.push(jstNow());
     values.push(id);
-    await db
-      .prepare(`UPDATE broadcasts SET ${fields.join(', ')} WHERE id = ?`)
+    const result = await db
+      .prepare(`UPDATE broadcasts SET ${fields.join(', ')} WHERE id = ? AND status IN ('draft','scheduled')`)
       .bind(...values)
       .run();
+    if (!result.meta.changes) return null;
   }
 
   return getBroadcastById(db, id);
 }
 
-export async function deleteBroadcast(db: D1Database, id: number | string): Promise<void> {
-  await db.prepare(`DELETE FROM broadcasts WHERE id = ?`).bind(id).run();
+export async function deleteBroadcast(db: D1Database, id: number | string): Promise<boolean> {
+  const result = await db.prepare(`DELETE FROM broadcasts WHERE id = ? AND status != 'sending'`).bind(id).run();
+  return result.meta.changes > 0;
 }
 
 export interface BroadcastStatusCounts {

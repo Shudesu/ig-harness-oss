@@ -21,6 +21,7 @@ jobs:
       - run: pnpm test:mcp
       - run: pnpm -r test
       - run: pnpm -r typecheck
+      - run: pnpm --filter worker build
       - run: pnpm --filter web build
         env:
           NEXT_PUBLIC_API_URL: https://api.example.invalid
