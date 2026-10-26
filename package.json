@@ -21,14 +21,18 @@
     "build": "pnpm -r build",
     "deploy:worker": "pnpm --filter worker deploy",
     "deploy:web": "pnpm --filter web build",
-    "db:migrate": "wrangler d1 execute instagram-harness --remote --file=packages/db/schema.sql && node scripts/apply-migrations.mjs --remote",
-    "db:migrate:local": "wrangler d1 execute instagram-harness --local --file=packages/db/schema.sql && node scripts/apply-migrations.mjs --local",
+    "db:migrate": "node scripts/apply-migrations.mjs --remote",
+    "db:migrate:local": "node scripts/apply-migrations.mjs --local",
     "deploy:setup": "node packages/create-ig-harness/dist/index.js",
-    "deploy:update": "node packages/create-ig-harness/dist/index.js update"
+    "deploy:update": "node packages/create-ig-harness/dist/index.js update",
+    "test:migrations": "node --test scripts/migration-runner.test.mjs scripts/migration-policy.test.mjs",
+    "check:versions": "node scripts/check-versions.mjs",
+    "test:mcp": "node --test scripts/mcp-readonly.test.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs"
   },
   "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

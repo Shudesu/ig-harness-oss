@@ -1,6 +1,5 @@
 export interface DeployConfig {
   // Meta / Instagram credentials (from user input)
-  metaAppId: string;
   metaAppSecret: string;
   metaAccessToken: string;
   metaVerifyToken: string;

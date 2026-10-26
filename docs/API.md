@@ -1,3 +1,5 @@
+> 現行MCP設定は [manual/08-mcp.md](manual/08-mcp.md)、導入は [manual/02-setup.md](manual/02-setup.md) を参照。
+
 # Instagram Harness API Reference
 
 ## Authentication
@@ -335,8 +337,8 @@ const broadcast = await client.broadcasts.create({
       "command": "node",
       "args": ["path/to/instagram-harness/packages/mcp-server/dist/index.js"],
       "env": {
-        "INSTAGRAM_HARNESS_API_URL": "https://your-worker.workers.dev",
-        "INSTAGRAM_HARNESS_API_KEY": "your-api-key"
+        "IG_HARNESS_API_URL": "https://your-worker.workers.dev",
+        "IG_HARNESS_API_KEY": "your-api-key"
       }
     }
   }

@@ -1,3 +1,4 @@
+import { messagingEligibility } from '../services/messaging-window.js';
 import { Hono } from 'hono';
 import {
   getFriends,
@@ -371,6 +372,9 @@ friends.post('/api/friends/:id/messages', async (c) => {
     if (!friend || friend.account_id !== actingAccount.id) {
       return c.json({ success: false, error: 'not found' }, 404);
     }
+
+    const eligibility=await messagingEligibility(db,friend.id,actingAccount.id);
+    if (eligibility!=='eligible') return c.json({success:false,error:eligibility==='standby'?'他のアプリがこの会話の応答を担当しています。':'通常DMの24時間枠を過ぎています。相手からの返信を待ってください。',reason:eligibility},409);
 
     // Message with the friend's owning account — IGSIDs are scoped per
     // business account on Meta's side, so use the owning account's credentials.

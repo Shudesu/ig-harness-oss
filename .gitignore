@@ -25,3 +25,9 @@ apps/worker/dist/
 .ig-harness-config.json
 
 node_modules
+
+.backups/
+wrangler.deploy.toml
+
+.mcp.json.backup
+.ig-harness-mcp-clients.json

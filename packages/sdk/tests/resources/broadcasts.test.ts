@@ -83,7 +83,7 @@ describe('BroadcastsResource', () => {
     const http = mockHttp({ post: vi.fn().mockResolvedValue({ success: true, data: broadcast }) })
     const resource = new BroadcastsResource(http)
     const result = await resource.create(input)
-    expect(http.post).toHaveBeenCalledWith('/api/broadcasts', input)
+    expect(http.post).toHaveBeenCalledWith('/api/broadcasts', { name: input.title, messageType: 'text', body: JSON.stringify({ text: input.messageContent }), tagFilter: null })
     expect(result).toEqual(broadcast)
   })
 
@@ -109,7 +109,7 @@ describe('BroadcastsResource', () => {
     const http = mockHttp({ put: vi.fn().mockResolvedValue({ success: true, data: updatedBroadcast }) })
     const resource = new BroadcastsResource(http)
     const result = await resource.update('bc-1', input)
-    expect(http.put).toHaveBeenCalledWith('/api/broadcasts/bc-1', input)
+    expect(http.put).toHaveBeenCalledWith('/api/broadcasts/bc-1', { name: input.title, body: JSON.stringify({ text: input.messageContent }) })
     expect(result).toEqual(updatedBroadcast)
   })
 

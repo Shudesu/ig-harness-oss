@@ -1,3 +1,8 @@
+import { createAppSecretProof } from './proof.js';
+import { graphApiVersion } from './config.js';
+export { DEFAULT_GRAPH_API_VERSION } from './config.js';
+import { parseGraphUsage, type GraphObservation } from './usage.js';
+import { InstagramApiError, InstagramTransportError } from './errors.js';
 import type {
   SendTextPayload,
   SendImagePayload,
@@ -15,15 +20,30 @@ import type {
   PublishingLimit,
 } from "./types.js";
 
-const GRAPH_API_BASE = "https://graph.instagram.com/v21.0";
+export const MAX_RICH_MESSAGE_BLOCKS = 10;
 
 export class InstagramClient {
   private accessToken: string;
   private igUserId: string;
+  private baseUrl: string;
+  private timeoutMs: number;
+  private maxReadRetries: number;
+  private onResponse?: (observation: GraphObservation) => Promise<void> | void;
+  private appSecret?: string;
+  private beforeRequest?: () => Promise<void> | void;
 
-  constructor(opts: { accessToken: string; igUserId: string }) {
+  constructor(opts: { accessToken: string; igUserId: string; apiVersion?: string; timeoutMs?: number; maxReadRetries?: number; appSecret?: string; beforeRequest?: () => Promise<void> | void; onResponse?: (observation: GraphObservation) => Promise<void> | void }) {
     this.accessToken = opts.accessToken;
     this.igUserId = opts.igUserId;
+    const version = graphApiVersion(opts.apiVersion);
+    this.appSecret = opts.appSecret;
+    this.onResponse = opts.onResponse;
+    this.beforeRequest = opts.beforeRequest;
+    this.baseUrl = `https://graph.instagram.com/${version}`;
+    this.timeoutMs = opts.timeoutMs ?? 8000;
+    this.maxReadRetries = opts.maxReadRetries ?? 2;
+    if (!Number.isFinite(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30_000) throw new Error('Invalid request timeout');
+    if (!Number.isInteger(this.maxReadRetries) || this.maxReadRetries < 0 || this.maxReadRetries > 3) throw new Error('Invalid retry count');
   }
 
   private async request<T>(
@@ -31,23 +51,44 @@ export class InstagramClient {
     path: string,
     body?: unknown,
   ): Promise<T> {
-    const url = `${GRAPH_API_BASE}${path}`;
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.accessToken}`,
-    };
-    const init: RequestInit = { method, headers };
-
-    if (body) {
-      headers["Content-Type"] = "application/json";
-      init.body = JSON.stringify(body);
+    await this.beforeRequest?.();
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.accessToken}` };
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    let requestUrl = `${this.baseUrl}${path}`;
+    if (this.appSecret) {
+      const url = new URL(requestUrl); url.searchParams.set('appsecret_proof', await createAppSecretProof(this.accessToken,this.appSecret)); requestUrl = url.href;
     }
-
-    const res = await fetch(url, init);
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`Instagram API error ${res.status}: ${error}`);
+    const observe = async (value: GraphObservation) => { try { await this.onResponse?.(value); } catch { /* observability must not turn a successful send into an error */ } };
+    for (let attempt = 0; ; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      let error: InstagramApiError | InstagramTransportError;
+      try {
+        const res = await fetch(requestUrl, {
+          method, headers, signal: controller.signal,
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        });
+        const usage = parseGraphUsage(res.headers);
+        let value: unknown;
+        try { value=await res.json(); } catch (error) { if(res.ok) throw error; }
+        const graphError=value && typeof value==='object' ? (value as {error?:{code?:number;error_subcode?:number}}).error : undefined;
+        if (res.ok && !graphError) { await observe({ status: res.status, usage }); return value as T; }
+        const graph=graphError ?? {};
+        const retryHeader = res.headers?.get('retry-after');
+        const retryMs = retryHeader ? (/^\d+$/.test(retryHeader) ? Number(retryHeader) * 1000 : Date.parse(retryHeader) - Date.now()) : undefined;
+        await observe({ status: res.status, code: graph.code, subcode: graph.error_subcode, retryAfterMs: retryMs, usage });
+        error = new InstagramApiError(`Instagram API error ${res.status}${graph.code ? ` (code ${graph.code})` : ''}`, res.status, graph.code, graph.error_subcode, retryMs);
+      } catch {
+        // Never include a URL, token, or raw upstream response in the error.
+        error = new InstagramTransportError(controller.signal.aborted);
+      } finally { clearTimeout(timer); }
+      const retryable = error instanceof InstagramTransportError || error.retryable;
+      if (method !== 'GET' || !retryable || attempt >= this.maxReadRetries) throw error;
+      const waitMs = error instanceof InstagramApiError && error.retryAfterMs !== undefined ? Math.max(0, error.retryAfterMs) : 250 * 2 ** attempt;
+      // Do not sleep through a long upstream backoff inside a Worker invocation.
+      if (!Number.isFinite(waitMs) || waitMs > 2000) throw error;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
-    return res.json() as Promise<T>;
   }
 
   async sendText(recipientId: string, text: string): Promise<{ recipient_id: string; message_id: string }> {
@@ -56,6 +97,20 @@ export class InstagramClient {
       message: { text },
     };
     return this.request("POST", `/${this.igUserId}/messages`, payload);
+  }
+
+  /** One private reply per comment. No automatic retries for mutations. */
+  async sendPrivateReply(commentId: string, text: string): Promise<{ recipient_id: string; message_id: string }> {
+    if (!commentId || !text || text.length > 1000) throw new Error('Private reply requires a comment ID and 1..1000 characters');
+    const result=await this.request<{recipient_id:string;message_id:string}>('POST', `/${this.igUserId}/messages`, { recipient: { comment_id: commentId }, message: { text } });
+    if (typeof result?.message_id!=='string' || !result.message_id || typeof result.recipient_id!=='string') throw new InstagramTransportError(false);
+    return result;
+  }
+
+  async getCommentTimestamp(commentId: string): Promise<string> {
+    const value = await this.request<{ timestamp?: string }>('GET', `/${encodeURIComponent(commentId)}?fields=timestamp`);
+    if (!value.timestamp || !Number.isFinite(Date.parse(value.timestamp))) throw new Error('Comment creation time could not be verified');
+    return value.timestamp;
   }
 
   async sendImage(recipientId: string, imageUrl: string): Promise<{ recipient_id: string; message_id: string }> {
@@ -119,12 +174,9 @@ export class InstagramClient {
    * List comments on a media (post). Used by the dashboard to preview commenters.
    */
   async getMediaComments(mediaId: string, limit = 50): Promise<Array<{ id: string; text: string; username: string; from_id: string; timestamp: string }>> {
-    const url = `${GRAPH_API_BASE}/${mediaId}/comments?fields=id,text,username,from{id,username},timestamp&limit=${limit}&access_token=${this.accessToken}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`getMediaComments failed: ${res.status} ${await res.text()}`);
-    }
-    const json = await res.json() as { data?: Array<{ id: string; text: string; username?: string; from?: { id: string; username: string }; timestamp: string }> };
+    const json = await this.request<{ data?: Array<{ id: string; text: string; username?: string; from?: { id: string; username: string }; timestamp: string }> }>(
+      'GET', `/${mediaId}/comments?fields=id,text,username,from{id,username},timestamp&limit=${limit}`,
+    );
     return (json.data ?? []).map((c) => ({
       id: c.id,
       text: c.text,
@@ -135,40 +187,16 @@ export class InstagramClient {
   }
 
   async replyToComment(commentId: string, message: string): Promise<{ id: string }> {
-    // IG Graph API requires query-parameter encoding for /replies, not JSON body.
-    // Sending JSON returns "Object does not exist" because the API can't parse
-    // the message and falls back to looking up the comment by id only.
-    const url = `${GRAPH_API_BASE}/${commentId}/replies?message=${encodeURIComponent(message)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-    });
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`Instagram API error ${res.status}: ${error}`);
-    }
-    return res.json() as Promise<{ id: string }>;
+    // Use the documented message parameter encoding; access level is a separate concern.
+    return this.request('POST', `/${commentId}/replies?message=${encodeURIComponent(message)}`);
   }
 
   /**
-   * Post a top-level comment to a media owned by the authenticated IG user.
-   * This works under Standard Access (unlike /{comment_id}/replies, which
-   * needs Advanced Access for external commenters' comments). Used as a
-   * Standard-Access-friendly substitute for replyToComment by writing
-   * "@username message" as a regular comment on the media — UX-wise this
-   * is functionally identical to a public reply.
+   * Post a top-level comment to owned media. This is visibly different from
+   * a nested reply and does not bypass permission/access-level requirements.
    */
   async postCommentToMedia(mediaId: string, message: string): Promise<{ id: string }> {
-    const url = `${GRAPH_API_BASE}/${mediaId}/comments?message=${encodeURIComponent(message)}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.accessToken}` },
-    });
-    if (!res.ok) {
-      const error = await res.text();
-      throw new Error(`Instagram API error ${res.status}: ${error}`);
-    }
-    return res.json() as Promise<{ id: string }>;
+    return this.request('POST', `/${mediaId}/comments?message=${encodeURIComponent(message)}`);
   }
 
   async getMediaInfo(mediaId: string): Promise<MediaInfo> {
@@ -183,23 +211,14 @@ export class InstagramClient {
    * Callers typically filter by media_product_type === 'REELS' for reels only.
    */
   async getMyMedia(limit = 50): Promise<MediaInfo[]> {
-    const url =
-      `${GRAPH_API_BASE}/${this.igUserId}/media` +
-      `?fields=id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,permalink` +
-      `&limit=${limit}` +
-      `&access_token=${this.accessToken}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`getMyMedia failed: ${res.status} ${await res.text()}`);
-    }
-    const json = (await res.json()) as { data?: MediaInfo[] };
+    const json = await this.request<{ data?: MediaInfo[] }>('GET', `/${this.igUserId}/media?fields=id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,permalink&limit=${limit}`);
     return json.data ?? [];
   }
 
   /**
    * Send a multi-block rich message. Each block expands to one IG Messenger
-   * API call; blocks are dispatched sequentially with an 800ms pause between
-   * them to produce a natural conversational rhythm.
+   * API call. Blocks are bounded and dispatched sequentially without artificial
+   * sleeps; larger sequences belong in a durable delivery queue.
    *
    * Placeholders are interpolated before dispatch:
    *   {IGSID}, {GATE_ID}, {DELIVERY_ID}, {REWARD_URL}, {FOLLOWER_USERNAME}
@@ -209,6 +228,7 @@ export class InstagramClient {
     blocks: RichMessageBlock[],
     context: RichMessageContext = {},
   ): Promise<{ sentBlocks: number }> {
+    if (blocks.length > MAX_RICH_MESSAGE_BLOCKS) throw new Error(`Rich messages support at most ${MAX_RICH_MESSAGE_BLOCKS} blocks; split larger sequences into scheduled steps`);
     const interpolate = (s: string): string =>
       s
         .replace(/\{\{?\s*IGSID\s*\}?\}/g, recipientId)
@@ -287,7 +307,7 @@ export class InstagramClient {
           break;
       }
       sent++;
-      if (i < blocks.length - 1) await new Promise((r) => setTimeout(r, 800));
+
     }
     return { sentBlocks: sent };
   }
@@ -307,7 +327,9 @@ export class InstagramClient {
       qs.set('children', params.children.join(','));
     }
     if (params.isCarouselItem) qs.set('is_carousel_item', 'true');
-    return this.request('POST', `/${this.igUserId}/media?${qs.toString()}`);
+    const result=await this.request<{id:string}>('POST', `/${this.igUserId}/media?${qs.toString()}`);
+    if (typeof result?.id!=='string' || !result.id) throw new InstagramTransportError(false);
+    return result;
   }
 
   /** Check container processing status (videos are processed asynchronously). */
@@ -318,10 +340,12 @@ export class InstagramClient {
   /** Publish a FINISHED container (step 2 of Content Publishing). */
   async publishMedia(creationId: string): Promise<{ id: string }> {
     const qs = new URLSearchParams({ creation_id: creationId });
-    return this.request('POST', `/${this.igUserId}/media_publish?${qs.toString()}`);
+    const result=await this.request<{id:string}>('POST', `/${this.igUserId}/media_publish?${qs.toString()}`);
+    if (typeof result?.id!=='string' || !result.id) throw new InstagramTransportError(false);
+    return result;
   }
 
-  /** Content publishing rate limit (100 posts per 24h rolling window). */
+  /** Fetch the account's current publishing quota; do not assume one fixed cap. */
   async getPublishingLimit(): Promise<PublishingLimit> {
     const res = await this.request<{ data?: PublishingLimit[] }>(
       'GET',

@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { readdirSync, existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { wrangler, WranglerError } from "../lib/wrangler.js";
 
@@ -51,51 +51,21 @@ export async function createDatabase(
     }
   }
 
-  // Run base schema
-  const schemaFile = join(repoDir, "packages/db/schema.sql");
-  const migrationsDir = join(repoDir, "packages/db/migrations");
-
   s.start("テーブル作成中...");
-
-  // Base schema (CREATE IF NOT EXISTS — safe to re-run)
-  if (existsSync(schemaFile)) {
-    try {
-      await wrangler([
-        "d1",
-        "execute",
-        databaseName,
-        "--remote",
-        "--file",
-        schemaFile,
-      ]);
-    } catch {
-      // May fail if tables exist with different schema — continue to migrations
-    }
-  }
-
-  // Migration files
-  if (existsSync(migrationsDir)) {
-    const migrationFiles = readdirSync(migrationsDir)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-
-    for (const file of migrationFiles) {
-      try {
-        await wrangler([
-          "d1",
-          "execute",
-          databaseName,
-          "--remote",
-          "--file",
-          join(migrationsDir, file),
-        ]);
-      } catch {
-        // Already applied — continue
-      }
-    }
+  try {
+    await migrateDatabase(repoDir, databaseName, databaseId);
+  } catch (error) {
+    s.stop("マイグレーション失敗（セットアップを中断）");
+    throw error;
   }
 
   s.stop("テーブル作成完了");
 
   return { databaseId, databaseName };
+}
+
+/** All entry points use the repository's versioned migration runner. */
+export async function migrateDatabase(repoDir: string, databaseName: string, databaseId: string): Promise<void> {
+  const { runMigrations } = await import(pathToFileURL(join(repoDir, "scripts/migration-runner.mjs")).href);
+  await runMigrations({ repoDir, databaseName, databaseId, remote: true, runWrangler: wrangler });
 }

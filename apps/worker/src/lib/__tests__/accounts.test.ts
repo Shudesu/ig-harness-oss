@@ -1,3 +1,4 @@
+import { openToken } from '../token-crypto.js';
 import { describe, it, expect } from 'vitest';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef } from '../accounts.js';
 import type { IgAccount } from '@ig-harness/db';
@@ -122,6 +123,7 @@ const ENV = {
   IG_USER_ID: '17841400000000001',
   IG_USERNAME: 'main_account',
   IG_ACCESS_TOKEN: 'env-token',
+  TOKEN_ENCRYPTION_KEY: btoa('01234567890123456789012345678901'),
 };
 
 describe('ensureDefaultAccount', () => {
@@ -133,7 +135,7 @@ describe('ensureDefaultAccount', () => {
     expect(db.inserted[0]).toMatchObject({
       ig_user_id: '17841400000000001',
       username: 'main_account',
-      access_token: 'env-token',
+      access_token: expect.stringMatching(/^enc:v1:/),
       is_default: 1,
     });
     const tables = db.backfilled.map((b) => b.table).sort();
@@ -176,10 +178,8 @@ describe('ensureDefaultAccount', () => {
       tokenState: { access_token: 'refreshed-token', expires_at: future, refreshed_at: future - 100 },
     });
     await ensureDefaultAccount(ENV, db);
-    expect(db.inserted[0]).toMatchObject({
-      access_token: 'refreshed-token',
-      token_expires_at: future,
-    });
+    expect(db.inserted[0]).toMatchObject({ token_expires_at: future });
+    expect(await openToken(String(db.inserted[0].access_token), ENV.IG_USER_ID, ENV.TOKEN_ENCRYPTION_KEY)).toBe('refreshed-token');
   });
 
   it('ignores an expired ig_token_state token and falls back to env', async () => {
@@ -188,7 +188,7 @@ describe('ensureDefaultAccount', () => {
       tokenState: { access_token: 'stale-token', expires_at: past, refreshed_at: past - 100 },
     });
     await ensureDefaultAccount(ENV, db);
-    expect(db.inserted[0]).toMatchObject({ access_token: 'env-token' });
+    expect(await openToken(String(db.inserted[0].access_token), ENV.IG_USER_ID, ENV.TOKEN_ENCRYPTION_KEY)).toBe('env-token');
   });
 
   it('recovers when a concurrent request won the INSERT race', async () => {

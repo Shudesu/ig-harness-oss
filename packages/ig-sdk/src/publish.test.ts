@@ -33,7 +33,7 @@ describe('InstagramClient content publishing', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(init.method).toBe('POST');
     const parsed = new URL(url as string);
-    expect(parsed.pathname).toBe('/v21.0/IGUSER/media');
+    expect(parsed.pathname).toBe('/v25.0/IGUSER/media');
     expect(parsed.searchParams.get('image_url')).toBe('https://example.com/a.jpg');
     expect(parsed.searchParams.get('caption')).toBe('hello #world');
   });
@@ -78,7 +78,7 @@ describe('InstagramClient content publishing', () => {
     const status = await client.getContainerStatus('container-1');
     expect(status.status_code).toBe('FINISHED');
     const parsed = new URL(fetchMock.mock.calls[0][0] as string);
-    expect(parsed.pathname).toBe('/v21.0/container-1');
+    expect(parsed.pathname).toBe('/v25.0/container-1');
     expect(parsed.searchParams.get('fields')).toBe('status_code,status');
   });
 
@@ -89,7 +89,7 @@ describe('InstagramClient content publishing', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(init.method).toBe('POST');
     const parsed = new URL(url as string);
-    expect(parsed.pathname).toBe('/v21.0/IGUSER/media_publish');
+    expect(parsed.pathname).toBe('/v25.0/IGUSER/media_publish');
     expect(parsed.searchParams.get('creation_id')).toBe('container-1');
   });
 

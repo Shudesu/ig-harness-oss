@@ -1,0 +1,28 @@
+name: Check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:versions
+      - run: pnpm check:migrations
+      - run: pnpm test:migrations
+      - run: pnpm --filter @ig-harness/shared --filter @ig-harness/ig-sdk --filter @ig-harness/sdk --filter @ig-harness/mcp-server --filter create-ig-harness build
+      - run: pnpm test:mcp
+      - run: pnpm -r test
+      - run: pnpm -r typecheck
+      - run: pnpm --filter worker build
+      - run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid

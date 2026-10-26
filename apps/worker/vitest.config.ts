@@ -13,6 +13,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Bound parallel transforms/SQLite fixtures on small self-hosting machines.
+    maxWorkers: 2,
+    minWorkers: 1,
     include: ['src/**/*.test.ts'],
     globals: false,
   },

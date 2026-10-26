@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execa } from "execa";
@@ -11,14 +11,17 @@ const REPO_URL = "https://github.com/Shudesu/ig-harness-oss.git";
  * Returns the path to the cloned repo.
  */
 export async function ensureRepo(repoDir: string | null): Promise<string> {
-  // If --repo-dir was given and has the repo, use it
-  if (repoDir && existsSync(join(repoDir, "pnpm-workspace.yaml"))) {
+  // An explicit path must identify IG Harness; never silently use another repo.
+  if (repoDir) {
+    await prepareRepository(repoDir);
     return repoDir;
   }
 
   // Check if cwd is the repo
   if (existsSync(join(process.cwd(), "pnpm-workspace.yaml"))) {
-    return process.cwd();
+    const selected = process.cwd();
+    await prepareRepository(selected);
+    return selected;
   }
 
   // Check standard install location
@@ -29,13 +32,15 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
   const isExisting = existsSync(join(homeDir, "pnpm-workspace.yaml"));
 
   if (isExisting) {
+    assertHarnessRepository(homeDir);
     // Pull latest
     const s = p.spinner();
     s.start("最新バージョンを取得中...");
     try {
       await execa("git", ["pull", "--ff-only"], { cwd: homeDir });
-    } catch {
-      // Non-critical, continue with existing
+    } catch (error) {
+      s.stop("リポジトリ更新失敗（更新を中断）");
+      throw error;
     }
     s.stop("リポジトリ更新完了");
   } else {
@@ -54,16 +59,29 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
     s.stop("ダウンロード完了");
   }
 
+  await prepareRepository(homeDir);
+  return homeDir;
+}
+
+function assertHarnessRepository(repoDir: string): void {
+  try {
+    if (!existsSync(join(repoDir, 'pnpm-workspace.yaml')) || JSON.parse(readFileSync(join(repoDir, 'package.json'), 'utf8')).name !== 'ig-harness') throw new Error();
+  } catch { throw new Error(`IG Harness repository not found at ${repoDir}. Select the source repository with --repo-dir.`); }
+}
+
+/** Prepare explicit/cwd/default repositories consistently before remote changes. */
+export async function prepareRepository(repoDir: string): Promise<void> {
+  assertHarnessRepository(repoDir);
   // Install dependencies (always — handles both fresh clone and re-runs)
   const s = p.spinner();
   s.start("依存関係インストール中...");
   try {
     await execa("npx", ["pnpm", "install", "--frozen-lockfile"], {
-      cwd: homeDir,
+      cwd: repoDir,
     });
-  } catch {
-    // Try without frozen lockfile
-    await execa("npx", ["pnpm", "install"], { cwd: homeDir });
+  } catch (error) {
+    s.stop("lockfileに基づく依存関係の導入に失敗しました");
+    throw error;
   }
   s.stop("依存関係インストール完了");
 
@@ -76,7 +94,7 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
   s.start("ワークスペースパッケージをビルド中...");
   try {
     await execa("npx", ["pnpm", "--filter", "./packages/*", "build"], {
-      cwd: homeDir,
+      cwd: repoDir,
     });
     s.stop("ビルド完了");
   } catch (error: any) {
@@ -85,6 +103,4 @@ export async function ensureRepo(repoDir: string | null): Promise<string> {
       `パッケージのビルドに失敗しました: ${error.stderr || error.message}`,
     );
   }
-
-  return homeDir;
 }

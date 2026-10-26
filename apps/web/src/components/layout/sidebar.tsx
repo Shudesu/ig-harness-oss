@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { logoutAdmin } from '@/lib/api'
 import { Button } from '@cloudflare/kumo/components/button'
 import { BrandMark } from '@/components/brand'
 import { usePathname } from 'next/navigation'
@@ -182,10 +183,11 @@ function AccountSwitcher() {
 export default function Sidebar() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
   const [staffName, setStaffName] = useState<string | null>(null)
 
   useEffect(() => {
-    setStaffName(localStorage.getItem('lh_staff_name'))
+    setStaffName(sessionStorage.getItem('igh_staff_name'))
   }, [])
 
   useEffect(() => { setIsOpen(false) }, [pathname])
@@ -260,11 +262,9 @@ export default function Sidebar() {
             セットアップガイド
           </a>
           <Button
-            onClick={() => {
-              localStorage.removeItem('lh_api_key')
-              localStorage.removeItem('lh_staff_name')
-              localStorage.removeItem('lh_staff_role')
-              window.location.href = '/login'
+            onClick={async () => {
+              try { await logoutAdmin(); window.location.href = '/login' }
+              catch { setLogoutError('ログアウトできませんでした。もう一度お試しください。') }
             }}
             className="flex items-center gap-2 text-xs text-kumo-subtle hover:text-red-500 transition-colors"
           >
@@ -273,6 +273,7 @@ export default function Sidebar() {
             </svg>
             ログアウト
           </Button>
+          {logoutError && <p role="alert" className="text-xs text-red-500">{logoutError}</p>}
         </div>
       </div>
     </>

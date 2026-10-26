@@ -13,14 +13,35 @@ if (!API_URL) {
   )
 }
 
-/**
- * Read the API key from localStorage (set during login).
- */
-function getApiKey(): string {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('lh_api_key') || ''
-  }
-  return ''
+export type AdminSession = { staff: { id: string; name: string; role: string }; csrfToken: string | null }
+export function clearLegacyCredentials(): void {
+  if (typeof window === 'undefined') return
+  for (const key of ['lh_api_key', 'igh_api_key']) { localStorage.removeItem(key); sessionStorage.removeItem(key) }
+}
+function rememberSession(data: AdminSession): void {
+  clearLegacyCredentials()
+  if (!data.csrfToken) throw new Error('セッションCookieを確認できません。再ログインしてください。')
+  sessionStorage.setItem('ih_csrf', data.csrfToken)
+  sessionStorage.setItem('igh_staff_name', data.staff.name)
+  sessionStorage.setItem('igh_staff_role', data.staff.role)
+}
+export async function loginAdmin(apiKey: string): Promise<void> {
+  clearLegacyCredentials()
+  const response = await fetchApi<{ data: AdminSession }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ apiKey }) })
+  rememberSession(response.data)
+  // Confirm cookies survived the cross-site response before entering the UI.
+  try { await restoreAdminSession() } catch { throw new Error('ログインCookieを確認できません。ブラウザのCookie設定、または管理画面とAPIのドメイン構成を確認してください。') }
+}
+export async function restoreAdminSession(): Promise<AdminSession> {
+  clearLegacyCredentials()
+  const response = await fetchApi<{ data: AdminSession }>('/api/auth/session')
+  rememberSession(response.data)
+  return response.data
+}
+export async function logoutAdmin(): Promise<void> {
+  await fetchApi('/api/auth/logout', { method: 'POST' })
+  for (const key of ['ih_csrf','igh_staff_name','igh_staff_role']) sessionStorage.removeItem(key)
+  clearLegacyCredentials()
 }
 
 export class ApiError extends Error {
@@ -35,7 +56,7 @@ let currentAccountId: string | null = null
 export function setApiAccountId(id: string | null) { currentAccountId = id }
 
 // Shared resources are account-agnostic; everything else gets ?account_id=.
-const ACCOUNT_AGNOSTIC = ['/api/accounts', '/api/staff', '/api/images', '/api/line-connections', '/api/integrations', '/api/health']
+const ACCOUNT_AGNOSTIC = ['/api/auth', '/api/accounts', '/api/staff', '/api/images', '/api/line-connections', '/api/integrations', '/api/health']
 
 function withAccount(path: string): string {
   if (!currentAccountId) return path
@@ -44,14 +65,14 @@ function withAccount(path: string): string {
 }
 
 export async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${withAccount(path)}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getApiKey()}`,
-      ...options?.headers,
-    },
-  })
+  const headers = new Headers(options?.headers)
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const method = (options?.method ?? 'GET').toUpperCase()
+  if (!['GET','HEAD','OPTIONS'].includes(method) && typeof window !== 'undefined') {
+    const csrf = sessionStorage.getItem('ih_csrf')
+    if (csrf) headers.set('X-CSRF-Token', csrf)
+  }
+  const res = await fetch(`${API_URL}${withAccount(path)}`, { ...options, credentials: 'include', headers })
   if (!res.ok) {
     // Surface the server's `error` field when possible — otherwise operators
     // only see "API error: 400" with no hint why validation failed.
@@ -311,7 +332,7 @@ export const accountsApi = {
     return res.data ?? []
   },
   create: async (input: {
-    igUserId: string
+    igUserId?: string
     accessToken: string
     username?: string
     appSecret?: string

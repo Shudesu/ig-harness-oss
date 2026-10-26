@@ -29,7 +29,17 @@ import { registerBulkApplyGatesToReels } from "./bulk-apply-gates.js";
 import { registerCreateMediaPost } from "./create-media-post.js";
 import { registerManageMediaPosts } from "./manage-media-posts.js";
 
-export function registerAllTools(server: McpServer): void {
+export function registerAllTools(server: McpServer, readOnly = process.env.IG_HARNESS_READ_ONLY === 'true'): void {
+  registerListFollowers(server);
+  registerGetFollowerDetail(server);
+  registerGetFormSubmissions(server);
+  registerGetLinkClicks(server);
+  registerAccountSummary(server);
+  registerListCrmObjects(server);
+  registerListRecentReels(server);
+  // Mixed list/create/update tools are excluded as a whole, not merely hidden
+  // write actions. No mutating tool is registered in read-only mode.
+  if (readOnly) return;
   registerSendDm(server);
   registerBroadcast(server);
   registerCreateScenario(server);
@@ -38,12 +48,6 @@ export function registerAllTools(server: McpServer): void {
   registerCreateForm(server);
   registerCreateTrackedLink(server);
   registerCreateCommentRule(server);
-  registerListFollowers(server);
-  registerGetFollowerDetail(server);
-  registerGetFormSubmissions(server);
-  registerGetLinkClicks(server);
-  registerAccountSummary(server);
-  registerListCrmObjects(server);
   registerManageStaff(server);
   registerUploadImage(server);
   registerManageFollowers(server);
@@ -55,7 +59,6 @@ export function registerAllTools(server: McpServer): void {
   registerManageEngagementGates(server);
   registerManageLineConnections(server);
   registerManageRichMessages(server);
-  registerListRecentReels(server);
   registerBulkApplyGatesToReels(server);
   registerCreateMediaPost(server);
   registerManageMediaPosts(server);

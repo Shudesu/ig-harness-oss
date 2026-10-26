@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   getBroadcasts,
   getBroadcastById,
@@ -8,15 +8,21 @@ import {
   getIgAccountById,
 } from '@ig-harness/db';
 import type { Broadcast as DbBroadcast, BroadcastMessageType } from '@ig-harness/db';
-import { processBroadcastSend } from '../services/broadcast.js';
+import { processBroadcastSend, broadcastSummary, validateBroadcastMessage, parseBroadcastTagFilter } from '../services/broadcast.js';
 import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const broadcasts = new Hono<Env>();
 
+async function scopedBroadcast(c: Context<Env>, id: string) {
+  const account = await resolveAccount(c);
+  const row = await getBroadcastById(c.env.DB, id);
+  return account && row?.account_id === account.id ? row : null;
+}
+
 function serializeBroadcast(row: DbBroadcast) {
   return {
-    id: row.id,
+    id: String(row.id),
     name: row.name,
     messageType: row.message_type,
     body: row.body,
@@ -47,13 +53,13 @@ broadcasts.get('/api/broadcasts', async (c) => {
 broadcasts.get('/api/broadcasts/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const broadcast = await getBroadcastById(c.env.DB, id);
+    const broadcast = await scopedBroadcast(c, id);
 
     if (!broadcast) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
     }
 
-    return c.json({ success: true, data: serializeBroadcast(broadcast) });
+    return c.json({ success: true, data: { ...serializeBroadcast(broadcast), deliverySummary: await broadcastSummary(c.env.DB, broadcast.id) } });
   } catch (err) {
     console.error('GET /api/broadcasts/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -80,6 +86,11 @@ broadcasts.post('/api/broadcasts', async (c) => {
       );
     }
 
+    try {
+      validateBroadcastMessage(reqBody.messageType, JSON.parse(reqBody.body));
+      if (reqBody.scheduledAt && !Number.isFinite(Date.parse(reqBody.scheduledAt))) throw new Error('Invalid scheduledAt');
+      parseBroadcastTagFilter(reqBody.tagFilter);
+    } catch { return c.json({ success: false, error: 'Invalid message body or scheduledAt' }, 400); }
     const broadcast = await createBroadcast(c.env.DB, {
       name: reqBody.name,
       messageType: reqBody.messageType,
@@ -100,7 +111,7 @@ broadcasts.post('/api/broadcasts', async (c) => {
 broadcasts.put('/api/broadcasts/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const existing = await getBroadcastById(c.env.DB, id);
+    const existing = await scopedBroadcast(c, id);
 
     if (!existing) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
@@ -124,6 +135,11 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       statusUpdate = reqBody.scheduledAt ? 'scheduled' : 'draft';
     }
 
+    try {
+      validateBroadcastMessage(reqBody.messageType ?? existing.message_type, JSON.parse(reqBody.body ?? existing.body));
+      if (reqBody.scheduledAt && !Number.isFinite(Date.parse(reqBody.scheduledAt))) throw new Error();
+      parseBroadcastTagFilter(reqBody.tagFilter ?? existing.tag_filter);
+    } catch { return c.json({ success: false, error: 'Invalid message body, tag filter or scheduledAt' }, 400); }
     const updated = await updateBroadcast(c.env.DB, id, {
       name: reqBody.name,
       message_type: reqBody.messageType,
@@ -133,7 +149,8 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
       ...(statusUpdate !== undefined ? { status: statusUpdate } : {}),
     });
 
-    return c.json({ success: true, data: updated ? serializeBroadcast(updated) : null });
+    if (!updated) return c.json({ success: false, error: 'Broadcast changed or delivery already started' }, 409);
+    return c.json({ success: true, data: serializeBroadcast(updated) });
   } catch (err) {
     console.error('PUT /api/broadcasts/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -144,7 +161,10 @@ broadcasts.put('/api/broadcasts/:id', async (c) => {
 broadcasts.delete('/api/broadcasts/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await deleteBroadcast(c.env.DB, id);
+    const existing = await scopedBroadcast(c, id);
+    if (!existing) return c.json({ success: false, error: 'Broadcast not found' }, 404);
+    if (existing.status === 'sending') return c.json({ success: false, error: 'Cannot delete an active broadcast' }, 409);
+    if (!await deleteBroadcast(c.env.DB, id)) return c.json({ success: false, error: 'Broadcast changed or delivery already started' }, 409);
     return c.json({ success: true, data: null });
   } catch (err) {
     console.error('DELETE /api/broadcasts/:id error:', err);
@@ -156,14 +176,14 @@ broadcasts.delete('/api/broadcasts/:id', async (c) => {
 broadcasts.post('/api/broadcasts/:id/send', async (c) => {
   try {
     const id = c.req.param('id');
-    const existing = await getBroadcastById(c.env.DB, id);
+    const existing = await scopedBroadcast(c, id);
 
     if (!existing) {
       return c.json({ success: false, error: 'Broadcast not found' }, 404);
     }
 
-    if (existing.status === 'sending' || existing.status === 'sent') {
-      return c.json({ success: false, error: 'Broadcast is already sent or sending' }, 400);
+    if (existing.status === 'sent') {
+      return c.json({ success: false, error: 'Broadcast is already completed' }, 400);
     }
 
     // The broadcast's owning account must do the sending — a client built
@@ -177,7 +197,7 @@ broadcasts.post('/api/broadcasts/:id/send', async (c) => {
     await processBroadcastSend(c.env.DB, igClient, existing.id, c.env.WORKER_URL, account.id);
 
     const result = await getBroadcastById(c.env.DB, existing.id);
-    return c.json({ success: true, data: result ? serializeBroadcast(result) : null });
+    return c.json({ success: true, data: result ? { ...serializeBroadcast(result), deliverySummary: await broadcastSummary(c.env.DB,result.id) } : null });
   } catch (err) {
     console.error('POST /api/broadcasts/:id/send error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);

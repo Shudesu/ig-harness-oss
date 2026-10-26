@@ -26,8 +26,8 @@ const STATUS_BADGES: Record<string, { label: string; bg: string; fg: string }> =
 
 function acceptForType(postType: MediaPostType): string {
   if (postType === 'reel') return 'video/mp4,video/quicktime'
-  if (postType === 'feed_image') return 'image/png,image/jpeg,image/gif,image/webp'
-  return 'image/png,image/jpeg,image/gif,image/webp,video/mp4,video/quicktime'
+  if (postType === 'feed_image') return 'image/jpeg'
+  return 'image/jpeg,video/mp4,video/quicktime'
 }
 
 function pickerLabelForType(postType: MediaPostType): string {
@@ -39,8 +39,8 @@ function pickerLabelForType(postType: MediaPostType): string {
 
 function pickerHintForType(postType: MediaPostType): string {
   if (postType === 'reel') return 'MP4 / MOV、100MBまで'
-  if (postType === 'feed_image') return 'PNG / JPG / GIF / WebP、5MBまで'
-  return '画像 5MBまで・動画 100MBまで(MP4/MOV)'
+  if (postType === 'feed_image') return 'JPEG画像、5MBまで'
+  return 'JPEG画像 5MBまで・動画 100MBまで(MP4/MOV)'
 }
 
 export default function PostsPage() {
@@ -88,6 +88,7 @@ export default function PostsPage() {
     try {
       const uploaded: MediaPostMediaItem[] = []
       for (const file of Array.from(files)) {
+        if (file.type.startsWith('image/') && file.type !== 'image/jpeg') throw new Error('Instagramへの画像投稿にはJPEGを使用してください。DM用の画像アップロードとは対応形式が異なります。')
         const { url } = await mediaPostsApi.uploadMedia(file)
         uploaded.push({ url, type: file.type.startsWith('video/') ? 'video' : 'image' })
       }
@@ -152,6 +153,7 @@ export default function PostsPage() {
   return (
     <div>
       <Header title="投稿" />
+      <p className="text-xs text-kumo-subtle mb-3">投稿画像はJPEG、外部素材は公開HTTPS URLを使用してください。動画を含むカルーセルは素材の準備完了を待って公開します。</p>
       <div style={{ maxWidth: 960 }}>
         {quota && (
           <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>

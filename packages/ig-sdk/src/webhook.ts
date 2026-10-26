@@ -1,3 +1,4 @@
+import { timingSafeEqualStr } from './timing-safe.js';
 export async function verifyWebhookSignature(
   body: string,
   signature: string,
@@ -30,13 +31,13 @@ export async function verifyWebhookSignature(
   return diff === 0;
 }
 
-export function verifyWebhookChallenge(
+export async function verifyWebhookChallenge(
   mode: string | null,
   token: string | null,
   challenge: string | null,
   verifyToken: string,
-): string | null {
-  if (mode === "subscribe" && token === verifyToken && challenge) {
+): Promise<string | null> {
+  if (mode === "subscribe" && challenge && await timingSafeEqualStr(token, verifyToken)) {
     return challenge;
   }
   return null;

@@ -1,3 +1,4 @@
+import { escapeHtml, isHttpDestination, serializeInlineScriptString, publicPageHeaders } from '../lib/html.js';
 import { Hono } from 'hono';
 import {
   getTrackedLinks,
@@ -97,6 +98,7 @@ trackedLinks.post('/api/tracked-links', async (c) => {
       return c.json({ success: false, error: 'name and originalUrl are required' }, 400);
     }
 
+    if (!isHttpDestination(body.originalUrl)) return c.json({ success: false, error: 'originalUrl must be an absolute HTTP(S) URL without credentials' }, 400);
     const link = await createTrackedLink(c.env.DB, {
       name: body.name,
       originalUrl: body.originalUrl,
@@ -175,14 +177,15 @@ function getAndroidPackage(url: string): string | null {
   }
 }
 
-function buildAppRedirectHtml(destinationUrl: string): string {
-  const escaped = destinationUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+export function buildAppRedirectHtml(destinationUrl: string, nonce: string): string {
+  const escaped = escapeHtml(destinationUrl);
   const androidPackage = getAndroidPackage(destinationUrl);
   // intent://path#Intent;scheme=https;package=com.xxx;S.browser_fallback_url=https://...;end
   const intentUrl = androidPackage
-    ? `intent://${destinationUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=${androidPackage};S.browser_fallback_url=${encodeURIComponent(destinationUrl)};end`
+    ? `intent://${`${new URL(destinationUrl).host}${new URL(destinationUrl).pathname}${new URL(destinationUrl).search}`}#Intent;scheme=https;package=${androidPackage};S.browser_fallback_url=${encodeURIComponent(destinationUrl)};end`
     : null;
-  const intentEscaped = intentUrl ? intentUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;') : '';
+  const destinationScript = serializeInlineScriptString(destinationUrl);
+  const intentScript = serializeInlineScriptString(intentUrl ?? '');
 
   return `<!DOCTYPE html>
 <html><head>
@@ -192,13 +195,15 @@ function buildAppRedirectHtml(destinationUrl: string): string {
 <style>body{display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:system-ui;color:#64748b;background:#f8fafc}p{font-size:14px}</style>
 </head><body>
 <p>Opening app...</p>
-<script>
+<script nonce="${escapeHtml(nonce)}">
 (function(){
   var isAndroid = /Android/i.test(navigator.userAgent);
-  if(isAndroid && "${intentEscaped}"){
-    window.location.href="${intentEscaped}";
+  var target = ${destinationScript};
+  var intent = ${intentScript};
+  if(isAndroid && intent){
+    window.location.href=intent;
   } else {
-    window.location.href="${escaped}";
+    window.location.href=target;
   }
 })();
 </script>
@@ -215,7 +220,7 @@ trackedLinks.get('/t/:linkId', async (c) => {
   // Look up the link first
   const link = await getTrackedLinkById(c.env.DB, linkId);
 
-  if (!link || !link.is_active) {
+  if (!link || !link.is_active || !isHttpDestination(link.original_url)) {
     return c.json({ success: false, error: 'Link not found' }, 404);
   }
 
@@ -263,10 +268,12 @@ trackedLinks.get('/t/:linkId', async (c) => {
 
   // App-link domains: return HTML with JS redirect for Universal Link support
   if (useAppRedirect) {
-    return c.html(buildAppRedirectHtml(link.original_url));
+    const nonce = crypto.randomUUID().replaceAll('-', '');
+    publicPageHeaders(c, nonce);
+    return c.html(buildAppRedirectHtml(link.original_url, nonce));
   }
 
-  return c.redirect(link.original_url, 302);
+  return c.redirect(new URL(link.original_url).href, 302);
 });
 
 export { trackedLinks };

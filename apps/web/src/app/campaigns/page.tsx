@@ -1,5 +1,7 @@
 'use client'
 
+import DeliveryStatus from '@/components/delivery-status'
+
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import {
@@ -88,6 +90,7 @@ export default function CampaignsPage() {
           </Link>
         }
       />
+      <div className="px-4 py-3"><DeliveryStatus /></div>
 
       {error && (
         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">

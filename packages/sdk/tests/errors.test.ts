@@ -1,14 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { LineHarnessError } from '../src/errors.js'
-
-describe('LineHarnessError', () => {
-  it('stores status, message, and endpoint', () => {
-    const err = new LineHarnessError('Not found', 404, 'GET /api/scenarios/xxx')
-    expect(err).toBeInstanceOf(Error)
-    expect(err).toBeInstanceOf(LineHarnessError)
-    expect(err.status).toBe(404)
-    expect(err.message).toBe('Not found')
-    expect(err.endpoint).toBe('GET /api/scenarios/xxx')
-    expect(err.name).toBe('LineHarnessError')
+import { InstagramHarnessError, LineHarnessError } from '../src/errors.js'
+describe('InstagramHarnessError compatibility', () => {
+  it('uses one constructor for both public names', () => {
+    expect(LineHarnessError).toBe(InstagramHarnessError)
+    const error = new InstagramHarnessError('Not found', 404, 'GET /api/scenarios/xxx')
+    expect(error).toBeInstanceOf(LineHarnessError)
+    expect(error).toMatchObject({ name: 'InstagramHarnessError', status: 404, endpoint: 'GET /api/scenarios/xxx' })
   })
 })

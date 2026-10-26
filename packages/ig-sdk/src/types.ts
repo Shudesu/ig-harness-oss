@@ -30,7 +30,7 @@ export interface IncomingMessage {
 }
 
 export interface Attachment {
-  type: "image" | "video" | "audio" | "file";
+  type: "image" | "video" | "audio" | "file" | "story_mention";
   payload: { url: string };
 }
 

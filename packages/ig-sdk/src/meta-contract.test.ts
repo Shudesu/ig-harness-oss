@@ -1,0 +1,16 @@
+import { it, expect, vi, afterEach } from 'vitest';
+import { createHmac } from 'node:crypto';
+import { InstagramClient } from './client.js';
+import { InstagramApiError } from './errors.js';
+afterEach(() => { vi.unstubAllGlobals(); });
+it('uses the comment ID for one private text reply and supports an explicit Graph version', async () => { const fetch = vi.fn().mockResolvedValue(new Response('{"recipient_id":"user","message_id":"message"}')); vi.stubGlobal('fetch', fetch); const client = new InstagramClient({ accessToken: 'token', igUserId: '111', apiVersion: 'v24.0' }); await client.sendPrivateReply('comment-1', 'Hello'); expect(String(fetch.mock.calls[0]?.[0])).toContain('/v24.0/111/messages'); expect(JSON.parse(fetch.mock.calls[0]?.[1].body)).toEqual({ recipient: { comment_id: 'comment-1' }, message: { text: 'Hello' } }); });
+it('adds an optional HMAC appsecret_proof without putting the token in a URL', async () => { const fetch = vi.fn().mockResolvedValue(new Response('{"user_id":"111","username":"user"}')); vi.stubGlobal('fetch', fetch); await new InstagramClient({ accessToken: 'private-token', igUserId: '111', appSecret: 'app-secret' }).getMe(); const url = new URL(String(fetch.mock.calls[0]?.[0])); expect(url.pathname).toBe('/v25.0/me'); expect(url.searchParams.get('appsecret_proof')).toBe(createHmac('sha256', 'app-secret').update('private-token').digest('hex')); expect(url.href).not.toContain('private-token'); });
+it('reports bounded usage metrics and structured code 190 without raw upstream data', async () => { const seen = vi.fn(); vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":{"code":190,"message":"private-token"}}', { status: 400, headers: { 'x-app-usage': '{"call_count":40,"total_time":20}', 'x-business-use-case-usage': '{"private-business-id":[{"call_count":70,"total_cputime":10}]}' } }))); await expect(new InstagramClient({ accessToken: 'private-token', igUserId: '111', onResponse: seen }).getMe()).rejects.toBeInstanceOf(InstagramApiError); expect(seen).toHaveBeenCalledWith(expect.objectContaining({ code: 190, usage: { call_count: 70, total_time: 20, total_cputime: 10 } })); expect(JSON.stringify(seen.mock.calls)).not.toContain('private-token'); expect(JSON.stringify(seen.mock.calls)).not.toContain('private-business-id'); });
+it('does not report a structured Graph error in a 200 response as successful delivery', async () => { vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":{"code":80002}}', { status: 200 }))); await expect(new InstagramClient({ accessToken: 'token', igUserId: '111' }).sendText('user', 'Hi')).rejects.toMatchObject({ code: 80002, rateLimited: true }); });
+it('treats missing mutation receipts as unknown rather than successful delivery', async()=>{
+  vi.stubGlobal('fetch',vi.fn().mockImplementation(async()=>new Response('{}')));
+  const client=new InstagramClient({accessToken:'token',igUserId:'111'});
+  await expect(client.sendPrivateReply('comment','Hello')).rejects.toMatchObject({name:'InstagramTransportError'});
+  await expect(client.createMediaContainer({imageUrl:'https://example.com/image.jpg'})).rejects.toMatchObject({name:'InstagramTransportError'});
+  await expect(client.publishMedia('container')).rejects.toMatchObject({name:'InstagramTransportError'});
+});

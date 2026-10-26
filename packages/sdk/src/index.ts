@@ -1,5 +1,5 @@
 export { InstagramHarness } from './client.js'
-export { InstagramHarnessError } from './errors.js'
+export { InstagramHarnessError, LineHarnessError } from './errors.js'
 export { parseDelay } from './delay.js'
 
 // Resource classes (for advanced usage / type narrowing)
@@ -27,6 +27,7 @@ export type {
   ScenarioTriggerType,
   MessageType,
   BroadcastStatus,
+  BroadcastMessageType,
   Friend,
   FriendListParams,
   Follower,

@@ -413,7 +413,8 @@ export async function advanceFriendScenario(
       `UPDATE follower_scenarios
        SET current_step = ?,
            next_step_at = ?,
-           updated_at = ?
+           updated_at = ?,
+           end_reason = NULL
        WHERE id = ?`,
     )
     .bind(nextStepOrder, nextDeliveryAt ?? null, now, id)
@@ -430,7 +431,8 @@ export async function completeFriendScenario(
       `UPDATE follower_scenarios
        SET status = 'completed',
            next_step_at = NULL,
-           updated_at = ?
+           updated_at = ?,
+           end_reason = NULL
        WHERE id = ?`,
     )
     .bind(now, id)

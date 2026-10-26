@@ -1,13 +1,27 @@
-import { armScheduler } from './tenant-scheduler.js';
+import { InstagramApiError } from '@ig-harness/ig-sdk';
+import { deliveryStatus } from './routes/delivery-status.js';
+import { resolveCorsOrigin, warnMissingAdminOrigin } from './middleware/admin-auth-config.js';
+import { adminAuth } from './routes/admin-auth.js';
+import { publicPageHeaders } from './lib/html.js';
+import { beginActivity, endActivity } from './lib/activity.js';
+import { scheduledWork } from './lib/scheduled-work.js';
+import { encryptLegacyAccountTokens } from './lib/token-crypto.js';
+import { armScheduler } from './lib/scheduler-client.js';
 export { TenantScheduler } from './tenant-scheduler.js';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { listIgAccounts, updateIgAccount } from '@ig-harness/db';
+import { escapeHtml } from './lib/security.js';
+import { permissionMiddleware } from './middleware/permissions.js';
+import { dataDeletion } from './routes/data-deletion.js';
+import { listIgAccounts, getIgAccountById, updateIgAccount } from '@ig-harness/db';
 import { processStepDeliveries } from './services/step-delivery.js';
 import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processFollowupDrip } from './services/engagement-gate.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
+import { pruneExpiredMessages } from './services/retention.js';
+import { processQueuedWebhooks } from './routes/webhook.js';
+import { processCommentRuleJobs } from './services/comment-rule-jobs.js';
 import { webhook } from './routes/webhook.js';
 import { friends } from './routes/friends.js';
 import { tags } from './routes/tags.js';
@@ -40,6 +54,9 @@ export type Env = {
     // ASSETS is optional: create-ig-harness deploys without an [assets] binding,
     // so callers MUST guard `env.ASSETS` before invoking `.fetch` (see notFound below).
     ASSETS?: Fetcher;
+    TOKEN_ENCRYPTION_KEY?: string;
+    IG_GRAPH_API_VERSION?: string;
+    IG_REQUIRE_APPSECRET_PROOF?: string;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
     IG_USER_ID: string;
@@ -48,25 +65,59 @@ export type Env = {
     WORKER_URL: string;
     IG_USERNAME?: string;
     CONTACT_EMAIL?: string;
+    ADMIN_ORIGINS?: string;
+    ADMIN_ORIGIN?: string;
+    ADMIN_ALLOW_CROSS_SITE?: string;
+    ADMIN_COOKIE_SAMESITE?: string;
+    MESSAGES_RETENTION_DAYS?: string;
     LINE_ADD_URL?: string;
     LINE_LIFF_ID?: string;
     LINE_HARNESS_LINK_SECRET?: string;
   };
   Variables: {
     staff: { id: string; name: string; role: 'owner' | 'admin' | 'staff' };
+    csrfToken?: string;
   };
 };
 
 const app = new Hono<Env>();
 
-// CORS — allow all origins for MVP
-app.use('*', cors({ origin: '*' }));
+app.use('*', async (c, next) => {
+  warnMissingAdminOrigin(c.env, c.req.url);
+  if (c.req.path.startsWith('/api/auth/')) { c.header('Cache-Control', 'no-store'); c.header('Referrer-Policy', 'no-referrer'); }
+  await next();
+});
+
+// Exact configured origins and the same Pages project's previews may send cookies.
+app.use('*', cors({
+  origin: (origin, c) => resolveCorsOrigin(c.env, origin, c.req.url),
+  credentials: true,
+  allowMethods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowHeaders: ['Content-Type','Authorization','X-CSRF-Token'],
+  maxAge: 600,
+}));
+
+app.use('*', async (c, next) => {
+  if (['/connect','/line','/data-deletion','/privacy-policy','/terms-of-service'].includes(c.req.path)) publicPageHeaders(c);
+  if (c.req.path.startsWith('/images/')) {
+    c.header('Content-Security-Policy', "default-src 'none'; sandbox; frame-ancestors 'none'");
+    c.header('X-Content-Type-Options', 'nosniff');
+  }
+  await next();
+});
 
 // Rate limiting — runs before auth to block abuse early
 app.use('*', rateLimitMiddleware);
 
 // Auth middleware — skips /webhook automatically
 app.use('*', authMiddleware);
+app.use('*', permissionMiddleware);
+app.use('/api/*', async (c, next) => {
+  if (!c.get('staff') || ['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) || c.req.path.startsWith('/api/data-deletion') || c.req.path.startsWith('/api/internal/')) return next();
+  const activity = await beginActivity(c.env.DB);
+  if (!activity) return c.json({ error: 'Data deletion is in progress; retry after it completes' }, 409);
+  try { await next(); } finally { await endActivity(c.env.DB, activity); }
+});
 
 // Called only after authentication. Standalone installs retain their cron clock.
 app.post('/api/internal/scheduler/arm', async (c) => {
@@ -80,13 +131,16 @@ app.use('/api/*', async (c, next) => {
 });
 
 // Mount route groups
+app.route('/', adminAuth);
 app.route('/', webhook);
+app.route('/', dataDeletion);
 app.route('/', friends);
 app.route('/', tags);
 app.route('/', scenarios);
 app.route('/', broadcasts);
 app.route('/', commentRules);
 app.route('/', health);
+app.route('/', deliveryStatus);
 app.route('/', trackedLinks);
 app.route('/', forms);
 app.route('/', staff);
@@ -105,9 +159,10 @@ app.route('/', mediaPosts);
 app.get('/connect', (c) => {
   const uid = c.req.query('uid');
   const token = c.req.query('token');
-  if (!uid || !token) {
+  if (!uid || !token || !/^[A-Za-z0-9_-]{8,128}$/.test(token)) {
     return c.html(`<!DOCTYPE html><html><head><title>Error</title></head><body><h1>Invalid link</h1></body></html>`, 400);
   }
+  if (!c.env.IG_USERNAME || !/^[A-Za-z0-9._]{1,30}$/.test(c.env.IG_USERNAME)) return c.text('Invalid Instagram username configuration', 503);
   // Show page that instructs user to send the token via IG DM
   return c.html(`<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -121,70 +176,34 @@ p { color: #666; line-height: 1.6; }
 </style></head><body>
 <h1>📱 Instagram連携</h1>
 <p>以下のコードをInstagramのDMで送信してください</p>
-<div class="token-box">CONNECT:${token}</div>
-<a class="btn" href="https://ig.me/m/${c.env.IG_USERNAME ?? 'your_ig_username'}">DMを開く</a>
+<div class="token-box">CONNECT:${escapeHtml(token)}</div>
+<a class="btn" href="https://ig.me/m/${encodeURIComponent(c.env.IG_USERNAME)}">DMを開く</a>
 <p style="margin-top:24px; font-size:13px; color:#999;">このコードを送信すると、LINEアカウントとInstagramアカウントが連携されます。</p>
 </body></html>`);
 });
 
 // LINE bridge page — intermediate page between IG and LINE
-// Test mode: /line?test=1 shows all link patterns for debugging
 app.get('/line', (c) => {
   const ref = c.req.query('ref') ?? 'ig';
   const form = c.req.query('form') ?? '';
-  const testMode = c.req.query('test') === '1';
-  const liffId = c.env.LINE_LIFF_ID ?? '2009622452-FZBrP4Cz';
-  const lineAddUrl = c.env.LINE_ADD_URL ?? 'https://korega-saigo-negai.noda-c40.workers.dev/auth/line';
+  if (c.req.query('test') !== undefined) return c.text('Not found', 404);
+  const liffId = c.env.LINE_LIFF_ID;
+  const lineAddUrl = c.env.LINE_ADD_URL;
+  if (!liffId && !lineAddUrl) return c.text('LINE integration is not configured', 503);
+  if (liffId && !/^\d+-[A-Za-z0-9]+$/.test(liffId)) return c.text('Invalid LINE configuration', 503);
+  let target: URL;
+  try {
+    target = new URL(liffId ? `https://liff.line.me/${liffId}` : lineAddUrl!);
+    if (target.protocol !== 'https:') throw new Error('HTTPS required');
+  } catch { return c.text('Invalid LINE configuration', 503); }
 
   const params = new URLSearchParams();
   if (ref) params.set('ref', ref);
   if (form) params.set('form', form);
   const qs = params.toString();
 
-  if (testMode) {
-    // Test page with all link patterns
-    const links = [
-      { label: '1. LIFF (no params)', url: `https://liff.line.me/${liffId}`, desc: 'liff.line.me パラメなし' },
-      { label: '2. LIFF + params', url: `https://liff.line.me/${liffId}?${qs}`, desc: 'liff.line.me パラメ付き' },
-      { label: '3. line:// scheme', url: `line://app/${liffId}`, desc: 'カスタムスキーム' },
-      { label: '4. line:// + params', url: `line://app/${liffId}?${qs}`, desc: 'カスタムスキーム+パラメ' },
-      { label: '5. /auth/line (OAuth)', url: `${lineAddUrl}?${qs}`, desc: 'LINE OAuth 直' },
-      { label: '6. /auth/line no params', url: lineAddUrl, desc: 'LINE OAuth パラメなし' },
-      { label: '7. line.me friend add', url: 'https://line.me/R/ti/p/@' , desc: 'line.me 友だち追加（要@ID）' },
-      { label: '8. intent:// (Android)', url: `intent://app/${liffId}#Intent;scheme=line;package=jp.naver.line.android;end`, desc: 'Android Intent' },
-    ];
-
-    const buttons = links.map(l =>
-      `<a class="btn" href="${l.url}"><span class="num">${l.label}</span><span class="url">${l.desc}</span><span class="raw">${l.url.length > 60 ? l.url.slice(0, 57) + '...' : l.url}</span></a>`
-    ).join('');
-
-    return c.html(`<!DOCTYPE html><html><head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LINE Link Test</title>
-<style>
-body { font-family: -apple-system, monospace; max-width: 480px; margin: 0 auto; padding: 20px 12px; background: #1a1a2e; color: #eee; }
-h1 { font-size: 18px; text-align: center; margin-bottom: 4px; }
-.sub { text-align: center; font-size: 12px; color: #888; margin-bottom: 20px; }
-.btn { display: block; background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; text-decoration: none; color: #eee; }
-.btn:active { background: #0f3460; }
-.num { display: block; font-size: 15px; font-weight: bold; color: #06C755; }
-.url { display: block; font-size: 12px; color: #aaa; margin-top: 2px; }
-.raw { display: block; font-size: 10px; color: #555; margin-top: 4px; word-break: break-all; }
-.result { margin-top: 16px; padding: 12px; background: #16213e; border-radius: 8px; font-size: 12px; }
-</style></head><body>
-<h1>LINE Link Pattern Test</h1>
-<p class="sub">IGアプリ内ブラウザからどれが動くかテスト</p>
-${buttons}
-<div class="result">
-<strong>UA:</strong><br>
-<span id="ua" style="font-size:10px;color:#888;word-break:break-all;"></span>
-</div>
-<script>document.getElementById('ua').textContent = navigator.userAgent;</script>
-</body></html>`);
-  }
-
-  // Production: show the bridge page with best working method
-  const liffUrl = `https://liff.line.me/${liffId}?${qs}`;
+  for (const [key, value] of params) target.searchParams.set(key, value);
+  const liffUrl = escapeHtml(target.href);
   return c.html(`<!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LINE特典を受け取る</title>
@@ -209,25 +228,6 @@ p { color: #666; line-height: 1.6; margin: 8px 0; }
 
 // Handle CONNECT token in DM webhook (processed in webhook.ts handleMessagingEvent)
 
-// Data deletion callback (required for Meta app)
-app.post('/data-deletion', async (c) => {
-  const body = await c.req.json<{ signed_request?: string }>();
-  const confirmationCode = crypto.randomUUID();
-  return c.json({
-    url: `${new URL('/data-deletion', c.req.url).origin}/data-deletion?code=${confirmationCode}`,
-    confirmation_code: confirmationCode,
-  });
-});
-
-app.get('/data-deletion', (c) => {
-  const code = c.req.query('code');
-  return c.html(`<!DOCTYPE html><html><head><title>Data Deletion</title></head><body>
-<h1>Data Deletion Request</h1>
-<p>Confirmation code: ${code ?? 'N/A'}</p>
-<p>Your data has been scheduled for deletion.</p>
-</body></html>`);
-});
-
 // Privacy policy page (required for Meta app public mode)
 app.get('/privacy-policy', (c) => {
   return c.html(`<!DOCTYPE html><html><head><title>Privacy Policy - Instagram Harness</title></head><body>
@@ -235,7 +235,7 @@ app.get('/privacy-policy', (c) => {
 <p>Instagram Harness is a self-hosted Instagram DM automation tool. Each user deploys their own instance.</p>
 <p>This instance processes Instagram messages and comments solely for the account owner's automation purposes.</p>
 <p>No data is shared with third parties. All data is stored in the account owner's Cloudflare D1 database.</p>
-<p>Contact: ${c.env.CONTACT_EMAIL ?? 'admin@example.com'}</p>
+<p>Contact: ${escapeHtml(c.env.CONTACT_EMAIL ?? 'admin@example.com')}</p>
 </body></html>`);
 });
 
@@ -253,7 +253,7 @@ app.get('/terms-of-service', (c) => {
 <h2>4. Compliance with Meta Platform Terms</h2>
 <p>This instance is operated in compliance with the <a href="https://developers.facebook.com/terms/">Meta Platform Terms</a> and the <a href="https://developers.facebook.com/devpolicy/">Meta Developer Policies</a>. Use of automation features must respect Instagram's user-facing rules including rate limits and anti-spam policies.</p>
 <h2>5. Contact</h2>
-<p>Contact: ${c.env.CONTACT_EMAIL ?? 'admin@example.com'}</p>
+<p>Contact: ${escapeHtml(c.env.CONTACT_EMAIL ?? 'admin@example.com')}</p>
 </body></html>`);
 });
 
@@ -298,48 +298,52 @@ export async function runScheduledJobs(
   // waitUntil keeps the write alive even if scheduled() resolves early.
   ctx.waitUntil(recordCronRun(env.DB).catch(() => {}));
   // `accounts` is the route module above — use a distinct name here.
+  await encryptLegacyAccountTokens(env.DB, env.TOKEN_ENCRYPTION_KEY);
+  await pruneExpiredMessages(env.DB, env.MESSAGES_RETENTION_DAYS);
   const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });
 
   for (const account of igAccounts) {
-    let igClient;
-    try {
-      // Includes a pre-expiry token refresh per account.
-      igClient = await getAccountClient(env, env.DB, account);
-    } catch (err) {
-      console.error(`[cron] client init failed for ${account.ig_user_id}; skipping:`, err);
-      continue;
-    }
-    // Liveness probe: a real Graph call catches checkpoint/freeze-dead
-    // tokens (code 190) that expiry math reports as healthy. The same
-    // response self-heals the display username (admin shows @username
-    // instead of a raw ig_user_id) and keeps it fresh after renames.
-    ctx.waitUntil(
-      igClient
-        .getMe()
-        .then(async (me) => {
-          await recordTokenValidity(env.DB, account.id, true);
-          if (me.username && me.username !== account.username) {
-            await updateIgAccount(env.DB, account.id, { username: me.username });
-          }
-        })
-        .catch(() => recordTokenValidity(env.DB, account.id, false).catch(() => {})),
-    );
-    const ref = toIgAccountRef(account);
-    const taskNames = ['processStepDeliveries', 'processScheduledBroadcasts', 'processFollowupDrip', 'processMediaPosts'] as const;
-    const results = await Promise.allSettled([
-      processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id),
-      processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL, account.id),
-      processFollowupDrip(env.DB, igClient, env.WORKER_URL, undefined, ref, account.id),
-      processMediaPosts(env.DB, igClient, account.id),
+    const [work, lastProbe] = await Promise.all([
+      scheduledWork(env.DB, account.id),
+      env.DB.prepare('SELECT value FROM integration_settings WHERE key=?').bind(`health:token_valid:${account.id}`).first<{ value: string }>(),
     ]);
-    results.forEach((result, i) => {
-      if (result.status === 'rejected') {
-        console.error(
-          `[cron] ${taskNames[i]} failed for account=${account.id}:`,
-          result.reason,
-        );
+    if (!work || work.deletion_locked) continue;
+    let lastChecked = 0;
+    let lastHealthy: boolean | undefined;
+    try { const diagnostic=JSON.parse(lastProbe?.value ?? '{}'); lastChecked = Date.parse(diagnostic.checked_at) || 0; lastHealthy=diagnostic.ok; } catch { /* invalid probe record */ }
+    const probeDue = lastChecked <= Date.now() - (lastHealthy===false?5:60) * 60_000;
+    if (lastHealthy===false && !probeDue) continue;
+    if (!probeDue && ![work.steps, work.broadcasts, work.followups, work.media, work.webhooks, work.comments].some(Boolean)) continue;
+    const activity = await beginActivity(env.DB);
+    if (!activity) continue;
+    try {
+      const current = await getIgAccountById(env.DB, account.id);
+      if (!current || !current.is_active) continue;
+      const igClient = await getAccountClient(env, env.DB, current, {forHealthProbe:probeDue});
+      if (probeDue) {
+        try {
+          const me = await igClient.getMe();
+          const identityMatches=me.user_id===current.ig_user_id;
+          await recordTokenValidity(env.DB, account.id, identityMatches,identityMatches?undefined:'account_id_mismatch');
+          if (!identityMatches) continue;
+          if (identityMatches && me.username && me.username !== account.username) await updateIgAccount(env.DB, account.id, { username: me.username });
+        } catch (error) { await recordTokenValidity(env.DB, account.id, false,error instanceof InstagramApiError && error.tokenExpired?'token_expired':'api_unavailable'); continue; }
       }
-    });
+      const ref = toIgAccountRef(account);
+      const tasks: Array<[string, Promise<unknown>]> = [];
+      if (work.steps) tasks.push(['steps', processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id)]);
+      if (work.broadcasts) tasks.push(['broadcasts', processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL, account.id)]);
+      if (work.followups) tasks.push(['followups', processFollowupDrip(env.DB, igClient, env.WORKER_URL, undefined, ref, account.id)]);
+      if (work.media) tasks.push(['media', processMediaPosts(env.DB, igClient, account.id)]);
+      if (work.webhooks) tasks.push(['webhooks', processQueuedWebhooks(env.DB, igClient, account, env.WORKER_URL)]);
+      else if (work.comments) tasks.push(['comments', processCommentRuleJobs(env.DB, igClient, account.id)]);
+      const results = await Promise.allSettled(tasks.map(([, task]) => task));
+      results.forEach((result, i) => {
+        if (result.status === 'rejected') console.error(`[cron] ${tasks[i]![0]} failed for account=${account.id}`, result.reason instanceof Error ? result.reason.name : 'unknown');
+      });
+    } catch (error) {
+      console.error('[cron] account processing failed', { accountId: account.id, kind: error instanceof Error ? error.name : 'unknown' });
+    } finally { await endActivity(env.DB, activity); }
   }
 }
 

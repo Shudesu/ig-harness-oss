@@ -26,15 +26,16 @@ health.get('/api/health', async (c) => {
 
 health.get('/api/accounts/:id/health', async (c) => {
   try {
-    const lineAccountId = c.req.param('id');
+    const igAccountId = c.req.param('id');
     const [riskLevel, logs] = await Promise.all([
-      getLatestRiskLevel(c.env.DB, lineAccountId),
-      getAccountHealthLogs(c.env.DB, lineAccountId),
+      getLatestRiskLevel(c.env.DB, igAccountId),
+      getAccountHealthLogs(c.env.DB, igAccountId),
     ]);
     return c.json({
       success: true,
       data: {
-        lineAccountId,
+        igAccountId,
+        lineAccountId: igAccountId, // Deprecated wire alias retained for existing clients.
         riskLevel,
         logs: logs.map((l) => ({
           id: l.id,
