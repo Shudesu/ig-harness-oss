@@ -1,5 +1,23 @@
+import { sealCredential } from '../../lib/credential-crypto.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveLineCrossLinkUrl } from '../line-cross-link.js';
+import { resolveLineCrossLinkUrl as resolveOriginal } from '../line-cross-link.js';
+
+const signingSecret = crypto.randomUUID();
+const resolveLineCrossLinkUrl: typeof resolveOriginal = (db, gate, igsid, options) => resolveOriginal(db, gate, igsid, { ...options, env: { IG_LINK_TOKEN_SECRET: signingSecret } });
+async function expectSignedLink(actual: string | null, legacyExpected: string) {
+  const url = new URL(actual!);
+  const expected = new URL(legacyExpected);
+  expect(url.origin + url.pathname).toBe(expected.origin + expected.pathname);
+  expect(url.searchParams.has('ig')).toBe(false);
+  expect(url.searchParams.has('iga')).toBe(false);
+  const [part, mac] = url.searchParams.get('igt')!.split('.');
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(signingSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  expect(await crypto.subtle.verify('HMAC', key, Buffer.from(mac!, 'base64url'), new TextEncoder().encode(part))).toBe(true);
+  const payload = JSON.parse(Buffer.from(part!, 'base64url').toString());
+  expect(payload.igsid).toBe(expected.searchParams.get('ig'));
+  expect(payload.iga ?? null).toBe(expected.searchParams.get('iga'));
+  for (const p of ['pool', 'igan']) expect(url.searchParams.get(p)).toBe(expected.searchParams.get(p));
+}
 import type { EngagementGate } from '@ig-harness/db';
 
 /**
@@ -124,7 +142,7 @@ describe('resolveLineCrossLinkUrl', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('creates a tracked link on first call, caches short, returns /r/<short>?ig=...&pool=...', async () => {
+  it('creates a tracked link on first call, caches short, returns a signed /r/<short>?igt=...&pool=...', async () => {
     const db = createMockDb({
       connections: [{ id: 'conn-1', worker_url: 'https://lh.example.com', api_key: 'k1' }],
     });
@@ -144,7 +162,7 @@ describe('resolveLineCrossLinkUrl', () => {
     const gate = makeGate({ line_connection_id: 'conn-1', line_pool_slug: 'summer', line_tracked_link_short: null });
     const url = await resolveLineCrossLinkUrl(db, gate, 'IGSID42', { fetchImpl });
 
-    expect(url).toBe('https://lh.example.com/r/tl_abc123?ig=IGSID42&pool=summer');
+    await expectSignedLink(url, 'https://lh.example.com/r/tl_abc123?ig=IGSID42&pool=summer');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     // Cache was persisted
     expect(db.updateLog).toEqual([{ gateId: 'gate-xyz', short: 'tl_abc123' }]);
@@ -165,7 +183,7 @@ describe('resolveLineCrossLinkUrl', () => {
     });
     const url = await resolveLineCrossLinkUrl(db, gate, 'IGSID7', { fetchImpl });
 
-    expect(url).toBe('https://lh.example.com/r/tl_cached?ig=IGSID7');
+    await expectSignedLink(url, 'https://lh.example.com/r/tl_cached?ig=IGSID7');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -213,7 +231,7 @@ describe('resolveLineCrossLinkUrl', () => {
     const url = await resolveLineCrossLinkUrl(db, gate, 'ig:42/weird&chars', {
       fetchImpl: vi.fn(),
     });
-    expect(url).toBe('https://lh.example.com/r/tl_abc?ig=ig%3A42%2Fweird%26chars&pool=main');
+    await expectSignedLink(url, 'https://lh.example.com/r/tl_abc?ig=ig%3A42%2Fweird%26chars&pool=main');
   });
 
   it('race-loser: reuses the winning short when conditional UPDATE meta.changes=0', async () => {
@@ -242,7 +260,7 @@ describe('resolveLineCrossLinkUrl', () => {
     });
     const url = await resolveLineCrossLinkUrl(db, gate, 'IG_B', { fetchImpl });
 
-    expect(url).toBe('https://lh.example.com/r/tl_winner?ig=IG_B');
+    await expectSignedLink(url, 'https://lh.example.com/r/tl_winner?ig=IG_B');
     // We still POSTed (the race is fundamental to the trigger path) but the
     // conditional UPDATE correctly bailed out, and the loser adopted the
     // winner's short for both the returned URL and the in-memory cache.
@@ -261,7 +279,7 @@ describe('resolveLineCrossLinkUrl', () => {
       'IG',
       { fetchImpl: vi.fn() },
     );
-    expect(url).toBe('https://lh.example.com/r/tl1?ig=IG');
+    await expectSignedLink(url, 'https://lh.example.com/r/tl1?ig=IG');
   });
 
   it('appends iga/igan when an IG account ref is provided', async () => {
@@ -274,9 +292,7 @@ describe('resolveLineCrossLinkUrl', () => {
       account: { id: '17841400000000000', username: '@himosapiens' },
     });
     // Leading @ is stripped so LINE Harness stores a bare username.
-    expect(url).toBe(
-      'https://lh.example.com/r/tl_x?ig=IG1&iga=17841400000000000&igan=himosapiens',
-    );
+    await expectSignedLink(url, 'https://lh.example.com/r/tl_x?ig=IG1&iga=17841400000000000&igan=himosapiens');
   });
 
   it('omits igan when username is absent, omits both when account is absent', async () => {
@@ -288,8 +304,30 @@ describe('resolveLineCrossLinkUrl', () => {
       fetchImpl: vi.fn(),
       account: { id: '17841400000000000' },
     });
-    expect(idOnly).toBe('https://lh.example.com/r/tl_x?ig=IG1&iga=17841400000000000');
+    await expectSignedLink(idOnly, 'https://lh.example.com/r/tl_x?ig=IG1&iga=17841400000000000');
     const none = await resolveLineCrossLinkUrl(db, gate, 'IG1', { fetchImpl: vi.fn() });
-    expect(none).toBe('https://lh.example.com/r/tl_x?ig=IG1');
+    await expectSignedLink(none, 'https://lh.example.com/r/tl_x?ig=IG1');
   });
+});
+
+it('refuses an unsafe legacy connection before both cached-link use and credentialed network access', async () => {
+  const fetchImpl = vi.fn();
+  const db = createMockDb({ connections: [{ id: 'unsafe', worker_url: 'http://127.0.0.1', api_key: crypto.randomUUID() }] });
+  for (const short of [null, 'cached']) {
+    await expect(resolveOriginal(db, makeGate({ line_connection_id: 'unsafe', line_tracked_link_short: short }), '1001', { fetchImpl })).rejects.toThrow('public HTTPS');
+  }
+  expect(fetchImpl).not.toHaveBeenCalled();
+});
+it('decrypts an encrypted connection only after URL validation and refuses redirects', async () => {
+  const env = { API_KEY: crypto.randomUUID(), IG_LINK_TOKEN_SECRET: crypto.randomUUID() };
+  const apiKey = crypto.randomUUID();
+  const db = createMockDb({ connections: [{ id: 'encrypted', worker_url: 'https://line.example', api_key: await sealCredential(apiKey, 'line-api-key:encrypted', env) }] });
+  const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+    expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${apiKey}`);
+    expect(init?.redirect).toBe('error');
+    return Response.json({ success: true, data: { id: 'short' } });
+  });
+  const link = await resolveOriginal(db, makeGate({ line_connection_id: 'encrypted' }), '1001', { env, fetchImpl });
+  expect(new URL(link!).searchParams.has('igt')).toBe(true);
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
 });

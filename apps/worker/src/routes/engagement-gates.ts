@@ -1,3 +1,4 @@
+import { verifyTrackingToken } from '../lib/tracking-token.js';
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
 import {
@@ -17,7 +18,7 @@ import { resolveAccount } from '../lib/accounts.js';
 const engagementGates = new Hono<Env>();
 
 /**
- * GET /click/:gateId?u=<base64url-encoded destination>[&ig=<igsid>]
+ * GET /click/:gateId?u=<base64url-encoded destination>[&t=<signed-token>]
  *
  * Records a click and 302s to the decoded destination.
  *
@@ -30,9 +31,8 @@ const engagementGates = new Hono<Env>();
 engagementGates.get('/click/:gateId', async (c) => {
   const gateId = c.req.param('gateId');
   const uEncoded = c.req.query('u') ?? '';
-  const igsid = c.req.query('ig') ?? null;
+  const token = c.req.query('t');
   const ua = c.req.header('User-Agent') ?? null;
-  const referer = c.req.header('Referer') ?? null;
 
   let destination = '';
   try {
@@ -79,6 +79,16 @@ engagementGates.get('/click/:gateId', async (c) => {
     return c.text('Invalid destination', 400);
   }
 
+  const signed = token ? await verifyTrackingToken(c.env, token, 'gate', gateId, destination) : null;
+  const igsid = signed?.igsid ?? null;
+  // Never forward caller-supplied raw identities, even through legacy wrappers.
+  const safe = new URL(destination);
+  if (safe.username || safe.password) return c.text('Invalid destination', 400);
+  for (const key of ['ig', 'lu', 'f', 'iga']) safe.searchParams.delete(key);
+  if (!signed) safe.searchParams.delete('igt');
+  destination = safe.href;
+  c.header('Cache-Control', 'no-store');
+  c.header('Referrer-Policy', 'no-referrer');
   const id = crypto.randomUUID();
   c.executionCtx.waitUntil(
     (async () => {
@@ -88,7 +98,7 @@ engagementGates.get('/click/:gateId', async (c) => {
             `INSERT INTO gate_clicks (id, gate_id, igsid, destination_url, user_agent, referer)
              VALUES (?, ?, ?, ?, ?, ?)`,
           )
-          .bind(id, gateId, igsid, destination, ua, referer)
+          .bind(id, gateId, igsid, safe.origin + safe.pathname, ua, null)
           .run();
       } catch (err) {
         console.error('[gate-click] insert failed:', err);

@@ -1,3 +1,4 @@
+import { readAppSecret, type CredentialEnv } from '../lib/credential-crypto.js';
 import { messagingEligibility } from '../services/messaging-window.js';
 import { armScheduler } from '../lib/scheduler-client.js';
 import { beginActivity, endActivity } from '../lib/activity.js';
@@ -75,7 +76,7 @@ webhook.post('/webhook', async (c) => {
   // accounts connected through a different Meta App also validate.
   await ensureDefaultAccount(c.env, c.env.DB);
   const accounts = await listIgAccounts(c.env.DB);
-  const secrets = [c.env.IG_APP_SECRET, ...accounts.map((a) => a.app_secret)]
+  const secrets = [c.env.IG_APP_SECRET, ...await Promise.all(accounts.map((a) => readAppSecret(a, c.env)))]
     .filter((sec): sec is string => !!sec)
     .filter((sec, i, arr) => arr.indexOf(sec) === i);
   // Empty/missing header is immediately invalid — skip the secret loop.
@@ -116,7 +117,7 @@ webhook.post('/webhook', async (c) => {
   const accepted: IgAccount[] = [];
   for (const entry of body.entry) {
     const account = pickAccountForEntry(accounts, entry.id);
-    if (!account || account.ig_user_id !== entry.id || (account.app_secret || c.env.IG_APP_SECRET) !== matchedSecret) continue;
+    if (!account || account.ig_user_id !== entry.id || ((await readAppSecret(account, c.env)) || c.env.IG_APP_SECRET) !== matchedSecret) continue;
     const events = [
       ...(entry.messaging ?? []).map((value) => ({ kind: 'messaging', value })),
       ...(entry.standby ?? []).map((value) => ({ kind: 'standby', value })),
@@ -137,17 +138,17 @@ webhook.post('/webhook', async (c) => {
         const current = await getIgAccountById(db, account.id);
         if (!current || !current.is_active) continue;
         const client = await getAccountClient(c.env, db, current);
-        await processQueuedWebhooks(db, client, current, c.env.WORKER_URL);
+        await processQueuedWebhooks(db, client, current, c.env.WORKER_URL, c.env);
       } finally { await endActivity(db, activity); }
     }
   })());
   return c.json({ status: 'ok' }, 200);
 });
 
-export async function processQueuedWebhooks(db: D1Database, client: InstagramClient, account: IgAccount, workerUrl?: string): Promise<void> {
+export async function processQueuedWebhooks(db: D1Database, client: InstagramClient, account: IgAccount, workerUrl?: string, env?: CredentialEnv): Promise<void> {
   await drainWebhookEvents(db, account.id, async (event) => {
     const value = JSON.parse(event.payload);
-    const ref = toIgAccountRef(account);
+    const ref = toIgAccountRef(account, env);
     if (event.kind === 'messaging' || event.kind === 'standby') await handleMessagingEvent(db, client, value, workerUrl, ref, account.id, event.kind === 'standby');
     else if (event.kind === 'comments') await handleCommentEvent(db, client, value, account.ig_user_id, workerUrl, ref, account.id);
     else if (event.kind === 'mentions') await handleMentionEvent(db, client, value, ref, account.id);

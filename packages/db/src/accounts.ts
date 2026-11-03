@@ -57,6 +57,7 @@ export interface CreateIgAccountInput {
   accessToken: string;
   tokenExpiresAt?: number | null;
   tokenRefreshedAt?: number | null;
+  /** Worker writes enc:v1 ciphertext with account-specific AAD; plaintext is legacy read compatibility only. */
   appSecret?: string | null;
   verifyToken?: string | null;
   isDefault?: boolean;
@@ -95,6 +96,7 @@ export async function createIgAccount(
 export interface UpdateIgAccountInput {
   username?: string | null;
   accessToken?: string;
+  /** Worker writes enc:v1 ciphertext with account-specific AAD; plaintext is legacy read compatibility only. */
   appSecret?: string | null;
   verifyToken?: string | null;
   isActive?: boolean;

@@ -1,3 +1,4 @@
+import { verifyTrackingToken } from '../lib/tracking-token.js';
 import { escapeHtml, isHttpDestination, serializeInlineScriptString, publicPageHeaders } from '../lib/html.js';
 import { Hono } from 'hono';
 import {
@@ -214,8 +215,12 @@ export function buildAppRedirectHtml(destinationUrl: string, nonce: string): str
 // GET /t/:linkId — click tracking redirect (no auth, fast redirect)
 trackedLinks.get('/t/:linkId', async (c) => {
   const linkId = c.req.param('linkId');
-  const igsid = c.req.query('ig') ?? c.req.query('lu') ?? null;
-  let friendId = c.req.query('f') ?? null;
+  const token = c.req.query('t');
+  const signed = token ? await verifyTrackingToken(c.env, token, 'link', linkId) : null;
+  const allowLegacy = token === undefined && c.env.TRACKING_ALLOW_UNSIGNED_ACTIONS === 'true';
+  if (allowLegacy) console.warn('[tracking] unsigned actions explicitly enabled');
+  const igsid = signed?.igsid ?? (allowLegacy ? c.req.query('ig') ?? c.req.query('lu') : null);
+  let friendId = signed?.followerId ?? (allowLegacy ? c.req.query('f') ?? null : null);
 
   // Look up the link first
   const link = await getTrackedLinkById(c.env.DB, linkId);
@@ -230,11 +235,18 @@ trackedLinks.get('/t/:linkId', async (c) => {
   if (!friendId && igsid) {
     const { getFriendByIgsid } = await import('@ig-harness/db');
     const friend = await getFriendByIgsid(c.env.DB, igsid);
-    if (friend) {
+    if (friend && friend.account_id === link.account_id) {
       // followers.id is numeric — coerce so it matches the string-typed slot.
       friendId = String(friend.id);
     }
   }
+
+  if (friendId) {
+    const scoped = await c.env.DB.prepare('SELECT id FROM followers WHERE id=? AND account_id IS ?').bind(friendId, link.account_id).first();
+    if (!scoped) friendId = null;
+  }
+  c.header('Cache-Control', 'no-store');
+  c.header('Referrer-Policy', 'no-referrer');
 
   // Run side-effects async (click recording, tag/scenario actions)
   const ctx = c.executionCtx as ExecutionContext;
@@ -257,7 +269,8 @@ trackedLinks.get('/t/:linkId', async (c) => {
           }
 
           if (actions.length > 0) {
-            await Promise.allSettled(actions);
+            const results = await Promise.allSettled(actions);
+            if (results.some(result => result.status === 'rejected')) console.error('[tracking] click action failed');
           }
         }
       } catch (err) {

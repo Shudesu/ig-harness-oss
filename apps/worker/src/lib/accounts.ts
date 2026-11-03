@@ -1,3 +1,5 @@
+import { readAppSecret, type CredentialEnv } from './credential-crypto.js';
+import { rewriteTrackedMessage } from './outbound-tracking.js';
 import { assertGraphAvailable, graphObserver } from './graph-observation.js';
 import { sealToken, openToken } from './token-crypto.js';
 import { InstagramClient, InstagramApiError } from '@ig-harness/ig-sdk';
@@ -13,7 +15,7 @@ import type { IgAccountRef } from '../services/line-cross-link.js';
 import { refreshAccountTokenIfNeeded } from './ig-token.js';
 import type { Env } from '../index.js';
 
-export type AccountEnv = {
+export type AccountEnv = CredentialEnv & {
   IG_USER_ID: string;
   IG_USERNAME?: string;
   IG_ACCESS_TOKEN: string;
@@ -158,8 +160,8 @@ export function pickAccountForEntry(accounts: IgAccount[], entryId: string): IgA
   return active.length === 1 ? active[0]! : null;
 }
 
-export function toIgAccountRef(account: IgAccount): IgAccountRef {
-  return { id: account.ig_user_id, username: account.username ?? undefined };
+export function toIgAccountRef(account: IgAccount, env?: CredentialEnv): IgAccountRef {
+  return { id: account.ig_user_id, username: account.username ?? undefined, ...(env ? { security: env } : {}) };
 }
 
 /** Per-account client. Refreshes the token in-band when it is near expiry. */
@@ -188,11 +190,12 @@ export async function getAccountClient(
       err,
     );
   }
-  const proofSecret=env.IG_REQUIRE_APPSECRET_PROOF==='true' ? account.app_secret || env.IG_APP_SECRET : undefined;
+  const proofSecret=env.IG_REQUIRE_APPSECRET_PROOF==='true' ? (await readAppSecret(account, env)) || env.IG_APP_SECRET : undefined;
   if (env.IG_REQUIRE_APPSECRET_PROOF==='true' && !proofSecret) throw new Error('Instagram App Secret required for appsecret_proof');
   let blockedUntil=0;
   const observe=graphObserver(db,account.id);
   return new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
+    transformMessage: (recipientId, message) => rewriteTrackedMessage(env, recipientId, message),
     beforeRequest:()=>{if(blockedUntil>Date.now())throw new InstagramApiError('Instagram API is cooling down',429,613,undefined,blockedUntil-Date.now());},
     onResponse:async observation=>{
       if(observation.status===429 || [4,17,32,613,80002].includes(observation.code ?? -1)) blockedUntil=Date.now()+(Number.isFinite(observation.retryAfterMs)?Math.max(1000,observation.retryAfterMs!):60_000);

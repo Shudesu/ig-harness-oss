@@ -1,3 +1,5 @@
+import { openCredential, sealCredential, type CredentialEnv } from '../lib/credential-crypto.js';
+import { validateWorkerUrl } from '../lib/worker-url.js';
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
 
@@ -33,19 +35,19 @@ function maskKey(key: string | null): string | null {
   return key.slice(0, 4) + '••••' + key.slice(-4);
 }
 
-async function getLineHarnessConfig(db: D1Database) {
+async function getLineHarnessConfig(db: D1Database, env: CredentialEnv) {
   const [url, apiKey, accountId] = await Promise.all([
     getSetting(db, 'line_harness_url'),
     getSetting(db, 'line_harness_api_key'),
     getSetting(db, 'line_harness_account_id'),
   ]);
-  return { url, apiKey, accountId };
+  return { url, apiKey: apiKey ? await openCredential(apiKey, 'legacy-line-api-key', env) : null, accountId };
 }
 
 // ── Config ─────────────────────────────────────────────────────
 
 integrations.get('/api/integrations/line-harness/config', async (c) => {
-  const cfg = await getLineHarnessConfig(c.env.DB);
+  const cfg = await getLineHarnessConfig(c.env.DB, c.env);
   return c.json({
     success: true,
     data: {
@@ -63,12 +65,13 @@ integrations.post('/api/integrations/line-harness/config', async (c) => {
     api_key?: string | null;
     account_id?: string | null;
   }>();
+  if (body.url) { try { body.url = validateWorkerUrl(body.url); } catch { return c.json({ success: false, error: 'url must be a public HTTPS URL' }, 400); } }
   // Treat undefined as "no change", null/empty as "clear".
   if (body.url !== undefined) await setSetting(c.env.DB, 'line_harness_url', body.url ?? '');
   if (body.api_key !== undefined && body.api_key !== null) {
     // Sentinel: client sends the masked string to mean "don't change".
     if (!body.api_key.includes('••••')) {
-      await setSetting(c.env.DB, 'line_harness_api_key', body.api_key);
+      await setSetting(c.env.DB, 'line_harness_api_key', body.api_key ? await sealCredential(body.api_key, 'legacy-line-api-key', c.env) : '');
     }
   } else if (body.api_key === null) {
     await setSetting(c.env.DB, 'line_harness_api_key', '');
@@ -82,17 +85,18 @@ integrations.post('/api/integrations/line-harness/config', async (c) => {
 
 async function lineHarnessFetch(
   db: D1Database,
+  env: CredentialEnv,
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const cfg = await getLineHarnessConfig(db);
+  const cfg = await getLineHarnessConfig(db, env);
   if (!cfg.url || !cfg.apiKey) {
     return new Response(
       JSON.stringify({ success: false, error: 'LINE Harness が未設定です' }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     );
   }
-  const base = cfg.url.replace(/\/$/, '');
+  const base = validateWorkerUrl(cfg.url);
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${cfg.apiKey}`);
   if (init.body && !headers.has('Content-Type')) {
@@ -101,13 +105,13 @@ async function lineHarnessFetch(
   if (cfg.accountId && !headers.has('X-LINE-ACCOUNT-ID')) {
     headers.set('X-LINE-ACCOUNT-ID', cfg.accountId);
   }
-  return fetch(`${base}${path}`, { ...init, headers });
+  return fetch(`${base}${path}`, { ...init, headers, redirect: 'error' });
 }
 
 integrations.get('/api/integrations/line-harness/test', async (c) => {
   try {
     // LINE Harness exposes /api/friends which any authed account can hit.
-    const res = await lineHarnessFetch(c.env.DB, '/api/friends?limit=1');
+    const res = await lineHarnessFetch(c.env.DB, c.env, '/api/friends?limit=1');
     if (res.status === 400) {
       // Our own "未設定" bubble from lineHarnessFetch.
       return c.json(await res.json(), 400);
@@ -116,8 +120,7 @@ integrations.get('/api/integrations/line-harness/test', async (c) => {
       return c.json({ success: false, error: 'API Key が無効です (401)' }, 401);
     }
     if (!res.ok) {
-      const text = await res.text();
-      return c.json({ success: false, error: `LINE Harness: ${res.status} ${text.slice(0, 120)}` }, 500);
+      return c.json({ success: false, error: `LINE Harness: ${res.status}` }, 500);
     }
     return c.json({ success: true, data: { message: '疎通OK' } });
   } catch (err) {
@@ -131,7 +134,7 @@ integrations.get('/api/integrations/line-harness/test', async (c) => {
 // ── Tracked-links proxy ─────────────────────────────────────────
 
 integrations.get('/api/integrations/line-harness/tracked-links', async (c) => {
-  const res = await lineHarnessFetch(c.env.DB, '/api/tracked-links');
+  const res = await lineHarnessFetch(c.env.DB, c.env, '/api/tracked-links');
   if (!res.ok) {
     return c.json(
       { success: false, error: `LINE Harness: ${res.status}` },
@@ -144,7 +147,7 @@ integrations.get('/api/integrations/line-harness/tracked-links', async (c) => {
 
 integrations.post('/api/integrations/line-harness/tracked-links', async (c) => {
   const body = await c.req.json();
-  const res = await lineHarnessFetch(c.env.DB, '/api/tracked-links', {
+  const res = await lineHarnessFetch(c.env.DB, c.env, '/api/tracked-links', {
     method: 'POST',
     body: JSON.stringify(body),
   });

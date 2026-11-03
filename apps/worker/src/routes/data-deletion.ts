@@ -1,3 +1,4 @@
+import { readAppSecret } from '../lib/credential-crypto.js';
 import { Hono } from 'hono';
 import { listIgAccounts } from '@ig-harness/db';
 import { escapeHtml, sha256, verifySignedRequest } from '../lib/security.js';
@@ -20,7 +21,7 @@ dataDeletion.post('/data-deletion', async (c) => {
   } catch { return c.json({ error: 'Invalid signed request' }, 400); }
   if (typeof signed !== 'string' || signed.length > 8192) return c.json({ error: 'Invalid signed request' }, 400);
   const accounts = await listIgAccounts(c.env.DB);
-  const secrets = [...new Set([c.env.IG_APP_SECRET, ...accounts.map((a) => a.app_secret)].filter((s): s is string => !!s))];
+  const secrets = [...new Set([c.env.IG_APP_SECRET, ...await Promise.all(accounts.map((a) => readAppSecret(a, c.env)))].filter((s): s is string => !!s))];
   let subject: string | undefined;
   let fingerprint = '';
   for (const secret of secrets) {
@@ -68,7 +69,7 @@ dataDeletion.post('/api/data-deletion/:code/resolve', requireRole('owner'), asyn
   if (body.identityVerified !== true || !body.accountId) return c.json({ error: 'Verified identity and accountId are required' }, 400);
   if (body.followerId !== undefined && (!Number.isSafeInteger(body.followerId) || body.followerId < 1)) return c.json({ error: 'Invalid followerId' }, 400);
   const account = (await listIgAccounts(c.env.DB)).find((a) => a.id === body.accountId);
-  if (!account || await sha256(account.app_secret || c.env.IG_APP_SECRET) !== request.app_fingerprint) return c.json({ error: 'Account is outside the signed request app' }, 400);
+  if (!account || await sha256((await readAppSecret(account, c.env)) || c.env.IG_APP_SECRET) !== request.app_fingerprint) return c.json({ error: 'Account is outside the signed request app' }, 400);
   const db = c.env.DB;
   const scoped = body.followerId !== undefined;
   const condition = `account_id = ?${scoped ? ' AND id = ?' : ''}`;

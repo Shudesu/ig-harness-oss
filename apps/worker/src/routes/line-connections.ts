@@ -1,3 +1,5 @@
+import { openCredential, sealCredential, type CredentialEnv } from '../lib/credential-crypto.js';
+import { validateWorkerUrl } from '../lib/worker-url.js';
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
 
@@ -28,12 +30,12 @@ function maskKey(key: string): string {
   return key.slice(0, 4) + '••••' + key.slice(-4);
 }
 
-function publicShape(c: LineConnection) {
+async function publicShape(c: LineConnection, env: CredentialEnv) {
   return {
     id: c.id,
     name: c.name,
     worker_url: c.worker_url,
-    api_key_masked: maskKey(c.api_key),
+    api_key_masked: maskKey(await openCredential(c.api_key, `line-api-key:${c.id}`, env)),
     account_id: c.account_id,
     is_default: c.is_default === 1,
     created_at: c.created_at,
@@ -66,7 +68,7 @@ connections.get('/api/line-connections', async (c) => {
   const rows = await c.env.DB
     .prepare('SELECT * FROM line_harness_connections ORDER BY is_default DESC, created_at ASC')
     .all<LineConnection>();
-  return c.json({ success: true, data: rows.results.map(publicShape) });
+  return c.json({ success: true, data: await Promise.all(rows.results.map(row => publicShape(row, c.env))) });
 });
 
 connections.post('/api/line-connections', async (c) => {
@@ -80,6 +82,8 @@ connections.post('/api/line-connections', async (c) => {
   if (!body.name || !body.worker_url || !body.api_key) {
     return c.json({ success: false, error: 'name / worker_url / api_key required' }, 400);
   }
+  let workerUrl: string;
+  try { workerUrl = validateWorkerUrl(body.worker_url); } catch { return c.json({ success: false, error: 'worker_url must be a public HTTPS URL' }, 400); }
   const id = crypto.randomUUID();
 
   // First connection becomes default automatically; if is_default=true is
@@ -101,15 +105,15 @@ connections.post('/api/line-connections', async (c) => {
     .bind(
       id,
       body.name,
-      body.worker_url.replace(/\/$/, ''),
-      body.api_key,
+      workerUrl,
+      await sealCredential(body.api_key, `line-api-key:${id}`, c.env),
       body.account_id ?? null,
       shouldBeDefault ? 1 : 0,
     )
     .run();
   const row = await fetchConnection(c.env.DB, id);
   if (!row) return c.json({ success: false, error: 'insert failed' }, 500);
-  return c.json({ success: true, data: publicShape(row) });
+  return c.json({ success: true, data: await publicShape(row, c.env) });
 });
 
 /**
@@ -147,7 +151,8 @@ connections.patch('/api/line-connections/:id', async (c) => {
     if (body.worker_url.trim().length === 0) {
       return c.json({ success: false, error: 'worker_url cannot be empty' }, 400);
     }
-    const normalized = body.worker_url.replace(/\/$/, '');
+    let normalized: string;
+    try { normalized = validateWorkerUrl(body.worker_url); } catch { return c.json({ success: false, error: 'worker_url must be a public HTTPS URL' }, 400); }
     sets.push('worker_url = ?');
     binds.push(normalized);
     if (normalized !== existing.worker_url) newWorkerUrl = normalized;
@@ -157,7 +162,8 @@ connections.patch('/api/line-connections/:id', async (c) => {
       return c.json({ success: false, error: 'api_key cannot be empty' }, 400);
     }
     sets.push('api_key = ?');
-    binds.push(body.api_key);
+    if (body.api_key.includes('••••')) return c.json({ success: false, error: 'Omit masked api_key when updating' }, 400);
+    binds.push(await sealCredential(body.api_key, `line-api-key:${id}`, c.env));
   }
   if ('account_id' in body) {
     sets.push('account_id = ?');
@@ -215,7 +221,7 @@ connections.patch('/api/line-connections/:id', async (c) => {
 
   const row = await fetchConnection(c.env.DB, id);
   if (!row) return c.json({ success: false, error: 'update failed' }, 500);
-  return c.json({ success: true, data: publicShape(row) });
+  return c.json({ success: true, data: await publicShape(row, c.env) });
 });
 
 connections.delete('/api/line-connections/:id', async (c) => {
@@ -251,19 +257,20 @@ connections.post('/api/line-connections/:id/set-default', async (c) => {
 
 async function lhFetch(
   conn: LineConnection,
+  env: CredentialEnv,
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
   // Pool is the intended delegation for multi-tenant attribution; the
   // API key alone tells LINE Harness which account context it's in, so
   // we deliberately don't forward X-LINE-ACCOUNT-ID here.
-  const base = conn.worker_url.replace(/\/$/, '');
+  const base = validateWorkerUrl(conn.worker_url);
   const headers = new Headers(init.headers);
-  headers.set('Authorization', `Bearer ${conn.api_key}`);
+  headers.set('Authorization', `Bearer ${await openCredential(conn.api_key, `line-api-key:${conn.id}`, env)}`);
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  return fetch(`${base}${path}`, { ...init, headers });
+  return fetch(`${base}${path}`, { ...init, headers, redirect: 'error' });
 }
 
 // ── Test ────────────────────────────────────────────────────────
@@ -272,11 +279,10 @@ connections.post('/api/line-connections/:id/test', async (c) => {
   const conn = await fetchConnection(c.env.DB, c.req.param('id'));
   if (!conn) return c.json({ success: false, error: 'not found' }, 404);
   try {
-    const res = await lhFetch(conn, '/api/friends?limit=1');
+    const res = await lhFetch(conn, c.env, '/api/friends?limit=1');
     if (res.status === 401) return c.json({ success: false, error: 'API Key が無効です (401)' }, 401);
     if (!res.ok) {
-      const text = await res.text();
-      return c.json({ success: false, error: `LINE Harness: ${res.status} ${text.slice(0, 120)}` }, 502);
+      return c.json({ success: false, error: `LINE Harness: ${res.status}` }, 502);
     }
     return c.json({ success: true, data: { message: '疎通OK' } });
   } catch (err) {
@@ -292,7 +298,7 @@ connections.post('/api/line-connections/:id/test', async (c) => {
 connections.get('/api/line-connections/:id/tracked-links', async (c) => {
   const conn = await resolveConnectionForLookup(c.env.DB, c.req.param('id'));
   if (!conn) return c.json({ success: false, error: '接続先が未登録です' }, 400);
-  const res = await lhFetch(conn, '/api/tracked-links');
+  const res = await lhFetch(conn, c.env, '/api/tracked-links');
   if (!res.ok) return c.json({ success: false, error: `LINE Harness: ${res.status}` }, 502);
   return c.json(await res.json());
 });
@@ -301,7 +307,7 @@ connections.post('/api/line-connections/:id/tracked-links', async (c) => {
   const conn = await resolveConnectionForLookup(c.env.DB, c.req.param('id'));
   if (!conn) return c.json({ success: false, error: '接続先が未登録です' }, 400);
   const body = await c.req.json();
-  const res = await lhFetch(conn, '/api/tracked-links', {
+  const res = await lhFetch(conn, c.env, '/api/tracked-links', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -314,7 +320,7 @@ connections.post('/api/line-connections/:id/tracked-links', async (c) => {
 connections.get('/api/line-connections/:id/traffic-pools', async (c) => {
   const conn = await resolveConnectionForLookup(c.env.DB, c.req.param('id'));
   if (!conn) return c.json({ success: false, error: '接続先が未登録です' }, 400);
-  const res = await lhFetch(conn, '/api/traffic-pools');
+  const res = await lhFetch(conn, c.env, '/api/traffic-pools');
   if (!res.ok) {
     // LINE Harness might not expose /api/traffic-pools on older builds —
     // treat 404 as "pools feature unavailable" rather than an error.
