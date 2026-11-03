@@ -1,8 +1,11 @@
 # Signed tracking links and credential storage
 
+> **IG→LINE compatibility:** IG→LINE identity linking requires LINE Harness with spec 08 (`igt` support) or later; older LINE Harness will stop linking (links still redirect).
+> IG-side `LINE_HARNESS_LINK_SECRET` must equal LINE-side `IG_HARNESS_LINK_SECRET`; alternatively, use matching `IG_LINK_TOKEN_SECRET` on both sides. Use the same secret mode on both sides.
+
 New deployments and upgrades redirect old links normally. By default only verified,
-unexpired tokens can identify a click or trigger tags/scenarios. No new configuration
-is required for an existing installation with its existing `API_KEY` or `IG_APP_SECRET`.
+unexpired tokens can identify a click or trigger tags/scenarios. Local tracking can
+use an existing `API_KEY` or `IG_APP_SECRET`; LINE identity linking requires the compatible receiver and shared-secret configuration above.
 Warnings never print key values.
 
 ## Local tracking
@@ -26,7 +29,11 @@ Warnings never print key values.
   parameters from its destination; unsigned wrappers also lose downstream `igt`.
 - The Instagram client final message boundary personalizes same-origin `/t` URLs in
   text, templates, rich messages, DMs, broadcasts and scenarios using the actual
-  recipient. Private replies to comment IDs (no known IGSID) remain anonymous.
+  recipient. Private replies resolve comment IDs through the account-scoped
+  `private_reply_attempts` row and its `followers` row; unresolved recipients remain
+  anonymous. Same-origin `/click` wrappers are also re-signed immediately before
+  sending, binding the actual recipient and exact decoded destination. URL
+  replacements use exact spans so prefixes and query variants cannot corrupt one another.
   Static API/admin tracking URLs remain anonymous until used in a message.
   Configure the existing `WORKER_URL` to match those URLs' origin; alternate-domain
   URLs and manually written external links are not rewritten.
@@ -59,28 +66,38 @@ The same shared signing setup must be available on every connected LINE deployme
 ## Credentials and connection URLs
 
 New `line_harness_connections.api_key`, legacy integration config API keys, and
-account `app_secret` writes use existing AES-GCM `enc:v1:` storage. AAD:
+account `app_secret` writes use AES-GCM `enc:v1:` storage when
+`TOKEN_ENCRYPTION_KEY` is set. AAD:
 
 - `line-api-key:<connection-id>`
 - `legacy-line-api-key`
 - `ig-app-secret:<ig-user-id>`
 
-Use existing `TOKEN_ENCRYPTION_KEY` (32 random bytes, base64). When absent, derive an
-AES key from `API_KEY` (otherwise `IG_APP_SECRET`) with HKDF-SHA256, empty salt,
-info `ig-credential-storage-v1`, and warn. Never fall back to plaintext writes.
+Setting `TOKEN_ENCRYPTION_KEY` (32 random bytes, base64) is recommended. Without
+it, new app secrets and LINE API keys are stored in plaintext and a warning with
+no credential values is emitted once per isolate. New writes never derive an
+encryption key from `API_KEY` or `IG_APP_SECRET`. Instagram access-token writes
+still require the dedicated key. An invalid configured key fails rather than
+falling back to plaintext.
 Plaintext rows remain readable. Unknown `enc:` versions and failed authentication
 are rejected. API results retain masking/has-secret indicators; no full secret is returned.
 Webhook signatures, deletion signatures, token validation/refresh and appsecret proof
 all decrypt the per-account app secret at use time.
 
-Scheduled maintenance encrypts up to 20 plaintext accounts and 20 connections per
-run, plus the legacy integration config. Updates compare the previous value so they
+Only when `TOKEN_ENCRYPTION_KEY` is set, scheduled maintenance encrypts up to
+20 plaintext account app secrets and 20 connections per run, plus the legacy
+integration config. Without that key, these migration jobs do not query or write
+the database. Updates compare the previous value so they
 do not overwrite concurrent rotations. Columns and original rows are preserved.
-Readers try the dedicated key and then the fallback, so adding a dedicated key does
+For existing `enc:v1:` credentials only, readers try the dedicated key first,
+then the legacy HKDF-SHA256 key derived from `API_KEY` (otherwise `IG_APP_SECRET`),
+with empty salt and info `ig-credential-storage-v1`. Adding a dedicated key does
 not make fallback-encrypted rows unreadable. It does **not** re-encrypt those rows:
 retain the original fallback source until those credentials have been re-saved with
-the dedicated key. Rotating/removing any encryption source without re-encryption can
-make its rows unreadable. Back up keys securely; do not print them in migration logs.
+the dedicated key. In particular, rotating `API_KEY` can make previously
+fallback-encrypted rows unreadable; new plaintext writes have no such dependency.
+Rotating/removing any encryption source without re-encryption can make its rows
+unreadable. Back up keys securely; do not print them in migration logs.
 
 Connection URLs are validated on save and immediately before credentialed fetches:
 HTTPS only, no embedded credentials/query/fragment, no localhost/local/internal host,

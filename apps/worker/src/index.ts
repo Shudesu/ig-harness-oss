@@ -303,8 +303,10 @@ export async function runScheduledJobs(
   ctx.waitUntil(recordCronRun(env.DB).catch(() => {}));
   // `accounts` is the route module above — use a distinct name here.
   await encryptLegacyAccountTokens(env.DB, env.TOKEN_ENCRYPTION_KEY);
-  await encryptLegacyCredentials(env.DB, env);
-  await encryptLegacyLineConfig(env.DB, env);
+  if (env.TOKEN_ENCRYPTION_KEY) {
+    await encryptLegacyCredentials(env.DB, env);
+    await encryptLegacyLineConfig(env.DB, env);
+  }
   await env.DB.prepare('DELETE FROM rate_limit_buckets WHERE expires_at < ?').bind(Date.now()).run().catch(() => { console.warn('[rate-limit] cleanup unavailable; apply migrations'); });
   await pruneExpiredMessages(env.DB, env.MESSAGES_RETENTION_DAYS);
   const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });

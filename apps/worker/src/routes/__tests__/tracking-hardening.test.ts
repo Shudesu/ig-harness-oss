@@ -1,3 +1,6 @@
+import { getAccountClient } from '../../lib/accounts.js';
+import { sealToken } from '../../lib/token-crypto.js';
+import type { IgAccount } from '@ig-harness/db';
 import { accounts } from '../accounts.js';
 import { webhook } from '../webhook.js';
 import { InstagramClient } from '@ig-harness/ig-sdk';
@@ -101,8 +104,9 @@ it('implements spec 08 HKDF and HMAC wire format with no shared key => anonymous
 });
 
 it('encrypts with AAD, reads legacy plaintext, rejects corruption and supports fallback after dedicated key provisioning', async () => {
-  const env = { API_KEY: random() }; const value = random(); const subject = 'line-api-key:row';
-  const sealed = await sealCredential(value, subject, env);
+  const env = { API_KEY: 'fake-legacy-api-key' }; const value = 'fake-credential'; const subject = 'line-api-key:row';
+  const legacyKey = btoa(String.fromCharCode(...await deriveKey(env.API_KEY, 'ig-credential-storage-v1')));
+  const sealed = await sealToken(value, subject, legacyKey);
   expect(sealed.startsWith('enc:v1:')).toBe(true); expect(sealed).not.toContain(value);
   expect(await openCredential(sealed, subject, env)).toBe(value);
   expect(await openCredential(value, subject, {})).toBe(value);
@@ -115,6 +119,7 @@ it('encrypts with AAD, reads legacy plaintext, rejects corruption and supports f
 });
 it('migrates existing app secrets and LINE keys idempotently and retains masked API responses', async () => {
   const f = await fixture(); const appSecret = random(); const apiKey = random();
+  f.env.TOKEN_ENCRYPTION_KEY = btoa('01234567890123456789012345678901');
   f.sqlite.prepare('UPDATE ig_accounts SET app_secret=? WHERE id=?').run(appSecret, 'a');
   f.sqlite.prepare("INSERT INTO line_harness_connections(id,name,worker_url,api_key) VALUES('c','line','https://line.example',?)").run(apiKey);
   await encryptLegacyCredentials(f.db, f.env);
@@ -129,6 +134,7 @@ it('migrates existing app secrets and LINE keys idempotently and retains masked 
 });
 it('encrypts connection create/update and legacy config writes and decrypts only for validated fetch', async () => {
   const f = await fixture(); const apiKey = random(); const next = random();
+  f.env.TOKEN_ENCRYPTION_KEY = btoa('01234567890123456789012345678901');
   const created = await f.request('/api/line-connections', json({ name: 'line', worker_url: 'https://line.example', api_key: apiKey }));
   expect(created.status).toBe(200); const { data } = await created.json() as any;
   const stored = () => String(f.sqlite.prepare('SELECT api_key FROM line_harness_connections WHERE id=?').get(data.id)!.api_key);
@@ -184,4 +190,71 @@ it('applies the SDK outbound hook to text/templates/quick replies, and anonymize
   }
   const privateMessage = JSON.parse(mocked.mock.calls[3]![1]!.body as string);
   expect(privateMessage.message.text).toBe(env.WORKER_URL + '/t/1');
+});
+
+
+it.each(['known', 'missing', 'other-account', 'mismatched-follower'])('resolves %s private reply identity through the account-scoped attempt and follower', async kind => {
+  const f = await fixture();
+  const accountId = kind === 'other-account' ? 'b' : 'a';
+  const followerId = kind === 'other-account' || kind === 'mismatched-follower' ? 2 : 1;
+  if (kind !== 'missing') f.sqlite.prepare("INSERT INTO private_reply_attempts(account_id,comment_id,follower_id,status,attempted_at) VALUES(?,?,?,'processing','2026-01-01')").run(accountId, 'comment', followerId);
+  const account = f.sqlite.prepare("SELECT * FROM ig_accounts WHERE id='a'").get() as unknown as IgAccount;
+  account.token_expires_at = Math.floor(Date.now() / 1000) + 60 * 24 * 3600;
+  const mocked = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ recipient_id: '1001', message_id: 'fake-sent' }));
+  vi.stubGlobal('fetch', mocked);
+  const client = await getAccountClient(f.env, f.db, account);
+  const destination = 'https://example.com/reward?label=日本語&x=1';
+  const stale = await issueTrackingToken(f.env, { purpose: 'gate', linkId: 'gate', igsid: '1002', destination }, Date.now() - (TOKEN_TTL + 1) * 1000);
+  const gate = `${f.env.WORKER_URL}/click/gate?u=${Buffer.from(destination).toString('base64url')}&t=${stale}&ig=1002`;
+  await client.sendPrivateReply('comment', `${f.env.WORKER_URL}/t/1?ig=1002 ${gate}`);
+  expect(mocked).toHaveBeenCalledTimes(1);
+  const sent = JSON.parse(mocked.mock.calls[0]![1]!.body as string);
+  expect(sent.recipient).toEqual({ comment_id: 'comment' });
+  const urls = sent.message.text.split(' ').map((url: string) => new URL(url)) as URL[];
+  for (const [i, url] of urls.entries()) {
+    expect(url.searchParams.has('ig')).toBe(false);
+    if (kind === 'known') {
+      expect(await verifyTrackingToken(f.env, url.searchParams.get('t')!, i ? 'gate' : 'link', i ? 'gate' : '1', i ? destination : undefined)).toMatchObject({ igsid: '1001' });
+    } else expect(url.searchParams.has('t')).toBe(false);
+  }
+  expect(Buffer.from(urls[1]!.searchParams.get('u')!, 'base64url').toString()).toBe(destination);
+});
+
+it('re-signs /click at the final DM boundary for the actual recipient and exact destination', async () => {
+  const f = await fixture();
+  const account = f.sqlite.prepare("SELECT * FROM ig_accounts WHERE id='a'").get() as unknown as IgAccount;
+  account.token_expires_at = Math.floor(Date.now() / 1000) + 60 * 24 * 3600;
+  const mocked = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ message_id: 'fake-sent' }));
+  vi.stubGlobal('fetch', mocked);
+  const client = await getAccountClient(f.env, f.db, account);
+  const destination = 'https://example.com/reward?x=1&x=2';
+  const old = await wrapClickTracking(f.env.WORKER_URL, 'gate', destination, '1002', f.env);
+  await client.sendText('1001', old);
+  const url = new URL(JSON.parse(mocked.mock.calls[0]![1]!.body as string).message.text);
+  const token = url.searchParams.get('t')!;
+  expect(token).not.toBe(new URL(old).searchParams.get('t'));
+  expect(await verifyTrackingToken(f.env, token, 'gate', 'gate', destination)).toMatchObject({ igsid: '1001' });
+  expect(await verifyTrackingToken(f.env, token, 'gate', 'gate', destination + '&x=3')).toBeNull();
+  await f.request(url.pathname + url.search);
+  expect(f.sqlite.prepare('SELECT igsid FROM gate_clicks').get()).toEqual({ igsid: '1001' });
+});
+
+it.each([false, true])('preserves prefix URLs and query variants in either order (reverse=%s)', async reverse => {
+  const env = { API_KEY: 'fake-signing-key', WORKER_URL: 'https://a.example' };
+  const inputs = ['/x', '/x/y', '/x?q=1', '/x?q=1&z=2', '/t/1', '/t/1/y', '/t/1?q=1', '/t/1?q=1&z=2', '/t/10'];
+  if (reverse) inputs.reverse();
+  const urls = inputs.map(path => env.WORKER_URL + path);
+  const output = await rewriteTrackedMessage(env, '1001', urls.join(' ')) as string;
+  const rewritten = output.split(' ');
+  expect(rewritten).toHaveLength(urls.length);
+  for (const [i, raw] of urls.entries()) {
+    const original = new URL(raw); const actual = new URL(rewritten[i]!);
+    if (/^\/t\/[^/]+$/.test(original.pathname)) {
+      const token = actual.searchParams.get('t')!;
+      expect(await verifyTrackingToken(env, token, 'link', original.pathname.slice(3))).toMatchObject({ igsid: '1001' });
+      actual.searchParams.delete('t'); expect(actual.href).toBe(original.href);
+    } else expect(rewritten[i]).toBe(raw);
+  }
+  const parenthesized = await rewriteTrackedMessage(env, '1001', `(https://a.example/t/1) （https://a.example/t/1?q=1）`) as string;
+  expect(parenthesized).toMatch(/^\(https:\/\/a.example\/t\/1\?t=[^)]+\) （https:\/\/a.example\/t\/1\?q=1&t=[^）]+）$/);
 });

@@ -195,7 +195,15 @@ export async function getAccountClient(
   let blockedUntil=0;
   const observe=graphObserver(db,account.id);
   return new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
-    transformMessage: (recipientId, message) => rewriteTrackedMessage(env, recipientId, message),
+    transformMessage: async (recipientId, message, recipient) => {
+      let igsid = recipientId;
+      if (!igsid && recipient.comment_id) {
+        const row = await db.prepare('SELECT f.igsid FROM private_reply_attempts p JOIN followers f ON f.id=p.follower_id AND f.account_id=p.account_id WHERE p.account_id=? AND p.comment_id=?')
+          .bind(account.id, recipient.comment_id).first<{ igsid: string }>();
+        igsid = row?.igsid ?? '';
+      }
+      return rewriteTrackedMessage(env, igsid, message);
+    },
     beforeRequest:()=>{if(blockedUntil>Date.now())throw new InstagramApiError('Instagram API is cooling down',429,613,undefined,blockedUntil-Date.now());},
     onResponse:async observation=>{
       if(observation.status===429 || [4,17,32,613,80002].includes(observation.code ?? -1)) blockedUntil=Date.now()+(Number.isFinite(observation.retryAfterMs)?Math.max(1000,observation.retryAfterMs!):60_000);

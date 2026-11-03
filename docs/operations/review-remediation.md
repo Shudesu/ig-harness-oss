@@ -28,7 +28,7 @@ Webhookは200応答の前にイベントを保存し、accountとmid/comment id�
 
 - owner: 全管理。admin: 通常の変更と配信。staff: 読み取り専用。integrations/LINE接続/削除処理/アカウント移行はownerのみ。タグ操作も自動化を起動し得るためstaffには許可しない。
 - API_KEYが空でも空Bearerでは認証できない。環境キーの比較は固定長ハッシュ比較。スタッフキーはSHA-256保存、新規キーは `igh_`、既存 `lh_` キーも元の値で認証できる。
-- `TOKEN_ENCRYPTION_KEY` は32バイト乱数のbase64。セットアップが生成し、updateは既存secretを確認して未設定時だけ作る。新規・変更・refresh時のIG tokenはaccount IDをAADにしたAES-GCMで保存。既存の平文はcronで1回20件まで移行し、既定アカウントの旧singleton tokenを除去する。旧DBにキー未設定の間は読み取り互換が残るが、新規credential保存にはキーが必要。鍵を失うと復号できないので安全にバックアップし、安易にローテーションしない。
+- `TOKEN_ENCRYPTION_KEY` は32バイト乱数のbase64。セットアップが生成し、updateは既存secretを確認して未設定時だけ作る。新規・変更・refresh時のIG tokenはaccount IDをAADにしたAES-GCMで保存。既存の平文はcronで1回20件まで移行し、既定アカウントの旧singleton tokenを除去する。旧DBにキー未設定の間は読み取り互換が残るが、新規IGアクセストークン保存にはキーが必要。app secret・LINE API keyにも設定を推奨し、未設定では平文保存・isolateごとに警告1回となり、それらのcron暗号化移行は動かない。旧派生キー暗号化行は読み取り互換のみ保持するため、専用キーで再保存する前に元のAPI_KEY / IG_APP_SECRETを変更しない（[詳細](../security-tracking.md)）。鍵を失うと復号できないので安全にバックアップし、安易にローテーションしない。
 - env tokenは初期seedと既定accountのrefresh復旧候補。通常の再接続はownerによる `PATCH /api/accounts/:id` の `accessToken`。envを変えただけで新しいDB tokenを上書きしない。refresh失敗/期限不明時の試行は1時間に1回まで。
 - CORS・ブラウザ認証は下記「LINE移植ガイドの反映」でHttpOnlyセッション方式に更新。以前のADMIN_ORIGINSとBearerクライアントは互換維持。
 - `/line` は明示的なLINE_LIFF_IDまたはHTTPSのLINE_ADD_URLが必須。公開testページと作者個人のデフォルト値は削除。

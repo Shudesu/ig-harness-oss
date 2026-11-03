@@ -7,8 +7,11 @@ async function fallbackKey(env: CredentialEnv): Promise<string | undefined> {
   return source ? btoa(String.fromCharCode(...await deriveKey(source, 'ig-credential-storage-v1'))) : undefined;
 }
 export async function sealCredential(value: string, subject: string, env: CredentialEnv): Promise<string> {
-  if (!env.TOKEN_ENCRYPTION_KEY && !warned) { console.warn('[credentials] TOKEN_ENCRYPTION_KEY missing; using purpose-separated fallback'); warned = true; }
-  return sealToken(value, subject, env.TOKEN_ENCRYPTION_KEY || await fallbackKey(env));
+  if (!env.TOKEN_ENCRYPTION_KEY) {
+    if (!warned) { console.warn('[credentials] TOKEN_ENCRYPTION_KEY missing; storing credentials in plaintext'); warned = true; }
+    return value;
+  }
+  return sealToken(value, subject, env.TOKEN_ENCRYPTION_KEY);
 }
 export async function openCredential(value: string, subject: string, env: CredentialEnv): Promise<string> {
   if (!value.startsWith('enc:')) return value;
@@ -23,6 +26,7 @@ export async function readAppSecret(account: { ig_user_id: string; app_secret: s
 }
 /** Bounded, idempotent maintenance; optimistic comparison preserves concurrent rotations. */
 export async function encryptLegacyCredentials(db: D1Database, env: CredentialEnv): Promise<void> {
+  if (!env.TOKEN_ENCRYPTION_KEY) return;
   for (const [table, column, subjectColumn, prefix] of [
     ['ig_accounts', 'app_secret', 'ig_user_id', 'ig-app-secret:'],
     ['line_harness_connections', 'api_key', 'id', 'line-api-key:'],
@@ -33,6 +37,7 @@ export async function encryptLegacyCredentials(db: D1Database, env: CredentialEn
 }
 
 export async function encryptLegacyLineConfig(db: D1Database, env: CredentialEnv): Promise<void> {
+  if (!env.TOKEN_ENCRYPTION_KEY) return;
   const row = await db.prepare("SELECT value FROM integration_settings WHERE key='line_harness_api_key' AND value NOT LIKE 'enc:%' AND value != ''").first<{ value: string }>();
   if (row) await db.prepare("UPDATE integration_settings SET value=? WHERE key='line_harness_api_key' AND value=?").bind(await sealCredential(row.value, 'legacy-line-api-key', env), row.value).run();
 }
