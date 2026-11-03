@@ -65,7 +65,7 @@ export async function addTagToFriend(
   const now = jstNow();
   await db
     .prepare(
-      `INSERT OR IGNORE INTO follower_tags (follower_id, tag_id, assigned_at)
+      `INSERT OR IGNORE INTO follower_tags (follower_id, tag_id, created_at)
        VALUES (?, ?, ?)`,
     )
     .bind(friendId, tagId, now)

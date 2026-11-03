@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest';
-import { createTrackedLink, getTrackedLinkById, getTrackedLinks, recordLinkClick, getLinkClicks } from '@ig-harness/db';
+import { createTrackedLink, getTrackedLinkById, getTrackedLinks, recordLinkClick, getLinkClicks, addTagToFriend } from '@ig-harness/db';
 import { testDatabase } from '../../test-utils/d1.js';
 it('creates and tracks links using the real migrated schema while preserving legacy destinations', async () => {
   const { sqlite, db } = await testDatabase();
@@ -9,6 +9,8 @@ it('creates and tracks links using the real migrated schema while preserving leg
     sqlite.exec("INSERT INTO tags(id,name,account_id) VALUES(1,'Tag','a'); INSERT INTO scenarios(id,name,trigger_type,account_id) VALUES(1,'Scenario','manual','a')");
     const link = await createTrackedLink(db, { name: 'New', originalUrl: 'https://example.com/new', accountId: 'a', tagId: '1', scenarioId: '1' });
     expect(link.id).toBe('43'); expect(link.original_url).toBe('https://example.com/new'); expect(link.tag_id).toBe('1');
+    await addTagToFriend(db, '1', '1');
+    expect(sqlite.prepare('SELECT follower_id,tag_id,created_at FROM follower_tags').get()).toMatchObject({ follower_id: 1, tag_id: 1, created_at: expect.any(String) });
     sqlite.exec('DELETE FROM scenarios WHERE id=1; DELETE FROM tags WHERE id=1');
     expect(await getTrackedLinkById(db,link.id)).toMatchObject({ original_url: 'https://example.com/new', tag_id: null, scenario_id: null });
     const click = await recordLinkClick(db, link.id, '1'); expect(click.friend_id).toBe('1');
