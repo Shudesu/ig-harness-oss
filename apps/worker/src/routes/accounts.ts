@@ -1,3 +1,4 @@
+import { readAppSecret, sealCredential } from '../lib/credential-crypto.js';
 import { recordTokenValidity } from '../lib/health.js';
 import { InstagramApiError, InstagramTransportError } from '@ig-harness/ig-sdk';
 import { validateIgAccount } from '../lib/validate-ig-account.js';
@@ -83,7 +84,7 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
       igUserId,
       username: profile.username,
       accessToken: await sealToken(body.accessToken, igUserId, c.env.TOKEN_ENCRYPTION_KEY),
-      appSecret: body.appSecret ?? null,
+      appSecret: body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${igUserId}`, c.env) : null,
       verifyToken: body.verifyToken ?? null,
     });
 
@@ -119,13 +120,13 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
     let verifiedUsername = body.username;
     if (body.accessToken !== undefined) {
       if (typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) return c.json({ success:false,error:'accessToken must not be empty' },400);
-      try { verifiedUsername=(await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? existing.app_secret)).username; }
+      try { verifiedUsername=(await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env))).username; }
       catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). Existing credentials were preserved.` : error instanceof InstagramTransportError ? 'Could not reach Instagram; existing credentials were preserved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
     }
     const updated = await updateIgAccount(c.env.DB, id, {
       username: verifiedUsername,
       accessToken: body.accessToken === undefined ? undefined : await sealToken(body.accessToken, existing.ig_user_id, c.env.TOKEN_ENCRYPTION_KEY),
-      appSecret: body.appSecret,
+      appSecret: body.appSecret === undefined ? undefined : body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${existing.ig_user_id}`, c.env) : null,
       verifyToken: body.verifyToken,
       isActive: body.isActive,
     });

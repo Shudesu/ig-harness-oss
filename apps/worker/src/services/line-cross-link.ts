@@ -1,3 +1,6 @@
+import { issueIgLinkToken } from '../lib/tracking-token.js';
+import { openCredential, type CredentialEnv } from '../lib/credential-crypto.js';
+import { validateWorkerUrl } from '../lib/worker-url.js';
 import type { EngagementGate } from '@ig-harness/db';
 
 /**
@@ -16,6 +19,7 @@ export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 export interface IgAccountRef {
   id?: string;
   username?: string;
+  security?: CredentialEnv;
 }
 
 /**
@@ -25,24 +29,22 @@ export interface IgAccountRef {
  * Strategy:
  *   - One tracked link per engagement_gate, cached on `line_tracked_link_short`.
  *     Creating one link per recipient would work but bloats LINE Harness's DB
- *     for no added insight — IGSID is already per-click via the `?ig=` param.
+ *     for no added insight — identity is carried in a per-recipient signed `igt` token.
  *   - Lazy: we only POST to LINE Harness on the first delivery that actually
  *     needs it. Gates that never deliver don't waste an API call.
  *   - Failure-tolerant: if LINE Harness is unreachable / returns non-2xx, we
  *     return null so the caller can fall back to the raw reward_url rather
  *     than stalling delivery.
  *
- * The returned URL is `<worker>/r/<short>?ig=<IGSID>[&pool=<slug>]`, which
- * hits LINE Harness's `/r/:ref` landing page. The landing page forwards
- * `?ig=` into the LIFF flow, where `/api/liff/link-ig` writes
- * `friends.ig_igsid` and POSTs back to IG Harness `/api/followers/link-line`
- * to close the cross-link loop.
+ * The returned URL is `<worker>/r/<short>?igt=<signed-token>[&pool=<slug>]`.
+ * LINE Harness must implement spec 08 verification before linking identities.
+ * Without a shared signing key the URL remains usable but anonymous.
  */
 export async function resolveLineCrossLinkUrl(
   db: D1Database,
   gate: EngagementGate,
   igsid: string,
-  options: { fetchImpl?: FetchFn; account?: IgAccountRef } = {},
+  options: { fetchImpl?: FetchFn; account?: IgAccountRef; env?: CredentialEnv } = {},
 ): Promise<string | null> {
   if (!gate.line_connection_id) return null;
   if (!gate.reward_url) return null;
@@ -53,7 +55,9 @@ export async function resolveLineCrossLinkUrl(
     .first<{ id: string; worker_url: string; api_key: string }>();
   if (!conn) return null;
 
-  const workerUrl = conn.worker_url.replace(/\/$/, '');
+  const workerUrl = validateWorkerUrl(conn.worker_url);
+  const env = options.env ?? options.account?.security ?? {};
+  const apiKey = await openCredential(conn.api_key, `line-api-key:${conn.id}`, env);
   const fetchImpl: FetchFn = options.fetchImpl ?? ((u, init) => fetch(u, init));
 
   let short = gate.line_tracked_link_short;
@@ -61,9 +65,10 @@ export async function resolveLineCrossLinkUrl(
     try {
       const res = await fetchImpl(`${workerUrl}/api/tracked-links`, {
         method: 'POST',
+        redirect: 'error',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${conn.api_key}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           name: trackedLinkName(gate),
@@ -81,7 +86,7 @@ export async function resolveLineCrossLinkUrl(
         data?: { id?: string };
       };
       if (!json.success || !json.data?.id) {
-        console.error('[line-cross-link] create returned error payload:', json);
+        console.error('[line-cross-link] create returned invalid payload');
         return null;
       }
       short = json.data.id;
@@ -120,12 +125,12 @@ export async function resolveLineCrossLinkUrl(
   }
 
   const params = new URLSearchParams();
-  params.set('ig', igsid);
-  if (options.account?.id) params.set('iga', options.account.id);
+  const token = await issueIgLinkToken(env, igsid, options.account?.id);
+  if (token) params.set('igt', token);
   const accountUsername = options.account?.username?.replace(/^@/, '');
   if (accountUsername) params.set('igan', accountUsername);
   if (gate.line_pool_slug) params.set('pool', gate.line_pool_slug);
-  return `${workerUrl}/r/${encodeURIComponent(short)}?${params.toString()}`;
+  return `${workerUrl}/r/${encodeURIComponent(short)}${params.size ? '?' + params.toString() : ''}`;
 }
 
 /**

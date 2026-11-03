@@ -32,7 +32,7 @@ beforeEach(() => { vi.clearAllMocks(); });
 
 describe('tracked links route', () => {
 
-  it('resolves friend attribution from the ig query parameter before recording the click', async () => {
+  it('records unsigned ig as anonymous without tag or scenario actions', async () => {
     dbMocks.getTrackedLinkById.mockResolvedValue({
       id: 'link-1',
       name: 'Reward',
@@ -60,10 +60,10 @@ describe('tracked links route', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('Location')).toBe('https://example.com/reward');
-    expect(dbMocks.getFriendByIgsid).toHaveBeenCalledWith(env.DB, 'IGSID42');
-    expect(dbMocks.recordLinkClick).toHaveBeenCalledWith(env.DB, 'link-1', 'friend-1');
-    expect(dbMocks.addTagToFriend).toHaveBeenCalledWith(env.DB, 'friend-1', 'tag-1');
-    expect(dbMocks.enrollFriendInScenario).toHaveBeenCalledWith(env.DB, 'friend-1', 'scenario-1');
+    expect(dbMocks.getFriendByIgsid).not.toHaveBeenCalled();
+    expect(dbMocks.recordLinkClick).toHaveBeenCalledWith(env.DB, 'link-1', null);
+    expect(dbMocks.addTagToFriend).not.toHaveBeenCalled();
+    expect(dbMocks.enrollFriendInScenario).not.toHaveBeenCalled();
   });
 });
 

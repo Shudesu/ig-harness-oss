@@ -13,7 +13,8 @@ export async function sealToken(token: string, subject: string, secret?: string)
   return PREFIX + btoa(String.fromCharCode(...iv, ...encrypted));
 }
 export async function openToken(token: string, subject: string, secret?: string): Promise<string> {
-  if (!token.startsWith(PREFIX)) return token; // read-only compatibility during upgrade
+  if (!token.startsWith('enc:')) return token;
+  if (!token.startsWith(PREFIX)) throw new Error('Unsupported token encryption version'); // read-only compatibility during upgrade
   try {
     const raw = Uint8Array.from(atob(token.slice(PREFIX.length)), (c) => c.charCodeAt(0));
     return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(subject) }, await keyFor(secret), raw.slice(12)));

@@ -1,3 +1,4 @@
+import { encryptLegacyCredentials, encryptLegacyLineConfig } from './lib/credential-crypto.js';
 import { InstagramApiError } from '@ig-harness/ig-sdk';
 import { deliveryStatus } from './routes/delivery-status.js';
 import { resolveCorsOrigin, warnMissingAdminOrigin } from './middleware/admin-auth-config.js';
@@ -55,6 +56,9 @@ export type Env = {
     // so callers MUST guard `env.ASSETS` before invoking `.fetch` (see notFound below).
     ASSETS?: Fetcher;
     TOKEN_ENCRYPTION_KEY?: string;
+    TRACKING_SIGNING_SECRET?: string;
+    TRACKING_ALLOW_UNSIGNED_ACTIONS?: string;
+    IG_LINK_TOKEN_SECRET?: string;
     IG_GRAPH_API_VERSION?: string;
     IG_REQUIRE_APPSECRET_PROOF?: string;
     IG_APP_SECRET: string;
@@ -299,6 +303,11 @@ export async function runScheduledJobs(
   ctx.waitUntil(recordCronRun(env.DB).catch(() => {}));
   // `accounts` is the route module above — use a distinct name here.
   await encryptLegacyAccountTokens(env.DB, env.TOKEN_ENCRYPTION_KEY);
+  if (env.TOKEN_ENCRYPTION_KEY) {
+    await encryptLegacyCredentials(env.DB, env);
+    await encryptLegacyLineConfig(env.DB, env);
+  }
+  await env.DB.prepare('DELETE FROM rate_limit_buckets WHERE expires_at < ?').bind(Date.now()).run().catch(() => { console.warn('[rate-limit] cleanup unavailable; apply migrations'); });
   await pruneExpiredMessages(env.DB, env.MESSAGES_RETENTION_DAYS);
   const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });
 
@@ -329,13 +338,13 @@ export async function runScheduledJobs(
           if (identityMatches && me.username && me.username !== account.username) await updateIgAccount(env.DB, account.id, { username: me.username });
         } catch (error) { await recordTokenValidity(env.DB, account.id, false,error instanceof InstagramApiError && error.tokenExpired?'token_expired':'api_unavailable'); continue; }
       }
-      const ref = toIgAccountRef(account);
+      const ref = toIgAccountRef(account, env);
       const tasks: Array<[string, Promise<unknown>]> = [];
       if (work.steps) tasks.push(['steps', processStepDeliveries(env.DB, igClient, env.WORKER_URL, account.id)]);
       if (work.broadcasts) tasks.push(['broadcasts', processScheduledBroadcasts(env.DB, igClient, env.WORKER_URL, account.id)]);
       if (work.followups) tasks.push(['followups', processFollowupDrip(env.DB, igClient, env.WORKER_URL, undefined, ref, account.id)]);
       if (work.media) tasks.push(['media', processMediaPosts(env.DB, igClient, account.id)]);
-      if (work.webhooks) tasks.push(['webhooks', processQueuedWebhooks(env.DB, igClient, account, env.WORKER_URL)]);
+      if (work.webhooks) tasks.push(['webhooks', processQueuedWebhooks(env.DB, igClient, account, env.WORKER_URL, env)]);
       else if (work.comments) tasks.push(['comments', processCommentRuleJobs(env.DB, igClient, account.id)]);
       const results = await Promise.allSettled(tasks.map(([, task]) => task));
       results.forEach((result, i) => {

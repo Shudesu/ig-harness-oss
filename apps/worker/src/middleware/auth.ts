@@ -8,7 +8,7 @@ export function isPublicRequest(path: string, method: string): boolean {
   if (read && (['/webhook','/privacy','/privacy-policy','/terms-of-service','/data-deletion','/connect','/line','/docs','/openapi.json','/api/affiliates/click'].includes(path)
     || /^\/(?:t|click|images)\//.test(path) || /^\/api\/forms\/[^/]+$/.test(path))) return true;
   return method === 'POST' && (['/webhook','/data-deletion','/api/auth/login','/api/auth/logout','/api/followers/link-line','/api/integrations/stripe/webhook'].includes(path)
-    || /^\/api\/webhooks\/incoming\/[^/]+\/receive$/.test(path) || /^\/api\/forms\/[^/]+\/submit$/.test(path));
+    || /^\/api\/forms\/[^/]+\/submit$/.test(path));
 }
 export async function authMiddleware(c: Context<Env>, next: Next): Promise<Response | void> {
   // Cookie-authenticated API responses must never enter shared/browser caches.

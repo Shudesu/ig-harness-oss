@@ -1,3 +1,4 @@
+import { readAppSecret, type CredentialEnv } from './credential-crypto.js';
 import { createAppSecretProof, InstagramApiError } from '@ig-harness/ig-sdk';
 import { sealToken } from './token-crypto.js';
 import { updateIgAccountToken, type IgAccount } from '@ig-harness/db';
@@ -33,7 +34,7 @@ async function callRefresh(
  * next cron tick.
  */
 export async function refreshAccountTokenIfNeeded(
-  env: { IG_ACCESS_TOKEN: string; TOKEN_ENCRYPTION_KEY?: string; IG_REQUIRE_APPSECRET_PROOF?: string; IG_APP_SECRET?: string },
+  env: CredentialEnv & { IG_ACCESS_TOKEN: string; TOKEN_ENCRYPTION_KEY?: string; IG_REQUIRE_APPSECRET_PROOF?: string; IG_APP_SECRET?: string },
   db: D1Database,
   account: IgAccount,
 ): Promise<{ refreshed: boolean; token?: string; reason: string }> {
@@ -55,7 +56,7 @@ export async function refreshAccountTokenIfNeeded(
   let lastErr: unknown;
   for (const tok of candidates) {
     try {
-      const secret=env.IG_REQUIRE_APPSECRET_PROOF==='true' ? account.app_secret || env.IG_APP_SECRET : undefined;
+      const secret=env.IG_REQUIRE_APPSECRET_PROOF==='true' ? (await readAppSecret(account, env)) || env.IG_APP_SECRET : undefined;
       if (env.IG_REQUIRE_APPSECRET_PROOF==='true' && !secret) throw new Error('Instagram App Secret required for token refresh proof');
       data = await callRefresh(tok,secret);
       break;

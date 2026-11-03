@@ -32,8 +32,11 @@ export class InstagramClient {
   private appSecret?: string;
   private beforeRequest?: () => Promise<void> | void;
 
-  constructor(opts: { accessToken: string; igUserId: string; apiVersion?: string; timeoutMs?: number; maxReadRetries?: number; appSecret?: string; beforeRequest?: () => Promise<void> | void; onResponse?: (observation: GraphObservation) => Promise<void> | void }) {
+  private transformMessage?: (recipientId: string, message: unknown, recipient: { id?: string; comment_id?: string }) => Promise<unknown>;
+
+  constructor(opts: { transformMessage?: (recipientId: string, message: unknown, recipient: { id?: string; comment_id?: string }) => Promise<unknown>; accessToken: string; igUserId: string; apiVersion?: string; timeoutMs?: number; maxReadRetries?: number; appSecret?: string; beforeRequest?: () => Promise<void> | void; onResponse?: (observation: GraphObservation) => Promise<void> | void }) {
     this.accessToken = opts.accessToken;
+    this.transformMessage = opts.transformMessage;
     this.igUserId = opts.igUserId;
     const version = graphApiVersion(opts.apiVersion);
     this.appSecret = opts.appSecret;
@@ -52,6 +55,10 @@ export class InstagramClient {
     body?: unknown,
   ): Promise<T> {
     await this.beforeRequest?.();
+    if (method === 'POST' && path.endsWith('/messages') && this.transformMessage && body && typeof body === 'object') {
+      const payload = body as { recipient?: { id?: string; comment_id?: string }; message?: unknown };
+      if (payload.message) body = { ...payload, message: await this.transformMessage(payload.recipient?.id ?? '', payload.message, payload.recipient ?? {}) };
+    }
     const headers: Record<string, string> = { Authorization: `Bearer ${this.accessToken}` };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     let requestUrl = `${this.baseUrl}${path}`;

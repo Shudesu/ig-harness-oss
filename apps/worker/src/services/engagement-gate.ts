@@ -1,3 +1,4 @@
+import { issueTrackingToken, type TrackingEnv } from '../lib/tracking-token.js';
 import { InstagramApiError } from '@ig-harness/ig-sdk';
 import { messagingEligibility } from './messaging-window.js';
 import { enqueueCommentRuleJob } from './comment-rule-jobs.js';
@@ -30,12 +31,13 @@ async function effectiveRewardUrl(
  * of this worker (e.g. `https://ig-harness.noda-c40.workers.dev`); we get
  * it from env.WORKER_URL so the link works off the correct deployment.
  */
-export function wrapClickTracking(
+export async function wrapClickTracking(
   workerBaseUrl: string,
   gateId: string,
   destinationUrl: string,
   igsid?: string,
-): string {
+  env: TrackingEnv = {},
+): Promise<string> {
   if (!destinationUrl || !/^https?:\/\//.test(destinationUrl)) return destinationUrl;
   // base64url encode the destination so it survives in a query param
   const b64 = btoa(encodeURIComponent(destinationUrl).replace(/%([0-9A-F]{2})/g, (_, h) =>
@@ -45,7 +47,8 @@ export function wrapClickTracking(
     .replace(/\//g, '_')
     .replace(/=+$/, '');
   const base = workerBaseUrl.replace(/\/$/, '');
-  const igPart = igsid ? `&ig=${encodeURIComponent(igsid)}` : '';
+  const token = igsid ? await issueTrackingToken(env, { purpose: 'gate', linkId: gateId, igsid, destination: destinationUrl }) : null;
+  const igPart = token ? `&t=${encodeURIComponent(token)}` : '';
   return `${base}/click/${gateId}?u=${b64}${igPart}`;
 }
 
@@ -466,7 +469,7 @@ async function deliverReward(
   const baseUrl = await effectiveRewardUrl(db, gate, delivery.igsid, igAccount);
   const trackedRewardUrl =
     workerBaseUrl && baseUrl
-      ? wrapClickTracking(workerBaseUrl, gate.id, baseUrl, delivery.igsid)
+      ? await wrapClickTracking(workerBaseUrl, gate.id, baseUrl, delivery.igsid, igAccount?.security)
       : baseUrl ?? null;
 
   // Delivery log: the operator-visible audit trail showing which tracked
@@ -661,7 +664,7 @@ async function sendFollowupStep(
   const baseUrl = await effectiveRewardUrl(db, gate, igsid, igAccount);
   const trackedRewardUrl =
     workerBaseUrl && baseUrl
-      ? wrapClickTracking(workerBaseUrl, gate.id, baseUrl, igsid)
+      ? await wrapClickTracking(workerBaseUrl, gate.id, baseUrl, igsid, igAccount?.security)
       : baseUrl ?? '';
 
   const expandedText = expandIgsidPlaceholder(
@@ -688,7 +691,7 @@ async function sendFollowupStep(
     // a placeholder that already got the wrapped value).
     let buttonUrl = step.button_url.replace(/\{\{?\s*REWARD_URL\s*\}?\}/g, trackedRewardUrl);
     if (workerBaseUrl && /^https?:\/\//.test(buttonUrl) && !buttonUrl.includes('/click/')) {
-      buttonUrl = wrapClickTracking(workerBaseUrl, gate.id, buttonUrl, igsid);
+      buttonUrl = await wrapClickTracking(workerBaseUrl, gate.id, buttonUrl, igsid, igAccount?.security);
     }
     await igClient.sendGenericTemplate(igsid, [
       {

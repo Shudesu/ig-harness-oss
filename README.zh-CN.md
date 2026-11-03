@@ -2,6 +2,9 @@
 
 # IG Harness
 
+> **IG→LINE compatibility:** IG→LINE identity linking requires LINE Harness with spec 08 (`igt` support) or later; older LINE Harness will stop linking (links still redirect).
+> IG-side `LINE_HARNESS_LINK_SECRET` must equal LINE-side `IG_HARNESS_LINK_SECRET`; alternatively, use matching `IG_LINK_TOKEN_SECRET` on both sides. Use the same secret mode on both sides.
+
 > ### **[查看在线演示](https://shudesu.github.io/ig-harness-oss/)** 👈
 
 Instagram DM 完全开源自动化 / 营销自动化工具。**A 厂商 / B 厂商 的免费替代方案**。

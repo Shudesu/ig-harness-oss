@@ -31,3 +31,6 @@ wrangler.deploy.toml
 
 .mcp.json.backup
 .ig-harness-mcp-clients.json
+
+.pnpm-store/
+.dev.vars*

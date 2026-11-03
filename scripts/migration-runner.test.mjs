@@ -14,12 +14,12 @@ function adapter(db, fail) {
 test('fresh install, second run, staff hashing and account ownership preservation', async () => {
   const db = new DatabaseSync(':memory:');
   await applyMigrations(adapter(db));
-  for (const table of ['gate_clicks','integration_settings','line_harness_connections','media_posts','broadcast_recipients','webhook_events']) assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE name=?").get(table));
+  for (const table of ['gate_clicks','integration_settings','line_harness_connections','media_posts','broadcast_recipients','webhook_events','rate_limit_buckets']) assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE name=?").get(table));
   db.exec("INSERT INTO staff_members(id,name,api_key) VALUES ('uuid-staff','Staff','igh_TEST_ONLY'); INSERT INTO comment_rules(name,response_type,response_body,account_id) VALUES ('test','text','{}','account-a')");
   await applyMigrations(adapter(db));
   assert.match(db.prepare('SELECT api_key FROM staff_members').get().api_key, /^sha256:[a-f0-9]{64}$/);
   assert.equal(db.prepare('SELECT account_id FROM comment_rules').get().account_id, 'account-a');
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 22);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 23);
   db.close();
 });
 test('a failed file has no success marker and can resume without losing earlier migrations', async () => {
@@ -64,6 +64,6 @@ test('adopts legacy repeat-delivery history without recreating the removed uniqu
   await applyMigrations(adapter(db));
   assert.equal(db.prepare('SELECT COUNT(*) n FROM gate_deliveries').get().n, 2);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='uq_gate_deliveries_gate_follower'").get().n, 0);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM ig_schema_migrations').get().n, 22);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM ig_schema_migrations').get().n, 23);
   db.close();
 });

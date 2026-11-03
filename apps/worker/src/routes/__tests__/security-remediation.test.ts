@@ -77,13 +77,17 @@ it('throttles heartbeat writes while retaining a periodic liveness timestamp', a
   vi.advanceTimersByTime(5 * 60_000); await recordCronRun(db); expect(sqlite.prepare("SELECT value FROM integration_settings WHERE key='health:last_cron_at'").get()?.value).toBe(first);
   vi.advanceTimersByTime(10 * 60_000); await recordCronRun(db); expect(sqlite.prepare("SELECT value FROM integration_settings WHERE key='health:last_cron_at'").get()?.value).not.toBe(first);
 });
-it('does no Graph calls or D1 writes on an idle tick with fresh probes/heartbeat', async () => {
+it.each([true, false])('does no Graph calls or D1 writes on an idle tick with fresh probes/heartbeat (encryption key=%s)', async hasKey => {
   const { db, env, sqlite } = await fixture();
   sqlite.exec("INSERT INTO ig_accounts(id,ig_user_id,access_token,is_default,created_at,updated_at) VALUES('a','111','test',1,'2026-01-01','2026-01-01'); INSERT INTO integration_settings(key,value) VALUES('account_backfill_done','1')");
   // Use an already-encrypted token so this is truly a post-upgrade idle tick.
   sqlite.prepare('UPDATE ig_accounts SET access_token=?').run(await sealToken('test', '111', env.TOKEN_ENCRYPTION_KEY));
   sqlite.prepare('INSERT INTO integration_settings(key,value) VALUES(?,?)').run('health:token_valid:a', JSON.stringify({ ok: true, checked_at: new Date().toISOString() }));
   await recordCronRun(db);
+  if (!hasKey) {
+    delete env.TOKEN_ENCRYPTION_KEY;
+    sqlite.exec("UPDATE ig_accounts SET app_secret='fake-app-secret'; INSERT INTO line_harness_connections(id,name,worker_url,api_key) VALUES('fake-line','fake','https://line.example','fake-api-key'); INSERT INTO integration_settings(key,value) VALUES('line_harness_api_key','fake-legacy-api-key')");
+  }
   const before = sqlite.prepare('SELECT total_changes() AS n').get()?.n;
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
   const { runScheduledJobs } = await import('../../index.js');

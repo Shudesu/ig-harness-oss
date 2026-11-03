@@ -1,13 +1,6 @@
 import { ADMIN_SESSION_COOKIE, readCookie } from '../lib/admin-session.js';
 import { sha256 } from '../lib/security.js';
-/**
- * In-memory sliding window rate limiter for Cloudflare Workers.
- *
- * Cloudflare Workers have per-isolate memory that persists across
- * requests to the same instance. Counters are lost on cold start,
- * which is acceptable — this guards against burst abuse, not
- * long-term quota enforcement.
- */
+/** D1 fixed-window limiter, with legacy in-memory fallback before migration. */
 
 import type { Context, Next } from 'hono';
 import type { Env } from '../index.js';
@@ -60,6 +53,26 @@ function check(key: string, max: number, windowMs: number): { ok: boolean; remai
   return { ok: true, remaining: max - entry.timestamps.length, retryAfter: 0 };
 }
 
+let warnedFallback = false;
+export async function checkShared(db: D1Database | undefined, key: string, max: number, windowMs: number): Promise<{ ok: boolean; remaining: number; retryAfter: number }> {
+  const now = Date.now();
+  try {
+    if (!db) throw new Error('D1 binding unavailable');
+    const row = await db.prepare(`INSERT INTO rate_limit_buckets(bucket_key,hits,expires_at) VALUES(?,1,?)
+      ON CONFLICT(bucket_key) DO UPDATE SET
+        hits=CASE WHEN expires_at<=? THEN 1 ELSE MIN(hits+1,?) END,
+        expires_at=CASE WHEN expires_at<=? THEN excluded.expires_at ELSE expires_at END
+      RETURNING hits,expires_at`)
+      .bind(await sha256(key), now + windowMs, now, max + 1, now)
+      .first<{ hits: number; expires_at: number }>();
+    if (!row) throw new Error('Rate limit counter unavailable');
+    return { ok: row.hits <= max, remaining: Math.max(0, max - row.hits), retryAfter: row.hits > max ? Math.max(1, Math.ceil((row.expires_at - now) / 1000)) : 0 };
+  } catch {
+    if (!warnedFallback) { console.warn('[rate-limit] D1 counter unavailable; using isolate fallback (apply migrations)'); warnedFallback = true; }
+    return check(key, max, windowMs);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Paths that are unauthenticated (lower limit, keyed by IP)
 // ---------------------------------------------------------------------------
@@ -103,10 +116,10 @@ export async function rateLimitMiddleware(c: Context<Env>, next: Next): Promise<
   }
 
   const ip = getClientIp(c);
-  const ceiling = check(`ceiling:${ip}`, 3000, 60_000);
+  const ceiling = await checkShared(c.env?.DB, `ceiling:${ip}`, 3000, 60_000);
   if (!ceiling.ok) return c.json({ success: false, error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(ceiling.retryAfter) } });
   if (path === '/api/auth/login' && c.req.method === 'POST') {
-    const login = check(`login:${ip}`, 10, 60_000);
+    const login = await checkShared(c.env?.DB, `login:${ip}`, 10, 60_000);
     if (!login.ok) return c.json({ success: false, error: 'Too many login attempts' }, { status: 429, headers: { 'Retry-After': String(login.retryAfter) } });
   }
   let key: string;
@@ -135,7 +148,7 @@ export async function rateLimitMiddleware(c: Context<Env>, next: Next): Promise<
     }
   }
 
-  const result = check(key, max, windowMs);
+  const result = await checkShared(c.env?.DB, key, max, windowMs);
 
   if (!result.ok) {
     return c.json(
@@ -150,4 +163,4 @@ export async function rateLimitMiddleware(c: Context<Env>, next: Next): Promise<
   c.header('X-RateLimit-Remaining', String(result.remaining));
 }
 
-export function resetRateLimitsForTests(): void { store.clear(); lastPrune = Date.now(); }
+export function resetRateLimitsForTests(): void { store.clear(); warnedFallback = false; lastPrune = Date.now(); }
