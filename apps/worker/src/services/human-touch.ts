@@ -75,6 +75,8 @@ export function sleep(ms: number): Promise<void> {
 
 /**
  * 既読 → 入力中 → 送信 の一連処理。設定 OFF のときは送信のみ。
+ * 既読/入力中は best-effort: mark_seen/typing_on が失敗しても実際の送信は
+ * 止めない（未送信のまま uncertain にするより、既読なしで送る方がよい）。
  * 入力中表示は送信の成否に関係なく typing_off で必ず解除する。
  */
 export async function sendWithPresence<T>(
@@ -85,8 +87,13 @@ export async function sendWithPresence<T>(
   textForDelay?: string | null,
 ): Promise<T> {
   if (!await isDmPresenceEnabled(db)) return await send();
-  await client.sendSenderAction(recipientId, 'mark_seen');
-  await client.sendSenderAction(recipientId, 'typing_on');
+  for (const action of ['mark_seen', 'typing_on'] as const) {
+    try {
+      await client.sendSenderAction(recipientId, action);
+    } catch (error) {
+      console.warn(`[presence] ${action} failed; sending without it`, error instanceof Error ? error.name : 'unknown');
+    }
+  }
   try {
     await sleep(typingDelayMs(textForDelay));
     return await send();
@@ -102,14 +109,24 @@ export async function sendWithPresence<T>(
  */
 export function decorateWithPresence(db: D1Database, client: InstagramClient): InstagramClient {
   type SendFn = (...args: any[]) => Promise<unknown>;
+  // sendRichMessage dispatches to this.sendText/sendImage/sendGenericTemplate.
+  // While it runs, suspend the inner presence sequences so one rich message
+  // gets a single mark_seen/typing pair instead of one per block.
+  let suspended = false;
   const wrap = (name: keyof InstagramClient, textArgIndex: number | null): void => {
     const method = client[name];
     if (typeof method !== 'function') return;
     const original = (method as unknown as SendFn).bind(client);
     (client as unknown as Record<string, unknown>)[name] = async (...args: unknown[]) => {
       const recipientId = typeof args[0] === 'string' ? args[0] : '';
+      if (name === 'sendRichMessage') {
+        suspended = true;
+        try {
+          return await sendWithPresence(db, client, recipientId, () => original(...args), null);
+        } finally { suspended = false; }
+      }
       // comment_id 宛の private reply には既読/入力中を出せない
-      if (name === 'sendPrivateReply' || !recipientId) return await original(...args);
+      if (suspended || name === 'sendPrivateReply' || !recipientId) return await original(...args);
       return await sendWithPresence(db, client, recipientId, () => original(...args),
         textArgIndex !== null && typeof args[textArgIndex] === 'string' ? args[textArgIndex] as string : null);
     };
@@ -141,11 +158,14 @@ export async function guardrailSnapshot(db: D1Database, accountId: string | null
   const agg = followers.results[0] ?? { eligible: 0, standby: 0, total: 0 };
   const volume = await db.prepare(`
     SELECT
-      (SELECT COUNT(*) FROM messages_log WHERE direction='out' AND julianday(created_at)>julianday('now','-1 day')) AS dmOut24h,
-      (SELECT COUNT(*) FROM broadcast_recipients WHERE status IN ('pending','processing')) AS pendingBroadcastRecipients,
-      (SELECT COUNT(*) FROM comment_rule_jobs WHERE status='pending') AS pendingCommentJobs,
-      (SELECT COUNT(*) FROM follower_scenarios WHERE status='active') AS activeScenarios`)
-    .all<{ dmOut24h: number; pendingBroadcastRecipients: number; pendingCommentJobs: number; activeScenarios: number }>();
+      (SELECT COUNT(*) FROM messages_log m JOIN followers f ON f.id=m.follower_id${accountId ? ' AND f.account_id=?' : ''}
+        WHERE m.direction='out' AND julianday(m.created_at)>julianday('now','-1 day')) AS dmOut24h,
+      (SELECT COUNT(*) FROM broadcast_recipients r JOIN broadcasts b ON b.id=r.broadcast_id${accountId ? ' AND b.account_id=?' : ''}
+        WHERE r.status IN ('pending','processing')) AS pendingBroadcastRecipients,
+      (SELECT COUNT(*) FROM comment_rule_jobs WHERE status='pending'${accountId ? ' AND account_id=?' : ''}) AS pendingCommentJobs,
+      (SELECT COUNT(*) FROM follower_scenarios fs JOIN scenarios s ON s.id=fs.scenario_id${accountId ? ' AND s.account_id=?' : ''}
+        WHERE fs.status='active') AS activeScenarios`)
+    .bind(...(accountId ? [accountId, accountId, accountId, accountId] : [])).all<{ dmOut24h: number; pendingBroadcastRecipients: number; pendingCommentJobs: number; activeScenarios: number }>();
   const counts = volume.results[0] ?? { dmOut24h: 0, pendingBroadcastRecipients: 0, pendingCommentJobs: 0, activeScenarios: 0 };
   return {
     paused: await isOutboundPaused(db),

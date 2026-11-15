@@ -65,6 +65,33 @@ describe('presence setting (U18, default OFF)', () => {
         expect(client.sendSenderAction.mock.calls.map((call) => call[1])).toEqual(['mark_seen', 'typing_on', 'typing_off']);
     });
 
+    it('still sends when mark_seen / typing_on fail (best-effort presence)', async () => {
+        await setDmPresenceEnabled(state.db, true);
+        const client = fakeClient();
+        client.sendSenderAction.mockRejectedValue(new Error('sender action 503'));
+        const result = await sendWithPresence(state.db, client as never, 'igsid-1', () => client.sendText('igsid-1', 'hi'), 'hi');
+        expect(result).toEqual({ message_id: 'm1' });
+        expect(client.sendText).toHaveBeenCalledTimes(1);
+        expect(client.sendSenderAction.mock.calls.map((call) => call[1])).toEqual(['mark_seen', 'typing_on', 'typing_off']);
+    });
+
+    it('shows one presence sequence for a whole rich message, not per inner send', async () => {
+        await setDmPresenceEnabled(state.db, true);
+        const mocks = {
+            sendText: vi.fn(async (..._args: unknown[]) => ({})),
+            sendRichMessage: vi.fn(async function (this: { sendText: (a: string, b: string) => unknown }, _recipientId: string) {
+                // mirrors the real client: rich text blocks dispatch to sendText
+                return await this.sendText('igsid-1', 'rich text');
+            }),
+            sendSenderAction: vi.fn(async (..._args: unknown[]) => undefined),
+        };
+        const decorated = decorateWithPresence(state.db, { ...mocks } as never);
+        await decorated.sendRichMessage!('igsid-1', [{ type: 'text', text: 'rich' }]);
+        expect(mocks.sendRichMessage).toHaveBeenCalledOnce();
+        expect(mocks.sendText).toHaveBeenCalledTimes(1);
+        expect(mocks.sendSenderAction.mock.calls.map((call) => call[1])).toEqual(['mark_seen', 'typing_on', 'typing_off']);
+    });
+
     it('typing delay grows with text length and stays bounded', () => {
         expect(typingDelayMs('')).toBe(600);
         expect(typingDelayMs('あ')).toBe(600);
@@ -160,5 +187,22 @@ describe('guardrail snapshot (U22 visibility)', () => {
         expect(snap.paused).toBe(true);
         expect(snap.presenceEnabled).toBe(true);
         expect((state.sqlite.prepare(`SELECT value FROM integration_settings WHERE key='${DM_PRESENCE_ENABLED_KEY}'`).get() as { value: string }).value).toBe('1');
+    });
+
+    it('scopes counts to the selected account', async () => {
+        state.sqlite.exec(`
+            INSERT INTO followers(id,igsid,account_id) VALUES(1,'u1','a'),(2,'u2','b');
+            INSERT INTO messages_log(follower_id,direction,message_type,body) VALUES(1,'out','text','{}'),(2,'out','text','{}');
+            INSERT INTO comment_rule_jobs(id,account_id,follower_id,comment_id,message_type,body,due_at,expires_at,status) VALUES('j1','a',1,'c1','text','{}','2026-01-01','2026-01-02','pending'),('j2','b',2,'c2','text','{}','2026-01-01','2026-01-02','pending');
+        `);
+        const a = await guardrailSnapshot(state.db, 'a');
+        const b = await guardrailSnapshot(state.db, 'b');
+        expect(a.volume.dmOut24h).toBe(1);
+        expect(b.volume.dmOut24h).toBe(1);
+        expect(a.volume.pendingCommentJobs).toBe(1);
+        expect(b.volume.pendingCommentJobs).toBe(1);
+        const all = await guardrailSnapshot(state.db, null);
+        expect(all.volume.dmOut24h).toBe(2);
+        expect(all.volume.pendingCommentJobs).toBe(2);
     });
 });

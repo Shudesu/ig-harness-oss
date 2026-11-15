@@ -1,4 +1,5 @@
 import { messagingEligibility } from '../services/messaging-window.js';
+import { isOutboundPaused } from '../services/human-touch.js';
 import { Hono } from 'hono';
 import {
   getForms,
@@ -292,6 +293,8 @@ forms.post('/api/forms/:id/submit', async (c) => {
             : await resolveAccount(c);
           if (!account) { console.log('Form reply: no IG account configured'); return; }
           if (friend.account_id !== account.id || await messagingEligibility(db,friend.id,account.id) !== 'eligible') return;
+          // Operator stop switch (U22): confirmations are sends — skip while paused.
+          if (await isOutboundPaused(c.env.DB)) return;
           const igClient = await getAccountClient(c.env, c.env.DB, account);
 
           // Build summary text from answers

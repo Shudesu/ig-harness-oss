@@ -229,47 +229,56 @@ export async function handleMessagingEvent(
     });
   }
 
-  if (event.message?.text || event.message?.quick_reply) {
-    // Quick replies arrive as the button label in `text` plus the machine
-    // payload in `message.quick_reply.payload` (GAP#1b). Branch on the
-    // payload so selections route through gates/scenarios like keywords.
-    const quickPayload = event.message.quick_reply?.payload;
-    const incomingText = quickPayload ?? event.message.text ?? '';
-    const isStoryReply = Boolean(event.message.reply_to?.story);
-    const story = event.message.reply_to?.story ?? null;
-
-    // Log incoming message. messages_log.trigger_source has a CHECK constraint
-    // (additive-only migration policy), so the story-reply kind lives in the
-    // body JSON: { kind:'story_reply', text, story }.
+  // Story reply (GAP#8): detected independently of the text/quick-reply
+  // handling, so an attachment-only story reply still gets its log entry and
+  // mileage event. Uses the story id as the subject so LINE-side scoring can
+  // see which story produced the reply.
+  const story = event.message?.reply_to?.story ?? null;
+  if (story) {
+    // messages_log.trigger_source has a CHECK constraint (additive-only
+    // migration policy), so the story-reply kind lives in the body JSON.
     await db
       .prepare(
         `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
-         VALUES (?, 'in', ?, ?, ?)`,
+         VALUES (?, 'in', 'text', ?, NULL)`,
       )
-      .bind(
-        follower.id,
-        quickPayload ? 'quick_reply' : 'text',
-        JSON.stringify({
-          ...(quickPayload ? { text: event.message.text ?? '', payload: quickPayload } : { text: incomingText }),
-          ...(isStoryReply ? { kind: 'story_reply' } : {}),
-          ...(story ? { story } : {}),
-        }),
-        null,
-      )
+      .bind(follower.id, JSON.stringify({ text: event.message?.text ?? '', kind: 'story_reply', story }))
       .run();
+    await forwardLinkedInstagramEngagement(db, {
+      followerId: follower.id,
+      eventType: 'instagram_story_replied',
+      sourceEventId: `${accountId ?? 'default'}:story:${event.message?.mid ?? senderId}`,
+      subjectKey: story.id ?? story.url ?? null,
+      metadata: { accountId: accountId ?? null, storyUrl: story.url ?? null, text: event.message?.text ?? '' },
+    });
+  }
 
-    // Story reply (GAP#8): forward as its own mileage event type (U7) before
-    // the keyword flow. Uses the story id as the subject so LINE-side
-    // scoring can see which story produced the reply.
-    if (isStoryReply) {
-      await forwardLinkedInstagramEngagement(db, {
-        followerId: follower.id,
-        eventType: 'instagram_story_replied',
-        sourceEventId: `${accountId ?? 'default'}:story:${event.message?.mid ?? senderId}`,
-        subjectKey: story?.id ?? story?.url ?? null,
-        metadata: { accountId: accountId ?? null, storyUrl: story?.url ?? null, text: incomingText },
-      });
+  // Quick replies arrive as the button label in `text` plus the machine
+  // payload in `message.quick_reply.payload` (GAP#1b). Branch on the
+  // payload so selections route through gates/scenarios like keywords.
+  const quickPayload = event.message?.quick_reply?.payload;
+  const incomingText = quickPayload ?? event.message?.text ?? '';
+
+  if (incomingText) {
+    if (!story) {
+      // Log incoming message (story replies are logged above).
+      await db
+        .prepare(
+          `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
+           VALUES (?, 'in', ?, ?, NULL)`,
+        )
+        .bind(
+          follower.id,
+          quickPayload ? 'quick_reply' : 'text',
+          JSON.stringify(quickPayload ? { text: event.message?.text ?? '', payload: quickPayload } : { text: incomingText }),
+        )
+        .run();
     }
+
+    // Operator stop switch (U22): inbound bookkeeping above still runs, but no
+    // automated send below happens while paused. Queue processors also skip
+    // their drains, so pending deliveries resume after unpausing.
+    if (paused) return;
 
     // Check LINE Harness UUID linkage token
     if (incomingText.startsWith('CONNECT:')) {
@@ -307,8 +316,6 @@ export async function handleMessagingEvent(
     }
 
     if (accountId && await resumeCommentGate(db,igClient,{id:follower.id,igsid:senderId},accountId,igAccount)) return;
-
-    if (paused) return;
 
     // Engagement gate DM keyword trigger
     try {
@@ -355,10 +362,12 @@ export async function handleMessagingEvent(
         }
       }
     }
-
+  } else if (story) {
+    // Attachment-only story reply: logged and forwarded above, nothing to branch.
+    return;
   }
 
-  if (event.message && !event.message.text && !event.message.quick_reply) {
+  if (event.message && !event.message.text && !event.message.quick_reply && !event.message.reply_to?.story) {
     await logMessage(db, { followerId: follower.id, direction: 'in', messageType: 'text', body: JSON.stringify({ text: '[attachment]' }), triggerSource: null });
     if (accountId && await resumeCommentGate(db, igClient, { id: follower.id, igsid: senderId }, accountId, igAccount)) return;
   }

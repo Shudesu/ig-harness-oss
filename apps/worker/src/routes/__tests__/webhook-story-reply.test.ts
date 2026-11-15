@@ -53,6 +53,26 @@ describe('story reply auto-DM (U1 / GAP#8)', () => {
         const logged = f.sqlite.prepare("SELECT body FROM messages_log WHERE direction='in' ORDER BY id DESC LIMIT 1").get() as { body: string };
         expect(JSON.parse(logged.body)).toMatchObject({ kind: 'story_reply' });
     });
+
+    it('logs and forwards an attachment-only story reply (no text)', async () => {
+        const f = await gateFixture();
+        databases.push(f.sqlite);
+        f.sqlite.exec("UPDATE followers SET line_friend_uuid='lf-1'");
+        f.sqlite.exec("INSERT INTO line_harness_connections(id,name,worker_url,api_key,is_default,created_at,updated_at) VALUES('lh','LINE','https://line.example.com','key',1,'2026-01-01','2026-01-01')");
+        const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+        vi.stubGlobal('fetch', fetchImpl);
+        await handleMessagingEvent(f.db, f.client as any, {
+            sender: { id: 'user-1' },
+            recipient: { id: '111' },
+            timestamp: Date.now(),
+            message: { mid: 'mid-1', reply_to: { story: { id: 'story-2' } }, attachments: [{ type: 'image', payload: { url: 'https://example.com/x.png' } }] },
+        }, undefined, undefined, 'a');
+        // no keyword to branch — and no sends
+        expect(f.client.sendGenericTemplate).not.toHaveBeenCalled();
+        const logged = f.sqlite.prepare("SELECT message_type, body FROM messages_log WHERE direction='in' ORDER BY id DESC LIMIT 1").get() as { message_type: string; body: string };
+        expect(JSON.parse(logged.body)).toMatchObject({ kind: 'story_reply', story: { id: 'story-2' } });
+        expect(fetchImpl.mock.calls.some(([, init]) => JSON.parse((init as RequestInit).body as string).eventType === 'instagram_story_replied')).toBe(true);
+    });
 });
 
 describe('quick reply payload branching (U13 / GAP#1b)', () => {
@@ -100,6 +120,27 @@ describe('outbound stop switch in webhook paths (U22)', () => {
         // inbound message still logged
         expect(f.sqlite.prepare("SELECT COUNT(*) n FROM messages_log WHERE direction='in'").get()?.n).toBe(1);
         // unpausing resumes the same trigger
+        await setOutboundPaused(f.db, false);
+        await handleMessagingEvent(f.db, f.client as any, { ...messagingEvent({}), message: { mid: 'mid-2', text: 'reference' } }, undefined, undefined, 'a');
+        expect(f.client.sendGenericTemplate).toHaveBeenCalledOnce();
+    });
+
+    it('does not resume an awaiting-reply comment gate while paused', async () => {
+        const f = await gateFixture();
+        databases.push(f.sqlite);
+        const { triggerGateForComment } = await import('../../services/engagement-gate.js');
+        const { processCommentRuleJobs: processJobs } = await import('../../services/comment-rule-jobs.js');
+        f.addGate();
+        await triggerGateForComment(f.db, f.client as any, f.args);
+        await processJobs(f.db, f.client as any, 'a');
+        // private reply sent → delivery is cta_sent awaiting_reply=1
+        expect(f.sqlite.prepare("SELECT json_extract(metadata,'$.awaiting_reply') ar, status FROM gate_deliveries").get()).toMatchObject({ ar: 1, status: 'cta_sent' });
+
+        await setOutboundPaused(f.db, true);
+        await handleMessagingEvent(f.db, f.client as any, messagingEvent({}), undefined, undefined, 'a');
+        // the CTA on the user's reply is NOT sent while paused
+        expect(f.client.sendGenericTemplate).not.toHaveBeenCalled();
+
         await setOutboundPaused(f.db, false);
         await handleMessagingEvent(f.db, f.client as any, { ...messagingEvent({}), message: { mid: 'mid-2', text: 'reference' } }, undefined, undefined, 'a');
         expect(f.client.sendGenericTemplate).toHaveBeenCalledOnce();
