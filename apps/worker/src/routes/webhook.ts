@@ -25,6 +25,7 @@ import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountCl
 import { recordWebhookReceived } from '../lib/health.js';
 import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
 import { enqueueCommentRuleJob, normalizeReplyMode, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
+import { forwardLinkedInstagramEngagement } from '../services/line-mileage.js';
 import type { IgAccount } from '@ig-harness/db';
 import type { Env } from '../index.js';
 
@@ -140,8 +141,6 @@ webhook.post('/webhook', async (c) => {
         const client = await getAccountClient(c.env, db, current);
         await processQueuedWebhooks(db, client, current, c.env.WORKER_URL, c.env);
       } finally { await endActivity(db, activity); }
-    }
-  })());
   return c.json({ status: 'ok' }, 200);
 });
 
@@ -205,6 +204,20 @@ export async function handleMessagingEvent(
     return;
   }
   if (accountId) await resumeCommentJobs(db,follower.id,accountId);
+
+  const inboundId = event.message?.mid ?? event.postback?.mid;
+  if (inboundId) {
+    await forwardLinkedInstagramEngagement(db, {
+      followerId: follower.id,
+      eventType: 'instagram_dm_received',
+      sourceEventId: `${accountId ?? 'default'}:${inboundId}`,
+      subjectKey: accountId ?? 'default',
+      metadata: {
+        accountId: accountId ?? null,
+        kind: event.postback ? 'postback' : event.message?.attachments?.length ? 'attachment' : 'text',
+      },
+    });
+  }
 
   if (event.message?.text) {
     const incomingText = event.message.text;
@@ -367,6 +380,14 @@ async function handleCommentEvent(
   const follower = (await getFriendByIgsid(db,senderId)) ?? await upsertFriend(db,{ igsid:senderId,username:value.from.username,accountId });
   if (accountId && follower.account_id !== accountId) throw new Error('Follower account mismatch');
 
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_comment_created',
+    sourceEventId: `${accountId ?? 'default'}:${value.id}`,
+    subjectKey: mediaId,
+    metadata: { accountId: accountId ?? null, mediaId },
+  });
+
   // Engagement gate trigger — runs FIRST so a configured gate takes precedence
   // over the legacy comment-rule flow. If a gate fires, we skip the rule loop
   // and the gate-triggered scenarios below to avoid double DMs.
@@ -495,6 +516,7 @@ async function handleMentionEvent(
   value: { media_id?: string; comment_id?: string; mentioned_user_id?: string },
   igAccount?: IgAccountRef,
   accountId?: string,
+  sourceEventId?: string,
 ): Promise<void> {
   // When someone mentions us in their story, send them a DM
   const mentionerId = (value as any).from?.id ?? (value as any).mentioned_user_id;
@@ -509,6 +531,16 @@ async function handleMentionEvent(
     displayName: null,
     pictureUrl: null,
     accountId,
+  });
+
+  // Engagement forwarding runs regardless of DM eligibility — a caption/media
+  // mention still counts as an engagement even when messaging isn't eligible.
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_story_mentioned',
+    sourceEventId: sourceEventId ?? `${accountId ?? 'default'}:${mentionerId}:${value.media_id ?? 'mention'}`,
+    subjectKey: value.media_id ?? accountId ?? 'default',
+    metadata: { accountId: accountId ?? null, mediaId: value.media_id ?? null },
   });
 
   // A caption/media mention is not itself an inbound DM.
