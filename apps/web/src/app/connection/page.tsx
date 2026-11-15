@@ -94,7 +94,7 @@ function AccountCard({ account, health, isOwner }: { account: IgAccountSummary; 
           <button
             type="button"
             onClick={() => run(false)}
-            disabled={busy !== ''}
+            disabled={!isOwner || busy !== ''}
             className="px-3 py-1.5 text-xs rounded-lg border border-kumo-line bg-kumo-base hover:bg-kumo-tint disabled:opacity-50"
           >
             {busy === 'check' ? 'チェック中...' : '再チェック'}
@@ -102,7 +102,7 @@ function AccountCard({ account, health, isOwner }: { account: IgAccountSummary; 
           <button
             type="button"
             onClick={() => run(true)}
-            disabled={busy !== ''}
+            disabled={!isOwner || busy !== ''}
             title={isOwner ? undefined : 'オーナーのみ実行できます'}
             className="px-3 py-1.5 text-xs rounded-lg text-white disabled:opacity-50"
             style={{ backgroundColor: ACCENT }}

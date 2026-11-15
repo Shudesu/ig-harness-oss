@@ -60,6 +60,19 @@ describe('comment rule public reply', () => {
   });
 });
 
+it('clears a stale error message once a rate-limited job finally succeeds', async () => {
+  const f = await gateFixture();
+  try {
+    f.client.sendPrivateReply.mockRejectedValueOnce(new InstagramApiError('limited', 429, 613, undefined, undefined, 'Application request limit reached'));
+    await enqueueCommentRuleJob(f.db, { accountId: 'a', ruleId: 'r', commentId: 'c1', followerId: 1, messageType: 'text', body: '{"text":"DM"}', replyText: null, delaySeconds: 0, commentCreatedAt: new Date(Date.now() - 1000).toISOString() });
+    await processCommentRuleJobs(f.db, f.client as any, 'a');
+    expect(f.sqlite.prepare('SELECT error_message FROM comment_rule_jobs').get()?.error_message).toContain('limit');
+    f.sqlite.exec("UPDATE comment_rule_jobs SET due_at='2020-01-01'");
+    await processCommentRuleJobs(f.db, f.client as any, 'a');
+    expect(f.sqlite.prepare('SELECT status,error_message FROM comment_rule_jobs').get()).toMatchObject({ status: 'sent', error_message: null });
+  } finally { f.sqlite.close(); }
+});
+
 describe('failure log sanitizing', () => {
   it('masks credentials and truncates', () => {
     expect(sanitizeErrorMessage('bad access_token=IGAAabcdefghijklmnop&x=1')).toBe('bad access_token=****&x=1');

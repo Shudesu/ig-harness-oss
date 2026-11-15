@@ -496,10 +496,12 @@ function RecentReplyFailures() {
   const [error, setError] = useState('')
   useEffect(() => {
     let active = true
-    deliveryFailuresApi
-      .list({ limit: 20 })
-      .then((all) => {
-        if (active) setRows(all.filter((r) => r.source === 'public_reply' || r.source === 'private_reply'))
+    Promise.all([
+      deliveryFailuresApi.list({ source: 'public_reply', limit: 20 }),
+      deliveryFailuresApi.list({ source: 'private_reply', limit: 20 }),
+    ])
+      .then(([pub, priv]) => {
+        if (active) setRows([...pub, ...priv].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 20))
       })
       .catch(() => { if (active) setError('失敗ログを取得できませんでした') })
     return () => { active = false }

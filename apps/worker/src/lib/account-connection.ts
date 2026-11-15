@@ -51,7 +51,11 @@ export async function checkAccountConnection(client: ConnectionClient, opts: { s
   let subscribeError: unknown;
   if (opts.subscribe) {
     try {
-      const result = await client.subscribeApp(WEBHOOK_FIELDS);
+      // subscribed_fields replaces the account's field list: keep extra
+      // fields the operator subscribed manually (e.g. mentions, standby).
+      let current: string[] = [];
+      try { current = await client.getSubscribedFields(); } catch { /* fall back to the required set */ }
+      const result = await client.subscribeApp([...new Set([...WEBHOOK_FIELDS, ...current])]);
       report.webhook.subscribedNow = result?.success === true;
     } catch (error) { subscribeError = error; }
   }

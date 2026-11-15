@@ -26,6 +26,8 @@ type Data = {
         status: string;
         reason: string | null;
         errorCode: number | null;
+        publicReplyStatus?: string | null;
+        publicReplyErrorCode?: number | null;
     }>;
 };
 const reasons: Record<string, string> = { window_closed: '24時間の送信枠外', window_expired: '24時間の送信枠外', standby: '他のアプリが応答を担当', private_reply_standby: '他のアプリが応答を担当', awaiting_inbound: '相手の返信待ち', rate_limited: 'Metaの制限により待機中', outcome_unknown: '送信結果の確認が必要', private_reply_outcome_unknown: '送信結果の確認が必要', interrupted: '処理停止後の結果確認が必要', delivery_in_progress: '送信処理中', public_reply_failed: '公開コメントの返信に失敗', private_reply_expired: 'コメントから7日を超過', private_reply_already_sent: 'このコメントには送信済み', live_comment_not_supported: 'Liveコメントは未対応' };
@@ -57,7 +59,7 @@ export default function DeliveryStatus() {
       {data.account?.graph_backoff_until && <p className="text-sm">API呼び出しを待機中：{new Date(data.account.graph_backoff_until).toLocaleString('ja-JP')}まで</p>}
       {data.account?.graph_usage?.call_count !== undefined && <p className="text-xs text-kumo-subtle">Metaが返したAPI呼び出し使用率：{data.account.graph_usage.call_count}%</p>}
       {data.broadcasts.map(row => <div key={row.id} className="text-sm border-t border-kumo-line pt-2"><strong>{row.name}</strong><p>送信済み {row.sent} ／ 未送信 {row.pending} ／ 対象外 {row.skipped} ／ 要確認 {row.attention}</p></div>)}
-      <details><summary className="text-sm cursor-pointer">コメント・シナリオの配信記録（{data.deliveries.length}件）</summary><ul className="mt-2 space-y-2 text-sm">{data.deliveries.map(row => <li key={`${row.kind}:${row.id}`}><span>{row.name}：</span>{row.reason ? (reasons[row.reason] ?? '配信条件・権限を確認してください') : row.status === 'sent' ? '送信済み' : row.status === 'pending' ? '送信待ち' : row.status === 'processing' ? '処理中' : '結果の確認が必要'}{row.errorCode !== null && <span className="text-xs">（Metaコード {row.errorCode}）</span>}</li>)}</ul></details>
+      <details><summary className="text-sm cursor-pointer">コメント・シナリオの配信記録（{data.deliveries.length}件）</summary><ul className="mt-2 space-y-2 text-sm">{data.deliveries.map(row => <li key={`${row.kind}:${row.id}`}><span>{row.name}：</span>{row.reason ? (reasons[row.reason] ?? '配信条件・権限を確認してください') : row.status === 'sent' ? '送信済み' : row.status === 'pending' ? '送信待ち' : row.status === 'processing' ? '処理中' : '結果の確認が必要'}{row.errorCode !== null && <span className="text-xs">（Metaコード {row.errorCode}）</span>}{row.publicReplyStatus === 'failed' && <span className="text-xs text-red-600"> ／ 公開返信に失敗{row.publicReplyErrorCode != null ? `（Metaコード ${row.publicReplyErrorCode}）` : ''}</span>}</li>)}</ul></details>
     </>}
   </section>;
 }

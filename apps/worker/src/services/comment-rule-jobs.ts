@@ -94,7 +94,7 @@ export async function processCommentRuleJobs(db: D1Database, client: InstagramCl
                 }
                 const waiting = job.message_type !== 'text';
                 await db.batch([
-                    db.prepare("UPDATE comment_rule_jobs SET status=?,delivery_mode=?,reason=?,error_code=NULL,error_subcode=NULL,finished_at=? WHERE id=?").bind(waiting ? 'pending' : 'sent', waiting ? 'awaiting_inbound' : 'private_reply', waiting ? 'awaiting_inbound' : null, new Date().toISOString(), job.id),
+                    db.prepare("UPDATE comment_rule_jobs SET status=?,delivery_mode=?,reason=?,error_code=NULL,error_subcode=NULL,error_message=NULL,finished_at=? WHERE id=?").bind(waiting ? 'pending' : 'sent', waiting ? 'awaiting_inbound' : 'private_reply', waiting ? 'awaiting_inbound' : null, new Date().toISOString(), job.id),
                     db.prepare("INSERT INTO messages_log(follower_id,direction,message_type,body,trigger_source) VALUES(?,'out','text',?,?)").bind(job.follower_id, JSON.stringify({ text }), job.gate_delivery_id ? 'gate' : 'comment_rule'),
                     ...(job.gate_delivery_id ? [db.prepare("UPDATE gate_deliveries SET status='cta_sent',end_reason=NULL,metadata=json_set(metadata,'$.awaiting_reply',1,'$.comment_id',?) WHERE id=?").bind(job.comment_id, job.gate_delivery_id)] : []),
                 ]);
@@ -107,7 +107,7 @@ export async function processCommentRuleJobs(db: D1Database, client: InstagramCl
                 }
                 await sendIgMessage(client, job.igsid, job.message_type, JSON.parse(job.body));
                 await db.batch([
-                    db.prepare("UPDATE comment_rule_jobs SET status='sent',error_code=NULL,error_subcode=NULL,reason=NULL,finished_at=? WHERE id=?").bind(new Date().toISOString(), job.id),
+                    db.prepare("UPDATE comment_rule_jobs SET status='sent',error_code=NULL,error_subcode=NULL,error_message=NULL,reason=NULL,finished_at=? WHERE id=?").bind(new Date().toISOString(), job.id),
                     db.prepare("INSERT INTO messages_log(follower_id,direction,message_type,body,trigger_source) VALUES(?,'out',?,?,'comment_rule')").bind(job.follower_id, job.message_type, job.body),
                 ]);
             }
@@ -148,10 +148,10 @@ const PRIVATE_REPLY_OUTCOME_MESSAGES: Record<string, string> = {
  * @username comment on the media. Neither bypasses Meta permissions.
  */
 async function postPublicReply(db: D1Database, client: Pick<InstagramClient, 'replyToComment' | 'postCommentToMedia'>, accountId: string, job: CommentJob): Promise<void> {
-    const mode = normalizeReplyMode(job.reply_mode);
+    const mode = normalizeReplyMode(job.reply_mode) === 'mention' && job.media_id ? 'mention' : 'thread';
     try {
-        const result = mode === 'mention' && job.media_id
-            ? await client.postCommentToMedia(job.media_id, job.reply_text!)
+        const result = mode === 'mention'
+            ? await client.postCommentToMedia(job.media_id!, job.reply_text!)
             : await client.replyToComment(job.comment_id, job.reply_text!);
         await db.prepare("UPDATE comment_rule_jobs SET public_reply_status='sent',public_reply_id=?,public_reply_error_code=NULL,public_reply_error_message=NULL WHERE id=?")
             .bind((result as { id?: string } | undefined)?.id ?? null, job.id).run();
