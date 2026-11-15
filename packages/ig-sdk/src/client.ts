@@ -47,8 +47,14 @@ export function detectTokenConnectionType(token: string): IgConnectionType | nul
   return null;
 }
 
-/** Webhook fields subscribed per account; same field names for both login types. */
+/** Webhook fields subscribed on the IG user node (Instagram Login and Unified login). */
 export const IG_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] as const;
+/**
+ * Page-linked Facebook Login subscribes the Page edge, which takes Page field
+ * names (plural messaging_referrals; IG comments arrive via the app-level
+ * Instagram object subscription, not a Page field).
+ */
+export const PAGE_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referrals'] as const;
 
 export class InstagramClient {
   private accessToken: string;
@@ -230,7 +236,7 @@ export class InstagramClient {
    * /me/assigned_instagram_accounts (no Page); Page-linked Facebook Login user
    * tokens through /me/accounts → instagram_business_account.
    */
-  async listLinkedInstagramAccounts(): Promise<Array<{ pageId?: string; pageName?: string; igUserId: string; username?: string }>> {
+  async listLinkedInstagramAccounts(): Promise<Array<{ pageId?: string; pageName?: string; pageAccessToken?: string; igUserId: string; username?: string }>> {
     if (this.connectionType !== 'facebook_login') throw new Error('Linked account lookup requires Facebook Login');
     try {
       const assigned = await this.request<{ data?: Array<{ id?: string; username?: string }> }>('GET', '/me/assigned_instagram_accounts?fields=id,username&limit=100');
@@ -240,13 +246,15 @@ export class InstagramClient {
       // Not a system-user token (or edge unavailable): fall back to Pages.
       if (!(error instanceof InstagramApiError)) throw error;
     }
-    const json = await this.request<{ data?: Array<{ id?: string; name?: string; instagram_business_account?: { id?: string; username?: string } }> }>(
-      'GET', '/me/accounts?fields=id,name,instagram_business_account{id,username}&limit=100',
+    // access_token here is the Page access token: Page-linked messaging and
+    // Page webhook subscriptions require it rather than the user token.
+    const json = await this.request<{ data?: Array<{ id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string; username?: string } }> }>(
+      'GET', '/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100',
     );
     return (json.data ?? []).flatMap((page) => {
       const ig = page.instagram_business_account;
       if (!page.id || !ig?.id || !/^\d+$/.test(ig.id)) return [];
-      return [{ pageId: page.id, pageName: page.name, igUserId: ig.id, username: ig.username }];
+      return [{ pageId: page.id, pageName: page.name, igUserId: ig.id, username: ig.username, ...(typeof page.access_token === 'string' && page.access_token ? { pageAccessToken: page.access_token } : {}) }];
     });
   }
 
@@ -260,7 +268,8 @@ export class InstagramClient {
     return this.connectionType === 'facebook_login' && this.pageId ? this.pageId : this.igUserId;
   }
 
-  async subscribeWebhooks(fields: readonly string[] = IG_WEBHOOK_FIELDS): Promise<{ node: string; fields: string[] }> {
+  async subscribeWebhooks(fields?: readonly string[]): Promise<{ node: string; fields: string[] }> {
+    fields ??= this.connectionType === 'facebook_login' && this.pageId ? PAGE_WEBHOOK_FIELDS : IG_WEBHOOK_FIELDS;
     if (!fields.length || fields.some((f) => !/^[a-z_]+$/.test(f))) throw new Error('Invalid webhook field list');
     const node = this.webhookNode();
     const path = `/${encodeURIComponent(node)}/subscribed_apps`;

@@ -90,7 +90,7 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
     const account = await createIgAccount(c.env.DB, {
       igUserId,
       username: profile.username,
-      accessToken: await sealToken(body.accessToken, igUserId, c.env.TOKEN_ENCRYPTION_KEY),
+      accessToken: await sealToken(profile.access_token, igUserId, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${igUserId}`, c.env) : null,
       verifyToken: body.verifyToken ?? null,
       connectionType: profile.connection_type,
@@ -129,22 +129,23 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
 
     let verifiedUsername = body.username;
     let connectionType: 'instagram_login' | 'facebook_login' | undefined;
+    let verified: Awaited<ReturnType<typeof validateIgAccount>> | undefined;
     if (body.connectionType !== undefined && body.accessToken === undefined) return c.json({ success:false,error:'connectionType can only change together with a new accessToken' },400);
     if (body.accessToken !== undefined) {
       if (typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) return c.json({ success:false,error:'accessToken must not be empty' },400);
       // Explicit choice, then the new token's prefix, then the account's current type.
       try { connectionType = body.connectionType !== undefined ? resolveConnectionType(body.accessToken,body.connectionType) : detectTokenConnectionType(body.accessToken) ?? accountConnectionType(existing); }
       catch (error) { return c.json({ success:false,error:(error as Error).message },400); }
-      try { verifiedUsername=(await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env),{ connectionType, pageId: connectionType==='facebook_login' ? existing.page_id ?? null : null })).username; }
+      try { verified=await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env),{ connectionType }); verifiedUsername=verified.username; }
       catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). Existing credentials were preserved.` : error instanceof InstagramTransportError ? 'Could not reach Instagram; existing credentials were preserved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
     }
     const updated = await updateIgAccount(c.env.DB, id, {
       username: verifiedUsername,
-      accessToken: body.accessToken === undefined ? undefined : await sealToken(body.accessToken, existing.ig_user_id, c.env.TOKEN_ENCRYPTION_KEY),
+      accessToken: verified === undefined ? undefined : await sealToken(verified.access_token, existing.ig_user_id, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret === undefined ? undefined : body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${existing.ig_user_id}`, c.env) : null,
       verifyToken: body.verifyToken,
       isActive: body.isActive,
-      ...(connectionType ? { connectionType, pageId: connectionType==='facebook_login' ? existing.page_id ?? null : null } : {}),
+      ...(verified ? { connectionType: verified.connection_type, pageId: verified.page_id } : {}),
     });
 
     if (body.accessToken !== undefined) await recordTokenValidity(c.env.DB,id,true).catch(()=>{});

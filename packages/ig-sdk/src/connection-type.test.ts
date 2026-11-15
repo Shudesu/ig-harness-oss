@@ -45,15 +45,15 @@ describe('InstagramClient with Facebook Login (Unified login)', () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(ok({ recipient_id: 'r', message_id: 'm' }))
       .mockResolvedValueOnce(ok({ success: true }))
-      .mockResolvedValueOnce(ok({ data: [{ subscribed_fields: ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] }] }));
+      .mockResolvedValueOnce(ok({ data: [{ subscribed_fields: ['messages', 'messaging_postbacks', 'messaging_referrals'] }] }));
     vi.stubGlobal('fetch', fetch);
     const client = new InstagramClient({ accessToken: 'EAA', igUserId: '178', pageId: '555', connectionType: 'facebook_login' });
     await client.sendText('igsid', 'hi');
-    await expect(client.subscribeWebhooks()).resolves.toEqual({ node: '555', fields: ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] });
+    await expect(client.subscribeWebhooks()).resolves.toEqual({ node: '555', fields: ['messages', 'messaging_postbacks', 'messaging_referrals'] });
     const urls = fetch.mock.calls.map(([url]) => new URL(String(url)));
     expect(urls[0]?.pathname).toBe('/v25.0/555/messages');
     expect(urls[1]?.pathname).toBe('/v25.0/555/subscribed_apps');
-    expect(urls[1]?.searchParams.get('subscribed_fields')).toBe('messages,messaging_postbacks,messaging_referral,comments');
+    expect(urls[1]?.searchParams.get('subscribed_fields')).toBe('messages,messaging_postbacks,messaging_referrals');
     expect(fetch.mock.calls[1]?.[1].method).toBe('POST');
   });
 
@@ -82,10 +82,10 @@ describe('InstagramClient with Facebook Login (Unified login)', () => {
     fetch.mockReset()
       .mockResolvedValueOnce(new Response('{"error":{"code":100}}', { status: 400 }))
       .mockResolvedValueOnce(ok({ data: [
-        { id: 'p1', name: 'Page 1', instagram_business_account: { id: '179', username: 'shop' } },
+        { id: 'p1', name: 'Page 1', access_token: 'PAGE', instagram_business_account: { id: '179', username: 'shop' } },
         { id: 'p2', name: 'No IG' },
       ] }));
-    expect(await client.listLinkedInstagramAccounts()).toEqual([{ pageId: 'p1', pageName: 'Page 1', igUserId: '179', username: 'shop' }]);
+    expect(await client.listLinkedInstagramAccounts()).toEqual([{ pageId: 'p1', pageName: 'Page 1', pageAccessToken: 'PAGE', igUserId: '179', username: 'shop' }]);
     expect(new URL(String(fetch.mock.calls[1]?.[0])).pathname).toBe('/v25.0/me/accounts');
     await expect(new InstagramClient({ accessToken: 'IG', igUserId: 'me' }).listLinkedInstagramAccounts()).rejects.toThrow('Facebook Login');
   });

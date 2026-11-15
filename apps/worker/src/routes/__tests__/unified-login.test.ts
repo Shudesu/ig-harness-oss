@@ -46,13 +46,13 @@ it('existing rows default to instagram_login after migration 0025', async () => 
 
 it('registers an EAA token with an explicit IG user id against graph.facebook.com', async () => {
   const f = await fixture(); try {
-    const fetch = vi.fn().mockResolvedValue(json({ id: '17841400000000001', username: 'new_owner' })); vi.stubGlobal('fetch', fetch);
+    const fetch = vi.fn().mockImplementation(async (url: string) => json(String(url).includes('/me/') ? { data: [] } : { id: '17841400000000001', username: 'new_owner' })); vi.stubGlobal('fetch', fetch);
     const res = await f.request('/api/accounts', 'POST', { igUserId: '17841400000000001', accessToken: 'EAAsecret-token' });
     expect(res.status).toBe(201);
     const body = await res.json() as any;
     expect(body.data).toMatchObject({ igUserId: '17841400000000001', username: 'new_owner', connectionType: 'facebook_login', pageId: null });
     expect(JSON.stringify(body)).not.toContain('EAAsecret-token');
-    expect(String(fetch.mock.calls[0]?.[0])).toBe('https://graph.facebook.com/v25.0/17841400000000001?fields=id,username');
+    expect(String(fetch.mock.calls.at(-1)?.[0])).toBe('https://graph.facebook.com/v25.0/17841400000000001?fields=id,username');
     expect(f.row("ig_user_id='17841400000000001'")).toMatchObject({ connection_type: 'facebook_login', access_token: expect.stringMatching(/^enc:v1:/) });
   } finally { f.sqlite.close(); }
 });
@@ -61,7 +61,7 @@ it('finds the IG account through the Facebook Page when no IG user id is given',
   const f = await fixture(); try {
     const fetch = vi.fn()
       .mockResolvedValueOnce(json({ data: [] }))
-      .mockResolvedValueOnce(json({ data: [{ id: '555', name: 'Shop', instagram_business_account: { id: '17841400000000002', username: 'shop' } }] }))
+      .mockResolvedValueOnce(json({ data: [{ id: '555', name: 'Shop', access_token: 'EAApage-token-for-555', instagram_business_account: { id: '17841400000000002', username: 'shop' } }] }))
       .mockResolvedValueOnce(json({ id: '17841400000000002', username: 'shop' }));
     vi.stubGlobal('fetch', fetch);
     const res = await f.request('/api/accounts', 'POST', { accessToken: 'EAApage' });
@@ -69,6 +69,9 @@ it('finds the IG account through the Facebook Page when no IG user id is given',
     expect(new URL(String(fetch.mock.calls[0]?.[0])).pathname).toBe('/v25.0/me/assigned_instagram_accounts');
     expect(new URL(String(fetch.mock.calls[1]?.[0])).pathname).toBe('/v25.0/me/accounts');
     expect(f.row("ig_user_id='17841400000000002'")).toMatchObject({ connection_type: 'facebook_login', page_id: '555', username: 'shop' });
+    expect(fetch.mock.calls[2]?.[1].headers.Authorization).toBe('Bearer EAApage-token-for-555');
+    const { openToken } = await import('../../lib/token-crypto.js');
+    expect(await openToken(f.row("ig_user_id='17841400000000002'").access_token, '17841400000000002', KEY)).toBe('EAApage-token-for-555');
   } finally { f.sqlite.close(); }
 });
 
@@ -96,9 +99,25 @@ it('asks for the IG user id when Pages reveal none or several IG accounts, witho
   } finally { f.sqlite.close(); }
 });
 
+it('resolves the linked Page when the owner supplies one of several IG ids', async () => {
+  const f = await fixture(); try {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(json({ data: [] }))
+      .mockResolvedValueOnce(json({ data: [
+        { id: '601', access_token: 'EAApage601', instagram_business_account: { id: '201' } },
+        { id: '602', access_token: 'EAApage602', instagram_business_account: { id: '202' } },
+      ] }))
+      .mockResolvedValueOnce(json({ id: '202', username: 'second' }));
+    vi.stubGlobal('fetch', fetch);
+    expect((await f.request('/api/accounts', 'POST', { igUserId: '202', accessToken: 'EAAuser' })).status).toBe(201);
+    expect(f.row("ig_user_id='202'")).toMatchObject({ page_id: '602' });
+    expect(fetch.mock.calls[2]?.[1].headers.Authorization).toBe('Bearer EAApage602');
+  } finally { f.sqlite.close(); }
+});
+
 it('rejects an EAA token that reads a different IG account and keeps IG Login tokens on graph.instagram.com', async () => {
   const f = await fixture(); try {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ id: '999', username: 'someone' })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => json(String(url).includes('/me/') ? { data: [] } : { id: '999', username: 'someone' })));
     expect((await f.request('/api/accounts', 'POST', { igUserId: '17841400000000003', accessToken: 'EAAx' })).status).toBe(400);
     const fetch = vi.fn().mockResolvedValue(json({ user_id: '333', username: 'ig_user' })); vi.stubGlobal('fetch', fetch);
     expect((await f.request('/api/accounts', 'POST', { accessToken: 'IGAAx' })).status).toBe(201);
@@ -111,11 +130,12 @@ it('rejects an EAA token that reads a different IG account and keeps IG Login to
 it('switches an existing account to Unified login only with a validated replacement token', async () => {
   const f = await fixture(); try {
     expect((await f.request('/api/accounts/a', 'PATCH', { connectionType: 'facebook_login' })).status).toBe(400);
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ id: '111', username: 'owner' })));
+    f.sqlite.prepare("UPDATE ig_accounts SET connection_type='facebook_login', page_id='old-page' WHERE id='a'").run();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => json(String(url).includes('/me/') ? { data: [{ id: '111', username: 'owner' }] } : { id: '111', username: 'owner' })));
     const res = await f.request('/api/accounts/a', 'PATCH', { accessToken: 'EAAnew' });
     expect(res.status).toBe(200);
-    expect((await res.json() as any).data).toMatchObject({ connectionType: 'facebook_login' });
-    expect(f.row("id='a'")).toMatchObject({ connection_type: 'facebook_login' });
+    expect((await res.json() as any).data).toMatchObject({ connectionType: 'facebook_login', pageId: null });
+    expect(f.row("id='a'")).toMatchObject({ connection_type: 'facebook_login', page_id: null });
   } finally { f.sqlite.close(); }
 });
 
@@ -145,7 +165,7 @@ it('builds a graph.facebook.com client for Unified login accounts and keeps the 
 it('subscribes webhooks on the node that matches the connection type', async () => {
   const f = await fixture(); try {
     f.sqlite.prepare("INSERT INTO ig_accounts(id,ig_user_id,access_token,is_default,created_at,updated_at,connection_type,page_id) VALUES('b','178','EAAstored',0,'2026-01-01','2026-01-01','facebook_login','555')").run();
-    const fields = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'];
+    const fields = ['messages', 'messaging_postbacks', 'messaging_referrals'];
     const fetch = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => json(init.method === 'POST' ? { success: true } : { data: [{ subscribed_fields: fields }] }));
     vi.stubGlobal('fetch', fetch);
     const res = await f.request('/api/accounts/b/subscribe-webhooks', 'POST');
