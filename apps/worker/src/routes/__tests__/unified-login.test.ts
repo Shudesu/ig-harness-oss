@@ -115,6 +115,23 @@ it('resolves the linked Page when the owner supplies one of several IG ids', asy
   } finally { f.sqlite.close(); }
 });
 
+it('treats a pasted Page access token as Page-linked and keeps the Page on rotation', async () => {
+  const f = await fixture(); try {
+    const fetch = vi.fn().mockImplementation(async (url: string) => {
+      const u = new URL(url);
+      if (u.pathname.endsWith('/me/assigned_instagram_accounts') || u.pathname.endsWith('/me/accounts')) return json({ error: { code: 100 } }, 400);
+      if (u.pathname.endsWith('/me')) return json({ id: '777', instagram_business_account: { id: '203' } });
+      return json({ id: '203', username: 'paged' });
+    });
+    vi.stubGlobal('fetch', fetch);
+    expect((await f.request('/api/accounts', 'POST', { igUserId: '203', accessToken: 'EAApagetoken' })).status).toBe(201);
+    const row = f.row("ig_user_id='203'");
+    expect(row).toMatchObject({ connection_type: 'facebook_login', page_id: '777' });
+    expect((await f.request(`/api/accounts/${row.id}`, 'PATCH', { accessToken: 'EAApagetoken2' })).status).toBe(200);
+    expect(f.row("ig_user_id='203'")).toMatchObject({ page_id: '777' });
+  } finally { f.sqlite.close(); }
+});
+
 it('rejects an EAA token that reads a different IG account and keeps IG Login tokens on graph.instagram.com', async () => {
   const f = await fixture(); try {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => json(String(url).includes('/me/') ? { data: [] } : { id: '999', username: 'someone' })));

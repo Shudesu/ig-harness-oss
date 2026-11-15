@@ -30,7 +30,15 @@ export async function validateIgAccount(env: Env['Bindings'], token: string, exp
         let linked: Awaited<ReturnType<InstagramClient['listLinkedInstagramAccounts']>> = [];
         try { linked = await new InstagramClient({ ...base, accessToken: token, igUserId: 'me' }).listLinkedInstagramAccounts(); }
         catch (error) { if (!expectedId || !(error instanceof InstagramApiError)) throw error; }
-        let match = expectedId ? linked.find((a) => a.igUserId === expectedId) : undefined;
+        let match: (typeof linked)[number] | undefined = expectedId ? linked.find((a) => a.igUserId === expectedId) : undefined;
+        if (!match && (expectedId || linked.length === 0)) {
+            // The submitted token may itself be a Page access token: /me is the Page.
+            const tokenPage = await new InstagramClient({ ...base, accessToken: token, igUserId: 'me' }).getTokenPage();
+            if (tokenPage && (!expectedId || tokenPage.igUserId === expectedId)) {
+                match = { pageId: tokenPage.pageId, pageAccessToken: token, igUserId: tokenPage.igUserId };
+                linked = [match];
+            }
+        }
         if (!expectedId) {
             if (linked.length === 0)
                 throw new Error('No Instagram professional account was found for this token (assigned accounts or Facebook Pages). Enter the Instagram user ID shown in the Meta app (API setup with Unified login).');

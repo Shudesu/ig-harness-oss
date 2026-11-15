@@ -90,6 +90,23 @@ describe('InstagramClient with Facebook Login (Unified login)', () => {
     await expect(new InstagramClient({ accessToken: 'IG', igUserId: 'me' }).listLinkedInstagramAccounts()).rejects.toThrow('Facebook Login');
   });
 
+  it('follows discovery pagination before returning candidates', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(ok({ data: [{ id: '1' }], paging: { cursors: { after: 'c1' }, next: 'https://graph.facebook.com/next' } }))
+      .mockResolvedValueOnce(ok({ data: [{ id: '2' }], paging: { cursors: { after: 'c2' } } }));
+    vi.stubGlobal('fetch', fetch);
+    const client = new InstagramClient({ accessToken: 'EAA', igUserId: 'me', connectionType: 'facebook_login' });
+    expect((await client.listLinkedInstagramAccounts()).map((a) => a.igUserId)).toEqual(['1', '2']);
+    expect(new URL(String(fetch.mock.calls[1]?.[0])).searchParams.get('after')).toBe('c1');
+  });
+
+  it('recognises a Page access token through /me', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(ok({ id: '777', instagram_business_account: { id: '203' } })).mockResolvedValueOnce(new Response('{"error":{"code":100}}', { status: 400 })));
+    const client = new InstagramClient({ accessToken: 'EAA', igUserId: 'me', connectionType: 'facebook_login' });
+    expect(await client.getTokenPage()).toEqual({ pageId: '777', igUserId: '203' });
+    expect(await client.getTokenPage()).toBeNull();
+  });
+
   it('rejects unknown connection types', () => {
     expect(() => new InstagramClient({ accessToken: 't', igUserId: '1', connectionType: 'x' as never })).toThrow('connection type');
   });

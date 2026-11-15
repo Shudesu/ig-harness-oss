@@ -239,8 +239,8 @@ export class InstagramClient {
   async listLinkedInstagramAccounts(): Promise<Array<{ pageId?: string; pageName?: string; pageAccessToken?: string; igUserId: string; username?: string }>> {
     if (this.connectionType !== 'facebook_login') throw new Error('Linked account lookup requires Facebook Login');
     try {
-      const assigned = await this.request<{ data?: Array<{ id?: string; username?: string }> }>('GET', '/me/assigned_instagram_accounts?fields=id,username&limit=100');
-      const found = (assigned.data ?? []).flatMap((a) => (a.id && /^\d+$/.test(a.id) ? [{ igUserId: a.id, username: a.username }] : []));
+      const assigned = await this.readAllPages<{ id?: string; username?: string }>('/me/assigned_instagram_accounts?fields=id,username&limit=100');
+      const found = assigned.flatMap((a) => (a.id && /^\d+$/.test(a.id) ? [{ igUserId: a.id, username: a.username }] : []));
       if (found.length) return found;
     } catch (error) {
       // Not a system-user token (or edge unavailable): fall back to Pages.
@@ -248,14 +248,44 @@ export class InstagramClient {
     }
     // access_token here is the Page access token: Page-linked messaging and
     // Page webhook subscriptions require it rather than the user token.
-    const json = await this.request<{ data?: Array<{ id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string; username?: string } }> }>(
-      'GET', '/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100',
+    const pages = await this.readAllPages<{ id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string; username?: string } }>(
+      '/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100',
     );
-    return (json.data ?? []).flatMap((page) => {
+    return pages.flatMap((page) => {
       const ig = page.instagram_business_account;
       if (!page.id || !ig?.id || !/^\d+$/.test(ig.id)) return [];
       return [{ pageId: page.id, pageName: page.name, igUserId: ig.id, username: ig.username, ...(typeof page.access_token === 'string' && page.access_token ? { pageAccessToken: page.access_token } : {}) }];
     });
+  }
+
+  /**
+   * Facebook Login only: when the token itself is a Page access token, its
+   * /me is the Page. Returns the Page and its linked IG account, or null when
+   * /me is not a Page with an IG account (user / system-user tokens).
+   */
+  async getTokenPage(): Promise<{ pageId: string; igUserId: string } | null> {
+    if (this.connectionType !== 'facebook_login') throw new Error('Page lookup requires Facebook Login');
+    try {
+      const me = await this.request<{ id?: string; instagram_business_account?: { id?: string } }>('GET', '/me?fields=id,instagram_business_account');
+      const igUserId = me.instagram_business_account?.id;
+      return me.id && igUserId && /^\d+$/.test(igUserId) ? { pageId: me.id, igUserId } : null;
+    } catch (error) {
+      if (error instanceof InstagramApiError) return null;
+      throw error;
+    }
+  }
+
+  /** Follow Graph cursor pagination (bounded) so discovery never decides on a partial list. */
+  private async readAllPages<T>(path: string, maxPages = 10): Promise<T[]> {
+    const items: T[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const json = await this.request<{ data?: T[]; paging?: { cursors?: { after?: string }; next?: string } }>('GET', after ? `${path}&after=${encodeURIComponent(after)}` : path);
+      items.push(...(json.data ?? []));
+      after = json.paging?.next ? json.paging.cursors?.after : undefined;
+      if (!after) return items;
+    }
+    throw new Error('Too many linked accounts to list; enter the Instagram user ID explicitly');
   }
 
   /**
