@@ -50,6 +50,8 @@ export default function DeliveryGuardrails() {
         </div>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         {!selectedAccountId && <p className="text-sm">アカウントを選ぶと結果を確認できます。</p>}
+        {/* 取得中は高さを確保してレイアウトがガクッと動かないようにする */}
+        {!data && !error && selectedAccountId && <div className="space-y-2" aria-hidden="true"><div className="h-4 w-2/3 rounded bg-kumo-line/60 animate-pulse" /><div className="h-4 w-1/2 rounded bg-kumo-line/60 animate-pulse" /></div>}
         {data && <>
             <div className="grid grid-cols-2 gap-2 text-sm">
                 <p>送信時間帯：<strong>{String(data.window.startHourJst).padStart(2, '0')}:00〜{String(data.window.endHourJst).padStart(2, '0')}:00（JST）</strong> ／ 現在{data.window.within ? '窓内' : '窓外'}</p>

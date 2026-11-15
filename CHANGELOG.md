@@ -1,3 +1,9 @@
+## Unreleased — calm UX (2026-11-16)
+
+- Admin dashboard keeps the shell (sidebar) during the auth check and swaps only the content area to a partial skeleton. The full-screen spinner remount on every navigation is gone; the check runs once on mount with a stale-while-revalidate optimistic display.
+- chats MessagePanel / followers list abort stale responses (AbortController) so switching chats or typing fast can no longer overwrite newer data with older output; scroll only follows near the bottom (no forced jumps while reading history). delivery-status / guardrails reserve their height with skeletons.
+- IG branding applied: favicon added, worker/index.html title and LINE-green spinner replaced, neutral placeholder copy in settings.
+
 ## Unreleased — release 20261115 (unified login)
 
 - **Instagram API with Unified login** (EAA tokens, `graph.facebook.com`) is supported alongside the legacy Instagram Login (`IGAA…`, `graph.instagram.com`). The token prefix decides automatically; Unified login accounts never call `refresh_access_token`, and webhook subscription targets the linked Page when one is known. See docs/manual/09-unified-login.md. Migration 0025 (additive) adds `connection_type` (default `instagram_login`) and `page_id` to `ig_accounts`, so **existing accounts keep working unchanged**.

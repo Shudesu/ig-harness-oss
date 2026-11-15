@@ -102,7 +102,15 @@ function AccountSwitcher() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  if (loading || accounts.length === 0) return null
+  // 読み込み中は消さずに固定高さのスケルトンを置く（ロゴ下がガクッと動くのを防ぐ）
+  if (loading) {
+    return (
+      <div className="mt-3" aria-hidden="true">
+        <div className="w-full h-[46px] rounded-lg bg-kumo-line/50 animate-pulse" />
+      </div>
+    )
+  }
+  if (accounts.length === 0) return null
 
   const displayName = selectedAccount?.displayName || selectedAccount?.name || ''
 

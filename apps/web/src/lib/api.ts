@@ -934,14 +934,15 @@ export interface ScenarioApi {
 export const api = {
   followers: {
     // The worker still serves these at /api/friends
-    list: (params?: FollowerListParams) => {
+    list: (params?: FollowerListParams, signal?: AbortSignal) => {
       const query: Record<string, string> = {}
       if (params?.offset) query.offset = params.offset
       if (params?.limit) query.limit = params.limit
       if (params?.tagId) query.tagId = params.tagId
       if (params?.search) query.search = params.search
       return fetchApi<ApiResponse<FollowerListResponse>>(
-        '/api/friends?' + new URLSearchParams(query)
+        '/api/friends?' + new URLSearchParams(query),
+        { signal },
       )
     },
     get: (id: string) =>
