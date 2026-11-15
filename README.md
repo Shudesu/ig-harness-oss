@@ -2,6 +2,13 @@
 
 # IG Harness
 
+## アップデート情報
+
+- **2026-11-16** — 統合ログイン（新Metaアプリ、EAAトークン）での登録に対応。コメントへの返信はスレッド返信（`/{comment-id}/replies`）＋DMの自動送信。管理画面は読み込み中も枠を保持し、古い応答を破棄する calm UX に刷新。マイグレーション0025（追加のみ）。
+- **2026-11-15** — リリース 20261115：既読＋入力中の既定ON、移行マニュアル `docs/manual/10-migration.md`。
+- 更新手順は `docs/manual/10-migration.md`。マイグレーションを先に適用してからWorkerを更新します。
+
+
 > **IG→LINE compatibility:** IG→LINE identity linking requires LINE Harness with spec 08 (`igt` support) or later; older LINE Harness will stop linking (links still redirect).
 > IG-side `LINE_HARNESS_LINK_SECRET` must equal LINE-side `IG_HARNESS_LINK_SECRET`; alternatively, use matching `IG_LINK_TOKEN_SECRET` on both sides. Use the same secret mode on both sides.
 
