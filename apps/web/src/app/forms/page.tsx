@@ -127,6 +127,7 @@ export default function FormsPage() {
   return (
     <div>
       <Header title="フォーム" description="アンケート・申込フォームを作成し、回答を確認します" />
+      <p className="text-xs text-kumo-subtle mb-4">※ 回答の受付は API（POST /api/forms/:id/submit）経由です。回答者向けの公開ページは未提供のため、この画面は作成と回答の閲覧用です。</p>
       {error && <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
       <section className="mb-6 bg-kumo-base rounded-xl border border-kumo-line p-5">

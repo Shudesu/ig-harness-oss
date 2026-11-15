@@ -72,7 +72,7 @@ export default function TagsPage() {
               id="tag-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !saving) handleCreate() }}
               placeholder="例: 購入済み"
               className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
             />

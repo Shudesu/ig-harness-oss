@@ -61,7 +61,7 @@ function serialize(row: CommentRuleRow) {
 commentRules.get('/api/comment-rule-deliveries', async c => {
   const account=await resolveAccount(c); if (!account) return c.json({success:false,error:'account not found'},404);
   const rows=await c.env.DB.prepare(`SELECT j.id,j.status,j.reason,j.delivery_mode AS deliveryMode,j.error_code AS errorCode,j.error_subcode AS errorSubcode,j.error_message AS errorMessage,
-    j.reply_mode AS replyMode,j.public_reply_status AS publicReplyStatus,j.public_reply_error_code AS publicReplyErrorCode,j.public_reply_error_message AS publicReplyErrorMessage,j.due_at AS createdAt,f.username
+    j.reply_mode AS replyMode,j.public_reply_status AS publicReplyStatus,j.public_reply_error_code AS publicReplyErrorCode,j.public_reply_error_message AS publicReplyErrorMessage,COALESCE(j.finished_at,j.started_at,j.comment_created_at,j.due_at) AS createdAt,f.username
     FROM comment_rule_jobs j JOIN followers f ON f.id=j.follower_id WHERE j.account_id=? ORDER BY j.rowid DESC LIMIT 30`).bind(account.id).all();
   return c.json({success:true,data:rows.results});
 });

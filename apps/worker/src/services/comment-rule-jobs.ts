@@ -149,17 +149,22 @@ const PRIVATE_REPLY_OUTCOME_MESSAGES: Record<string, string> = {
  */
 async function postPublicReply(db: D1Database, client: Pick<InstagramClient, 'replyToComment' | 'postCommentToMedia'>, accountId: string, job: CommentJob): Promise<void> {
     const mode = normalizeReplyMode(job.reply_mode) === 'mention' && job.media_id ? 'mention' : 'thread';
+    let result: unknown;
     try {
-        const result = mode === 'mention'
+        result = mode === 'mention'
             ? await client.postCommentToMedia(job.media_id!, job.reply_text!)
             : await client.replyToComment(job.comment_id, job.reply_text!);
-        await db.prepare("UPDATE comment_rule_jobs SET public_reply_status='sent',public_reply_id=?,public_reply_error_code=NULL,public_reply_error_message=NULL WHERE id=?")
-            .bind((result as { id?: string } | undefined)?.id ?? null, job.id).run();
     }
     catch (error) {
         const detail = describeFailure(error);
         await db.prepare("UPDATE comment_rule_jobs SET public_reply_status='failed',public_reply_error_code=?,public_reply_error_message=? WHERE id=?")
-            .bind(detail.errorCode, detail.message, job.id).run();
+            .bind(detail.errorCode, detail.message, job.id).run()
+            .catch(() => console.warn('[comment-rule-jobs] could not record public reply failure'));
         await recordDeliveryFailure(db, { accountId, source: 'public_reply', stage: mode === 'mention' ? 'media_comment' : 'comment_replies', refId: job.id, followerId: job.follower_id, error });
+        return;
     }
+    // The reply is already public: a bookkeeping error must not be logged as a failed reply.
+    await db.prepare("UPDATE comment_rule_jobs SET public_reply_status='sent',public_reply_id=?,public_reply_error_code=NULL,public_reply_error_message=NULL WHERE id=?")
+        .bind((result as { id?: string } | undefined)?.id ?? null, job.id).run()
+        .catch(() => console.warn('[comment-rule-jobs] could not record public reply success'));
 }
