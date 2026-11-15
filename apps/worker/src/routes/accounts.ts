@@ -1,7 +1,7 @@
 import { readAppSecret, sealCredential } from '../lib/credential-crypto.js';
 import { recordTokenValidity } from '../lib/health.js';
-import { InstagramApiError, InstagramTransportError } from '@ig-harness/ig-sdk';
-import { validateIgAccount } from '../lib/validate-ig-account.js';
+import { InstagramApiError, InstagramTransportError, detectTokenConnectionType } from '@ig-harness/ig-sdk';
+import { validateIgAccount, resolveConnectionType } from '../lib/validate-ig-account.js';
 import { sealToken } from '../lib/token-crypto.js';
 import { Hono } from 'hono';
 import {
@@ -10,10 +10,11 @@ import {
   getIgAccountByIgUserId,
   createIgAccount,
   updateIgAccount,
+  accountConnectionType,
 } from '@ig-harness/db';
 import type { IgAccount } from '@ig-harness/db';
 import { requireRole } from '../middleware/role-guard.js';
-import { ensureDefaultAccount } from '../lib/accounts.js';
+import { ensureDefaultAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
 const accounts = new Hono<Env>();
@@ -35,6 +36,8 @@ function serializeAccount(row: IgAccount) {
     hasVerifyToken: Boolean(row.verify_token),
     isActive: Boolean(row.is_active),
     isDefault: Boolean(row.is_default),
+    connectionType: accountConnectionType(row),
+    pageId: row.page_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -61,15 +64,19 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
       accessToken?: string;
       appSecret?: string | null;
       verifyToken?: string | null;
+      connectionType?: string;
     }>();
 
     if ((body.igUserId !== undefined && (typeof body.igUserId !== 'string' || !/^\d{1,64}$/.test(body.igUserId))) || typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) {
       return c.json({ success: false, error: 'A token and an optional numeric igUserId are required' }, 400);
     }
 
+    let connectionType;
+    try { connectionType=resolveConnectionType(body.accessToken,body.connectionType); }
+    catch (error) { return c.json({ success:false,error:(error as Error).message },400); }
     let profile;
-    try { profile=await validateIgAccount(c.env,body.accessToken,body.igUserId,body.appSecret); }
-    catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). Check Instagram Login permissions.` : error instanceof InstagramTransportError ? 'Could not reach Instagram; account was not saved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
+    try { profile=await validateIgAccount(c.env,body.accessToken,body.igUserId,body.appSecret,{ connectionType }); }
+    catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). ${connectionType==='facebook_login' ? 'Check the Unified login (Facebook Login) permissions and the Instagram business asset.' : 'Check Instagram Login permissions.'}` : error instanceof InstagramTransportError ? 'Could not reach Instagram; account was not saved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
     const igUserId=profile.user_id;
     // Seed the env-based default first so a newly added account can never
     // become the default by being the first ig_accounts row.
@@ -86,6 +93,8 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
       accessToken: await sealToken(body.accessToken, igUserId, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${igUserId}`, c.env) : null,
       verifyToken: body.verifyToken ?? null,
+      connectionType: profile.connection_type,
+      pageId: profile.page_id,
     });
 
     await recordTokenValidity(c.env.DB,account.id,true).catch(()=>{});
@@ -106,6 +115,7 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
       appSecret?: string | null;
       verifyToken?: string | null;
       isActive?: boolean;
+      connectionType?: string;
     }>();
 
     const existing = await getIgAccountById(c.env.DB, id);
@@ -118,9 +128,14 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
     }
 
     let verifiedUsername = body.username;
+    let connectionType: 'instagram_login' | 'facebook_login' | undefined;
+    if (body.connectionType !== undefined && body.accessToken === undefined) return c.json({ success:false,error:'connectionType can only change together with a new accessToken' },400);
     if (body.accessToken !== undefined) {
       if (typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) return c.json({ success:false,error:'accessToken must not be empty' },400);
-      try { verifiedUsername=(await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env))).username; }
+      // Explicit choice, then the new token's prefix, then the account's current type.
+      try { connectionType = body.connectionType !== undefined ? resolveConnectionType(body.accessToken,body.connectionType) : detectTokenConnectionType(body.accessToken) ?? accountConnectionType(existing); }
+      catch (error) { return c.json({ success:false,error:(error as Error).message },400); }
+      try { verifiedUsername=(await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env),{ connectionType, pageId: connectionType==='facebook_login' ? existing.page_id ?? null : null })).username; }
       catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). Existing credentials were preserved.` : error instanceof InstagramTransportError ? 'Could not reach Instagram; existing credentials were preserved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
     }
     const updated = await updateIgAccount(c.env.DB, id, {
@@ -129,6 +144,7 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
       appSecret: body.appSecret === undefined ? undefined : body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${existing.ig_user_id}`, c.env) : null,
       verifyToken: body.verifyToken,
       isActive: body.isActive,
+      ...(connectionType ? { connectionType, pageId: connectionType==='facebook_login' ? existing.page_id ?? null : null } : {}),
     });
 
     if (body.accessToken !== undefined) await recordTokenValidity(c.env.DB,id,true).catch(()=>{});
@@ -137,6 +153,26 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
   } catch (err) {
     console.error('PATCH /api/accounts/:id error:', err instanceof Error ? err.name : 'unknown');
     return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// POST /api/accounts/:id/subscribe-webhooks - subscribe the account to this
+// app's webhooks (messages, postbacks, referral, comments). Instagram Login
+// subscribes the IG user; Unified login subscribes the linked Page when known,
+// otherwise the IG user. Registration alone does not subscribe.
+accounts.post('/api/accounts/:id/subscribe-webhooks', requireRole('owner'), async (c) => {
+  try {
+    const existing = await getIgAccountById(c.env.DB, c.req.param('id')!);
+    if (!existing) return c.json({ success: false, error: 'account not found' }, 404);
+    if (existing.is_active !== 1) return c.json({ success: false, error: 'account is inactive' }, 400);
+    const client = await getAccountClient(c.env, c.env.DB, existing);
+    const result = await client.subscribeWebhooks();
+    return c.json({ success: true, data: { connectionType: accountConnectionType(existing), node: result.node === existing.page_id ? 'page' : 'instagram_user', fields: result.fields } });
+  } catch (error) {
+    if (error instanceof InstagramApiError) return c.json({ success: false, error: `Webhook subscription failed (code ${error.code ?? error.status}). Check that the app has webhooks configured and the token has the messaging/comment permissions.` }, 400);
+    if (error instanceof InstagramTransportError) return c.json({ success: false, error: 'Could not reach Meta; subscription state is unknown.' }, 502);
+    console.error('POST /api/accounts/:id/subscribe-webhooks error:', error instanceof Error ? error.name : 'unknown');
+    return c.json({ success: false, error: error instanceof Error && error.message.startsWith('Webhook subscription is incomplete') ? error.message : 'Internal server error' }, error instanceof Error && error.message.startsWith('Webhook subscription is incomplete') ? 400 : 500);
   }
 });
 

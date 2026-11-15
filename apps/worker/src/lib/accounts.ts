@@ -2,12 +2,13 @@ import { readAppSecret, type CredentialEnv } from './credential-crypto.js';
 import { rewriteTrackedMessage } from './outbound-tracking.js';
 import { assertGraphAvailable, graphObserver } from './graph-observation.js';
 import { sealToken, openToken } from './token-crypto.js';
-import { InstagramClient, InstagramApiError } from '@ig-harness/ig-sdk';
+import { InstagramClient, InstagramApiError, detectTokenConnectionType } from '@ig-harness/ig-sdk';
 import {
   getDefaultIgAccount,
   getIgAccountById,
   getIgAccountByIgUserId,
   createIgAccount,
+  accountConnectionType,
   type IgAccount,
 } from '@ig-harness/db';
 import type { Context } from 'hono';
@@ -23,7 +24,14 @@ export type AccountEnv = CredentialEnv & {
   IG_GRAPH_API_VERSION?: string;
   IG_REQUIRE_APPSECRET_PROOF?: string;
   IG_APP_SECRET?: string;
+  IG_CONNECTION_TYPE?: string;
 };
+
+/** Connection type for the env-seeded default account. */
+export function envConnectionType(env: Pick<AccountEnv, 'IG_CONNECTION_TYPE'>, token: string): 'instagram_login' | 'facebook_login' {
+  if (env.IG_CONNECTION_TYPE === 'facebook_login' || env.IG_CONNECTION_TYPE === 'instagram_login') return env.IG_CONNECTION_TYPE;
+  return detectTokenConnectionType(token ?? '') ?? 'instagram_login';
+}
 
 const BACKFILL_TABLES = [
   'followers',
@@ -127,6 +135,7 @@ export async function ensureDefaultAccount(env: AccountEnv, db: D1Database): Pro
       tokenExpiresAt: expiresAt,
       tokenRefreshedAt: refreshedAt,
       isDefault: true,
+      connectionType: envConnectionType(env, accessToken),
     });
     accountId = created.id;
   } catch {
@@ -194,7 +203,7 @@ export async function getAccountClient(
   if (env.IG_REQUIRE_APPSECRET_PROOF==='true' && !proofSecret) throw new Error('Instagram App Secret required for appsecret_proof');
   let blockedUntil=0;
   const observe=graphObserver(db,account.id);
-  return new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
+  return new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,connectionType:accountConnectionType(account),pageId:account.page_id ?? null,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
     transformMessage: async (recipientId, message, recipient) => {
       let igsid = recipientId;
       if (!igsid && recipient.comment_id) {
