@@ -506,6 +506,9 @@ export interface CreateCommentRuleInput {
   action: CommentRuleAction
   actionValue?: string | null
   replyComment?: string | null
+  /** Public reply text (separate from the DM). null = default text, '' = none. */
+  replyText?: string | null
+  replyMode?: 'thread' | 'mention'
   isActive?: boolean
 }
 
@@ -517,6 +520,8 @@ export interface UpdateCommentRuleInput {
   action?: CommentRuleAction
   actionValue?: string | null
   replyComment?: string | null
+  replyText?: string | null
+  replyMode?: 'thread' | 'mention'
   isActive?: boolean
 }
 
@@ -862,4 +867,38 @@ export interface CreateMediaPostInput {
 export interface PublishingLimitInfo {
   quotaUsage: number
   quotaTotal: number
+}
+
+// ─── Instagram Accounts ─────────────────────────────────
+export type ConnectionCheckState = 'ok' | 'missing' | 'error' | 'skipped'
+export interface ConnectionCheckResult { state: ConnectionCheckState; message?: string | null }
+export interface AccountConnectionReport {
+  checkedAt: string
+  ok: boolean
+  profile: ConnectionCheckResult & { username?: string | null }
+  webhook: ConnectionCheckResult & { fields: string[]; missingFields: string[]; subscribedNow: boolean }
+  permissions: { comments: ConnectionCheckResult; messages: ConnectionCheckResult }
+}
+export interface IgAccount {
+  id: string
+  igUserId: string
+  username: string | null
+  /** Always masked (`****` + last 4 chars). */
+  accessToken: string
+  tokenExpiresAt: number | null
+  hasAppSecret: boolean
+  hasVerifyToken: boolean
+  isActive: boolean
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+  connection?: AccountConnectionReport | null
+}
+export interface AddIgAccountInput {
+  accessToken: string
+  igUserId?: string
+  appSecret?: string | null
+  verifyToken?: string | null
+  /** Default true: subscribe the account to webhooks right after saving. */
+  subscribeWebhooks?: boolean
 }

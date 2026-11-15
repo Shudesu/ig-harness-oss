@@ -1,7 +1,11 @@
 import { InstagramHarness } from '@ig-harness/sdk';
 const instances = new Map<string, InstagramHarness>();
 let warned = false;
-export function getClient(accountId = process.env.IG_HARNESS_ACCOUNT_ID): InstagramHarness {
+/** Account selected with switch_account for this MCP session (overrides IG_HARNESS_ACCOUNT_ID). */
+let activeAccountId: string | undefined;
+export function setActiveAccountId(id: string | undefined): void { activeAccountId = id; }
+export function getActiveAccountId(): string | undefined { return activeAccountId ?? (process.env.IG_HARNESS_ACCOUNT_ID || undefined); }
+export function getClient(accountId = getActiveAccountId()): InstagramHarness {
   const apiUrl = process.env.IG_HARNESS_API_URL ?? process.env.INSTAGRAM_HARNESS_API_URL;
   const apiKey = process.env.IG_HARNESS_API_KEY ?? process.env.INSTAGRAM_HARNESS_API_KEY;
   if (!apiUrl || !apiKey?.trim()) throw new Error('IG_HARNESS_API_URL and IG_HARNESS_API_KEY must be set');
