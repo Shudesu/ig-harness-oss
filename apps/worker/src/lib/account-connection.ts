@@ -1,7 +1,7 @@
 import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
 import { describeFailure, failureHint } from './delivery-failures.js';
 /** Fields IG Harness relies on (same list as the create-ig-harness installer). */
-export const WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] as const;
+export const WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments', 'mentions'] as const;
 
 export type CheckState = 'ok' | 'missing' | 'error' | 'skipped';
 export interface CheckResult { state: CheckState; message?: string | null }

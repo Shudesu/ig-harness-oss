@@ -25,6 +25,7 @@ type CommentJob = {
     gate_delivery_id: string | null;
     attempt_count: number;
     reply_mode: string | null;
+    is_live?: number;
 };
 export async function enqueueCommentRuleJob(db: D1Database, input: {
     accountId: string;
@@ -46,9 +47,9 @@ export async function enqueueCommentRuleJob(db: D1Database, input: {
     validateBroadcastMessage(input.messageType, JSON.parse(input.body));
     const created = input.commentCreatedAt && Number.isFinite(Date.parse(input.commentCreatedAt)) ? input.commentCreatedAt : null;
     const statements = [db.prepare(`INSERT OR IGNORE INTO comment_rule_jobs
-    (id,account_id,follower_id,comment_id,message_type,body,reply_text,due_at,expires_at,delivery_mode,media_id,comment_created_at,gate_delivery_id,status,reason,reply_mode)
-    VALUES(?,?,?,?,?,?,?,?,?,'private_reply',?,?,?,?,?,?)`)
-            .bind(`${input.accountId}:${input.commentId}:${input.ruleId}`, input.accountId, input.followerId, input.commentId, input.messageType, input.body, input.replyText, new Date(Date.now() + input.delaySeconds * 1000).toISOString(), created ? new Date(Date.parse(created) + 7 * 86400000).toISOString() : '9999-01-01T00:00:00Z', input.mediaId ?? null, created, input.gateDeliveryId ?? null, input.isLive ? 'skipped' : 'pending', input.isLive ? 'live_comment_not_supported' : null, normalizeReplyMode(input.replyMode))];
+    (id,account_id,follower_id,comment_id,message_type,body,reply_text,due_at,expires_at,delivery_mode,media_id,comment_created_at,gate_delivery_id,status,reason,reply_mode,is_live)
+    VALUES(?,?,?,?,?,?,?,?,?,'private_reply',?,?,?,?,?,?,?)`)
+            .bind(`${input.accountId}:${input.commentId}:${input.ruleId}`, input.accountId, input.followerId, input.commentId, input.messageType, input.body, input.replyText, new Date(Date.now() + input.delaySeconds * 1000).toISOString(), created ? new Date(Date.parse(created) + 7 * 86400000).toISOString() : '9999-01-01T00:00:00Z', input.mediaId ?? null, created, input.gateDeliveryId ?? null, 'pending', null, normalizeReplyMode(input.replyMode), input.isLive ? 1 : 0)];
     if (input.gateDeliveryId)
         statements.push(db.prepare("UPDATE gate_deliveries SET end_reason=NULL,metadata=json_set(metadata,'$.private_reply_queued',1) WHERE id=?").bind(input.gateDeliveryId));
     await db.batch(statements);
@@ -85,6 +86,16 @@ export async function processCommentRuleJobs(db: D1Database, client: InstagramCl
             continue;
         try {
             if (job.delivery_mode === 'private_reply') {
+                // B-15: live-comment private replies are only valid while the
+                // broadcast is live. Skip them once it has ended (unknown
+                // state → try, the Graph API rejects and the failure is logged).
+                if (job.is_live === 1 && job.media_id) {
+                    const liveIds = await client.getLiveMediaIds().catch(() => null);
+                    if (liveIds && !liveIds.includes(job.media_id)) {
+                        await db.prepare('UPDATE comment_rule_jobs SET status=?,reason=? WHERE id=?').bind('skipped', 'live_ended', job.id).run();
+                        continue;
+                    }
+                }
                 const body = JSON.parse(job.body);
                 const text = job.message_type === 'text' ? body.text : 'コメントありがとうございます。ご案内をお届けするため、このメッセージに返信してください。';
                 const outcome = await sendCommentPrivateReply(db, client, { accountId, followerId: job.follower_id, commentId: job.comment_id, text, createdAt: job.comment_created_at });

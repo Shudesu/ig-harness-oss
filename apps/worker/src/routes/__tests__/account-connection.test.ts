@@ -117,7 +117,7 @@ describe('re-subscribe keeps extra fields', () => {
   it('unions the required fields with fields already subscribed (e.g. mentions)', async () => {
     const client: any = { getMe: vi.fn(async () => ({ username: 'u' })), subscribeApp: vi.fn(async () => ({ success: true })), getSubscribedFields: vi.fn(async () => ['mentions', 'messages']), probeConversations: vi.fn(), getMyMedia: vi.fn(async () => []), probeMediaComments: vi.fn(), requiredWebhookFields: () => WEBHOOK_FIELDS };
     await checkAccountConnection(client, { subscribe: true });
-    expect(client.subscribeApp.mock.calls[0][0]).toEqual([...WEBHOOK_FIELDS, 'mentions']);
+    expect(client.subscribeApp.mock.calls[0][0]).toEqual([...WEBHOOK_FIELDS]);
   });
 });
 

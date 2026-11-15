@@ -46,6 +46,7 @@ import { lineConnections } from './routes/line-connections.js';
 import { accounts } from './routes/accounts.js';
 import { capabilities } from './routes/capabilities.js';
 import { mediaPosts } from './routes/media-posts.js';
+import { messengerProfile } from './routes/messenger-profile.js';
 import { processMediaPosts } from './services/media-publish.js';
 import { ensureDefaultAccount, getAccountClient, toIgAccountRef } from './lib/accounts.js';
 import { recordCronRun, recordTokenValidity } from './lib/health.js';
@@ -164,6 +165,7 @@ app.route('/', integrations);
 app.route('/', lineConnections);
 app.route('/', accounts);
 app.route('/', capabilities);
+app.route('/', messengerProfile);
 app.route('/', mediaPosts);
 
 // LINE Harness UUID linkage endpoint

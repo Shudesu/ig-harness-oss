@@ -24,6 +24,7 @@ import { listIgAccounts, getIgAccountById } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import { recordWebhookReceived, recordSignatureFailure, recordSignatureSuccess } from '../lib/health.js';
 import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
+import { hideCommentIfModerated } from '../lib/comment-moderation.js';
 import { enqueueCommentRuleJob, normalizeReplyMode, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
 import { forwardLinkedInstagramEngagement } from '../services/line-mileage.js';
 import { isOutboundPaused } from '../services/human-touch.js';
@@ -545,6 +546,9 @@ async function handleCommentEvent(
     subjectKey: mediaId,
     metadata: { accountId: accountId ?? null, mediaId },
   });
+
+  // B-18: NG-word / spam auto-hide (before gates and rules).
+  if (accountId && await hideCommentIfModerated(db, igClient, accountId, value)) return;
 
   // Operator stop switch: skip gate triggers and comment rules while paused.
   // Inbound engagement forwarding above still runs so LINE mileage is kept.
