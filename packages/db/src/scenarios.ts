@@ -1,4 +1,5 @@
 import { jstNow } from './utils.js';
+import { getDeliveryWindowJst, enforceWindow } from './delivery-window.js';
 export type ScenarioTriggerType = 'friend_add' | 'tag_added' | 'manual' | 'dm_keyword' | 'comment' | 'follower_add';
 export type MessageType = 'text' | 'image' | 'template' | 'quick_reply' | 'flex';
 export type FriendScenarioStatus = 'active' | 'paused' | 'completed';
@@ -348,13 +349,8 @@ export async function enrollFriendInScenario(
   }
 
   const rawDate = new Date(Date.now() + 9 * 60 * 60_000 + firstStep.delay_minutes * 60_000);
-  // Enforce 9:00-21:00 JST delivery window
-  const hours = rawDate.getUTCHours();
-  if (hours < 9 || hours >= 21) {
-    if (hours >= 21) rawDate.setUTCDate(rawDate.getUTCDate() + 1);
-    rawDate.setUTCHours(9, 0, 0, 0);
-  }
-  const nextDeliveryAt = rawDate.toISOString().slice(0, -1) + '+09:00';
+  // B-06: single configurable window (default 0-24 = always deliver).
+  const nextDeliveryAt = enforceWindow(await getDeliveryWindowJst(db), rawDate).toISOString().slice(0, -1) + '+09:00';
 
   await db
     .prepare(

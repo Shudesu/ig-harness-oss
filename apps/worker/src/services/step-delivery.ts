@@ -11,6 +11,7 @@ import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
 import { jitterDeliveryTime, addJitter, sleep } from './delivery-timing.js';
 import { recordDmFailure } from '../lib/health.js';
 import { isOutboundPaused } from './human-touch.js';
+import { getDeliveryWindowJst, isWithinWindow, enforceWindow, type DeliveryWindow } from '@ig-harness/db';
 
 /**
  * Replace template variables in message content.
@@ -35,24 +36,8 @@ export function expandVariables(
   return result;
 }
 
-/** Default delivery window: 9:00-23:00 JST. If outside, push to next 9:00 AM. */
-const DEFAULT_START_HOUR = 9;
-const DEFAULT_END_HOUR = 23;
-
-function enforceDeliveryWindow(date: Date, preferredHour?: number): Date {
-  const hours = date.getUTCHours();
-  const startHour = preferredHour ?? DEFAULT_START_HOUR;
-  const endHour = DEFAULT_END_HOUR;
-
-  if (hours >= startHour && hours < endHour) return date;
-
-  const result = new Date(date);
-  if (hours >= endHour) {
-    result.setUTCDate(result.getUTCDate() + 1);
-  }
-  result.setUTCHours(startHour, 0, 0, 0);
-  return result;
-}
+// B-06: the delivery window now comes from one configurable setting
+// (integration_settings, default 0-24 = always deliver). See lib/delivery-window.ts.
 
 export async function processStepDeliveries(
   db: D1Database,
@@ -104,8 +89,10 @@ export async function processSingleDelivery(
     await db.prepare("UPDATE follower_scenarios SET status='completed', next_step_at=NULL, end_reason=?, updated_at=? WHERE id=? AND status='active'").bind(eligibility === 'standby' ? 'standby' : 'window_expired',new Date().toISOString(),fs.id).run();
     return;
   }
-  const jstHour = new Date(Date.now() + 9 * 60 * 60_000).getUTCHours();
-  if (!immediate && (jstHour < DEFAULT_START_HOUR || jstHour >= DEFAULT_END_HOUR)) return;
+  // B-06: configurable window (default 0-24 = no restriction). Immediate
+  // deliveries keep the historical behavior of bypassing the window.
+  const window = await getDeliveryWindowJst(db);
+  if (!immediate && !isWithinWindow(window, new Date(Date.now() + 9 * 60 * 60_000).getUTCHours())) return;
   const metadata = JSON.parse((friend as { metadata?: string }).metadata || '{}') as Record<string, unknown>;
   const preferredHour = typeof metadata.preferred_hour === 'number' ? metadata.preferred_hour : undefined;
 
@@ -131,7 +118,7 @@ export async function processSingleDelivery(
         if (jumpStep) {
           const nextDate = new Date(Date.now() + 9 * 60 * 60_000);
           nextDate.setMinutes(nextDate.getMinutes() + jumpStep.delay_minutes);
-          const windowedDate = enforceDeliveryWindow(nextDate, preferredHour);
+          const windowedDate = enforceWindow(window, nextDate, preferredHour);
           const jitteredDate = jitterDeliveryTime(windowedDate);
           await advanceFriendScenario(db, fs.id, currentStep.step_order, jitteredDate.toISOString().slice(0, -1) + '+09:00');
           return;
@@ -142,7 +129,7 @@ export async function processSingleDelivery(
         const nextStep = steps[nextIndex];
         const nextDate = new Date(Date.now() + 9 * 60 * 60_000);
         nextDate.setMinutes(nextDate.getMinutes() + nextStep.delay_minutes);
-        const windowedDate = enforceDeliveryWindow(nextDate, preferredHour);
+        const windowedDate = enforceWindow(window, nextDate, preferredHour);
         const jitteredDate = jitterDeliveryTime(windowedDate);
         await advanceFriendScenario(db, fs.id, currentStep.step_order, jitteredDate.toISOString().slice(0, -1) + '+09:00');
       } else {
@@ -182,7 +169,7 @@ export async function processSingleDelivery(
   if (nextStep) {
     const nextDeliveryDate = new Date(Date.now() + 9 * 60 * 60_000);
     nextDeliveryDate.setMinutes(nextDeliveryDate.getMinutes() + nextStep.delay_minutes);
-    const windowedDate = enforceDeliveryWindow(nextDeliveryDate, preferredHour);
+    const windowedDate = enforceWindow(window, nextDeliveryDate, preferredHour);
     const jitteredDate = jitterDeliveryTime(windowedDate);
     await advanceFriendScenario(db, fs.id, currentStep.step_order, jitteredDate.toISOString().slice(0, -1) + '+09:00');
   } else {

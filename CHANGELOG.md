@@ -1,11 +1,22 @@
-## Unreleased — calm UX (2026-11-16)
+## Unreleased — onboarding-impl (2026-11-16)
 
 - Admin dashboard keeps the shell (sidebar) during the auth check and swaps only the content area to a partial skeleton. The full-screen spinner remount on every navigation is gone; the check runs once on mount with a stale-while-revalidate optimistic display.
 - chats MessagePanel / followers list abort stale responses (AbortController) so switching chats or typing fast can no longer overwrite newer data with older output; scroll only follows near the bottom (no forced jumps while reading history). delivery-status / guardrails reserve their height with skeletons.
 - IG branding applied: favicon added, worker/index.html title and LINE-green spinner replaced, neutral placeholder copy in settings.
 
 ## Unreleased — release 20261115 (unified login)
+=======
+## Unreleased — onboarding-impl (2026-11-16)
+>>>>>>> 0e8b0ab (feat(delivery): configurable send window, default 24h (B-06) + connection-health contract (B-07))
 
+- **送信時間帯を設定可能に（B-06）**: シナリオ配信の送信窓が1か所の設定（`integration_settings` の `delivery_window_start_jst` / `delivery_window_end_jst`）に統一され、既定は **24時間（制限なし）**。従来の 9〜23時（step-delivery / ガードレール表示）と 9〜21時（シナリオ初回ステップ）の二重定義を廃止。`POST /api/delivery-guardrails/window` で変更。窓の対象は **シナリオ配信のみ**（コメント DM・通常返信はもともと制限なし）で、ガードレール画面に明示。**既存のシナリオ配信時刻は保存済みの `next_step_at` を変えないため、窓の変更は次回以降のスケジューリングにのみ効く**。窓を 9〜23 に戻したければ同 API で設定する。
+- **署名検証の失敗を記録（B-02）**: POST /webhook の署名不一致を、時間バケット（`health:sig_fail` / `health:sig_ok`）＋最終時刻として記録。未検証 body は `entry[].id` の読み取り（アカウント推定）だけに使い処理しない。
+- **debug_token（B-04）**: 毎時の疎通確認に合わせ `GET /debug_token` を実行し、実際の有効期限・data access 期限・スコープ・app_id を `health:token_debug` に保存。統合ログインの「自動更新なし」固定表示が実値（無期限なら「無期限」、14日以内は残日数）になる。App Secret のみで動く（`IG_APP_ID` を設定すると app access token を使用）。
+- **アプリ側 Webhook の確認と修復（B-08/B-09）**: `GET /api/accounts/:id/app-webhook` が `GET /{app-id}/subscriptions` を読み、コールバック不一致・未購読・フィールド不足を検知。`POST /api/accounts/:id/fix-app-webhook`（＝MCP `fix_app_webhook`）は確認トークンを自動生成して設定し、**他人のコールバック URL は上書きしない**。
+- 新しいオプション環境変数 `IG_APP_ID`: app access token（`{app-id}|{app-secret}`）による debug_token / subscriptions の正確な照会用。未設定でもユーザートークン＋appsecret_proof で試行する。
+
+
+## Unreleased — release 20261115 (unified login)
 - **Instagram API with Unified login** (EAA tokens, `graph.facebook.com`) is supported alongside the legacy Instagram Login (`IGAA…`, `graph.instagram.com`). The token prefix decides automatically; Unified login accounts never call `refresh_access_token`, and webhook subscription targets the linked Page when one is known. See docs/manual/09-unified-login.md. Migration 0025 (additive) adds `connection_type` (default `instagram_login`) and `page_id` to `ig_accounts`, so **existing accounts keep working unchanged**.
 - Migration/operations manual for this release: docs/manual/10-migration.md — update steps, checks before updating, how to roll back, and the common Meta errors (code 100 subcode 33, 190, …).
 - `subscribeApp` / `getSubscribedFields` are connection-type aware, so the automatic subscribe + permission check on account registration also covers Unified login accounts.

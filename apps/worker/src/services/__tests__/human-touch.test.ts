@@ -9,10 +9,11 @@ import {
     guardrailSnapshot,
     isDmPresenceEnabled,
     isOutboundPaused,
-    isWithinDeliveryWindow,
+    isWithinDeliveryWindowDb,
     sendWithPresence,
     setDmPresenceEnabled,
     setOutboundPaused,
+    setSettingValue,
     typingDelayMs,
 } from '../human-touch.js';
 
@@ -156,14 +157,26 @@ describe('outbound stop switch (U22)', () => {
     });
 });
 
-describe('delivery window', () => {
-    it('is inside 9-23 JST and outside otherwise', () => {
-        // 12:00 JST
-        expect(isWithinDeliveryWindow(Date.UTC(2026, 10, 15, 3, 0, 0))).toBe(true);
-        // 08:00 JST
-        expect(isWithinDeliveryWindow(Date.UTC(2026, 10, 14, 23, 0, 0))).toBe(false);
+describe('delivery window (B-06: configurable, default 24h)', () => {
+    it('defaults to 24h = always within', async () => {
+        // 08:00 JST — previously outside the 9-23 window, now allowed.
+        expect(await isWithinDeliveryWindowDb(state.db, Date.UTC(2026, 10, 14, 23, 0, 0))).toBe(true);
         // 23:30 JST
-        expect(isWithinDeliveryWindow(Date.UTC(2026, 10, 15, 14, 30, 0))).toBe(false);
+        expect(await isWithinDeliveryWindowDb(state.db, Date.UTC(2026, 10, 15, 14, 30, 0))).toBe(true);
+    });
+
+    it('honours a configured 9-23 JST window', async () => {
+        await setSettingValue(state.db, 'delivery_window_start_jst', '9');
+        await setSettingValue(state.db, 'delivery_window_end_jst', '23');
+        expect(await isWithinDeliveryWindowDb(state.db, Date.UTC(2026, 10, 15, 3, 0, 0))).toBe(true);   // 12:00 JST
+        expect(await isWithinDeliveryWindowDb(state.db, Date.UTC(2026, 10, 14, 23, 0, 0))).toBe(false); // 08:00 JST
+        expect(await isWithinDeliveryWindowDb(state.db, Date.UTC(2026, 10, 15, 14, 30, 0))).toBe(false); // 23:30 JST
+    });
+
+    it('invalid stored values fall back to 24h', async () => {
+        await setSettingValue(state.db, 'delivery_window_start_jst', '99');
+        await setSettingValue(state.db, 'delivery_window_end_jst', '-1');
+        expect(await isWithinDeliveryWindowDb(state.db, Date.UTC(2026, 10, 14, 23, 0, 0))).toBe(true);
     });
 });
 
@@ -174,8 +187,9 @@ describe('guardrail snapshot (U22 visibility)', () => {
         const snap = await guardrailSnapshot(state.db, 'a');
         expect(snap.paused).toBe(false);
         expect(snap.presenceEnabled).toBe(true);
-        expect(snap.window.startHourJst).toBe(9);
-        expect(snap.window.endHourJst).toBe(23);
+        expect(snap.window.startHourJst).toBe(0);
+        expect(snap.window.endHourJst).toBe(24);
+        expect(snap.window.scope).toBe('scenario_only');
         expect(typeof snap.window.within).toBe('boolean');
         expect(snap.followers.eligible).toBeGreaterThanOrEqual(0);
         expect(snap.volume).toMatchObject({ dmOut24h: expect.any(Number), pendingBroadcastRecipients: expect.any(Number), pendingCommentJobs: expect.any(Number), activeScenarios: expect.any(Number) });
