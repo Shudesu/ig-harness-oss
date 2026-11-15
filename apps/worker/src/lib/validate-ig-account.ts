@@ -28,8 +28,9 @@ export async function validateIgAccount(env: Env['Bindings'], token: string, exp
         // tokens list assigned IG accounts (no Page); Page-linked Facebook Login
         // tokens list Pages with their IG account and Page access token.
         let linked: Awaited<ReturnType<InstagramClient['listLinkedInstagramAccounts']>> = [];
+        let discoveryError: unknown;
         try { linked = await new InstagramClient({ ...base, accessToken: token, igUserId: 'me' }).listLinkedInstagramAccounts(); }
-        catch (error) { if (!expectedId || !(error instanceof InstagramApiError)) throw error; }
+        catch (error) { if (!(error instanceof InstagramApiError)) throw error; discoveryError = error; }
         let match: (typeof linked)[number] | undefined = expectedId ? linked.find((a) => a.igUserId === expectedId) : undefined;
         if (!match && (expectedId || linked.length === 0)) {
             // The submitted token may itself be a Page access token: /me is the Page.
@@ -39,6 +40,9 @@ export async function validateIgAccount(env: Env['Bindings'], token: string, exp
                 linked = [match];
             }
         }
+        // A Page token cannot list /me/accounts; only surface that error when the
+        // Page lookup above did not identify the account either.
+        if (!match && !expectedId && discoveryError) throw discoveryError;
         if (!expectedId) {
             if (linked.length === 0)
                 throw new Error('No Instagram professional account was found for this token (assigned accounts or Facebook Pages). Enter the Instagram user ID shown in the Meta app (API setup with Unified login).');

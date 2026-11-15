@@ -129,6 +129,9 @@ it('treats a pasted Page access token as Page-linked and keeps the Page on rotat
     expect(row).toMatchObject({ connection_type: 'facebook_login', page_id: '777' });
     expect((await f.request(`/api/accounts/${row.id}`, 'PATCH', { accessToken: 'EAApagetoken2' })).status).toBe(200);
     expect(f.row("ig_user_id='203'")).toMatchObject({ page_id: '777' });
+    f.sqlite.prepare("DELETE FROM ig_accounts WHERE ig_user_id='203'").run();
+    expect((await f.request('/api/accounts', 'POST', { accessToken: 'EAApagetoken3' })).status).toBe(201);
+    expect(f.row("ig_user_id='203'")).toMatchObject({ page_id: '777' });
   } finally { f.sqlite.close(); }
 });
 
