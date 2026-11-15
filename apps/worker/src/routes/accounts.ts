@@ -16,6 +16,7 @@ import type { IgAccount } from '@ig-harness/db';
 import { requireRole } from '../middleware/role-guard.js';
 import { ensureDefaultAccount, getAccountClient } from '../lib/accounts.js';
 import { checkAccountConnection, loadConnectionReport, saveConnectionReport, type ConnectionReport } from '../lib/account-connection.js';
+import { loadTokenDebug } from '../lib/token-debug.js';
 import { recordDeliveryFailure } from '../lib/delivery-failures.js';
 
 import type { Env } from '../index.js';
@@ -76,7 +77,7 @@ accounts.get('/api/accounts', requireRole('owner', 'admin'), async (c) => {
   try {
     await ensureDefaultAccount(c.env, c.env.DB);
     const items = await listIgAccounts(c.env.DB);
-    const data = await Promise.all(items.map(async (row) => ({ ...serializeAccount(row), connection: await loadConnectionReport(c.env.DB, row.id) })));
+    const data = await Promise.all(items.map(async (row) => ({ ...serializeAccount(row), connection: await loadConnectionReport(c.env.DB, row.id), tokenDebug: await loadTokenDebug(c.env.DB, row.id) })));
     return c.json({ success: true, data });
   } catch (err) {
     console.error('GET /api/accounts error:', err);
@@ -181,8 +182,11 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
       ...(verified ? { connectionType: verified.connection_type, pageId: verified.page_id } : {}),
     });
 
-    if (body.accessToken !== undefined) await recordTokenValidity(c.env.DB,id,true).catch(()=>{});
-    if (body.accessToken !== undefined) await c.env.DB.prepare("DELETE FROM integration_settings WHERE key IN (?,?)").bind(`health:graph_backoff_until:${id}`,`health:token_refresh_attempt:${id}`).run();
+    if (body.accessToken !== undefined) {
+      await recordTokenValidity(c.env.DB,id,true).catch(()=>{});
+      // B-04: a new token invalidates the stored debug_token inspection.
+      await c.env.DB.prepare("DELETE FROM integration_settings WHERE key IN (?,?,?)").bind(`health:graph_backoff_until:${id}`,`health:token_refresh_attempt:${id}`,`health:token_debug:${id}`).run();
+    }
     return c.json({ success: true, data: updated ? serializeAccount(updated) : null });
   } catch (err) {
     console.error('PATCH /api/accounts/:id error:', err instanceof Error ? err.name : 'unknown');

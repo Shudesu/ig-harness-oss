@@ -1,5 +1,6 @@
 import { listIgAccounts } from '@ig-harness/db';
 import { parseConnectionReport, type ConnectionReport } from './account-connection.js';
+import type { TokenDebugInfo } from './token-debug.js';
 
 // Upsert a key-value pair into integration_settings.
 const upsertSetting = (db: D1Database, key: string, value: string) =>
@@ -146,6 +147,8 @@ export interface AccountHealth {
   graph_backoff_until?: string | null;
   /** Last webhook-subscription / permission check (null = never run). */
   connection?: ConnectionReport | null;
+  /** B-04: real token inspection from GET /debug_token (null = never run). */
+  token_debug?: TokenDebugInfo | null;
 }
 
 export interface HealthSnapshot {
@@ -192,6 +195,9 @@ export async function getHealthSnapshot(db: D1Database): Promise<HealthSnapshot>
       let usage: Record<string,number> | null=null;
       try { usage=JSON.parse(map.get(`health:graph_usage:${a.id}`) ?? 'null'); } catch { /* no valid snapshot */ }
       const backoff=Number(map.get(`health:graph_backoff_until:${a.id}`) ?? 0);
+      let tokenDebug: TokenDebugInfo | null = null;
+      const debugRaw = map.get(`health:token_debug:${a.id}`);
+      if (debugRaw) { try { tokenDebug = JSON.parse(debugRaw) as TokenDebugInfo; } catch { /* malformed record */ } }
       return {
         graph_usage: usage,
         graph_backoff_until: Number.isFinite(backoff) && backoff>Date.now() ? new Date(backoff).toISOString() : null,
@@ -208,6 +214,7 @@ export async function getHealthSnapshot(db: D1Database): Promise<HealthSnapshot>
         last_webhook_event_at: map.get(`health:last_webhook_at:${a.id}`) ?? null,
         dm_failures_today: Number(map.get(`health:dm_failures:${a.id}:${day}`) ?? '0'),
         connection: parseConnectionReport(map.get(`health:connection:${a.id}`)),
+        token_debug: tokenDebug,
       };
     });
 

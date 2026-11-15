@@ -333,6 +333,19 @@ export interface IgAccountSummary {
   updatedAt: string
   /** Last saved connection check (null = never checked). */
   connection?: ConnectionReport | null
+  /** B-04: real token inspection from GET /debug_token (null = never run). */
+  tokenDebug?: {
+    checkedAt: string
+    status: 'ok' | 'unknown'
+    isValid?: boolean | null
+    appId?: string | null
+    /** Epoch seconds; 0 = 無期限. */
+    expiresAt?: number | null
+    dataAccessExpiresAt?: number | null
+    scopes?: string[]
+    missingScopes?: string[]
+    error?: string
+  } | null
 }
 
 export type CheckState = 'ok' | 'missing' | 'error' | 'skipped'

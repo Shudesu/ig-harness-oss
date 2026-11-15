@@ -7,16 +7,28 @@ import { useAccount } from '@/contexts/account-context'
 
 const ACCENT = '#E1306C'
 
-/** tokenExpiresAt is epoch seconds; null means the expiry has not been fetched. */
-function formatExpiry(expiresAt: number | null, connectionType?: string): string {
-  // 統合ログイン（EAA…）は自動更新しない。システムユーザートークンは無期限。
-  if (connectionType === 'facebook_login') return expiresAt == null ? '自動更新なし' : new Date(expiresAt * 1000).toLocaleDateString('ja-JP')
-  if (expiresAt == null) return '未取得'
+/** Real expiry from debug_token when available; row epoch otherwise; 0 = 無期限. */
+function formatExpiry(
+  expiresAt: number | null,
+  connectionType?: string,
+  tokenDebug?: { status: string; expiresAt?: number | null; isValid?: boolean | null; missingScopes?: string[] } | null,
+): string {
+  // B-04: debug_token gives the real expiry even for Unified login tokens.
+  const real = tokenDebug?.status === 'ok' && typeof tokenDebug.expiresAt === 'number' ? tokenDebug.expiresAt : null;
+  if (real != null) {
+    if (real === 0) return '無期限';
+    const date = new Date(real * 1000).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const daysLeft = Math.floor((real * 1000 - Date.now()) / 86_400_000);
+    const suffix = daysLeft <= 14 && daysLeft > 0 ? `（あと${daysLeft}日）` : daysLeft <= 0 ? '（期限切れ）' : '';
+    return `${date}${suffix}`;
+  }
+  if (connectionType === 'facebook_login') return expiresAt == null ? '自動更新なし（debug_token 未取得）' : new Date(expiresAt * 1000).toLocaleDateString('ja-JP');
+  if (expiresAt == null) return '未取得';
   return new Date(expiresAt * 1000).toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  })
+  });
 }
 
 export default function IgAccountsSection() {
@@ -194,7 +206,7 @@ export default function IgAccountsSection() {
                   </td>
                   <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.igUserId}</td>
                   <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.accessToken}</td>
-                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt, account.connectionType)}</td>
+                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt, account.connectionType, account.tokenDebug ?? null)}</td>
                   <td className="py-2.5 pr-3">
                     <span className="inline-flex items-center gap-1 flex-wrap">
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-kumo-tint text-kumo-subtle whitespace-nowrap">

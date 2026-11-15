@@ -22,6 +22,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
 import { pruneExpiredMessages, pruneDeliveryFailures } from './services/retention.js';
 import { pruneSignatureBuckets } from './lib/health.js';
+import { refreshTokenDebugIfNeeded } from './lib/token-debug.js';
 import { processQueuedWebhooks } from './routes/webhook.js';
 import { processCommentRuleJobs } from './services/comment-rule-jobs.js';
 import { webhook } from './routes/webhook.js';
@@ -341,6 +342,8 @@ export async function runScheduledJobs(
           await recordTokenValidity(env.DB, account.id, identityMatches,identityMatches?undefined:'account_id_mismatch');
           if (!identityMatches) continue;
           if (identityMatches && me.username && me.username !== account.username) await updateIgAccount(env.DB, account.id, { username: me.username });
+          // B-04: real token expiry / data-access expiry / scopes via debug_token.
+          ctx.waitUntil(refreshTokenDebugIfNeeded(env.DB, env, current).catch(() => {}));
         } catch (error) { await recordTokenValidity(env.DB, account.id, false,error instanceof InstagramApiError && error.tokenExpired?'token_expired':'api_unavailable'); continue; }
       }
       const ref = toIgAccountRef(account, env);
