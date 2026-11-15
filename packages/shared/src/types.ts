@@ -41,6 +41,10 @@ export interface CommentRule {
   responseType: ResponseType;
   responseBody: Record<string, unknown>;
   delaySeconds: number;
+  /** Public comment reply, separate from the DM body. null = default text, '' = no public reply. */
+  replyText?: string | null;
+  /** 'thread' = nested reply under the comment (default); 'mention' = top-level @username comment. */
+  replyMode?: "thread" | "mention";
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

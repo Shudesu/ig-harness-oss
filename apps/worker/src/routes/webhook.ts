@@ -24,7 +24,7 @@ import { listIgAccounts, getIgAccountById } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import { recordWebhookReceived } from '../lib/health.js';
 import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
-import { enqueueCommentRuleJob, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
+import { enqueueCommentRuleJob, normalizeReplyMode, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
 import type { IgAccount } from '@ig-harness/db';
 import type { Env } from '../index.js';
 
@@ -399,6 +399,8 @@ async function handleCommentEvent(
         response_type: string;
         response_body: string;
         delay_seconds: number;
+        reply_text?: string | null;
+        reply_mode?: string | null;
       }> }
     : await db
         .prepare(
@@ -423,6 +425,8 @@ async function handleCommentEvent(
           response_type: string;
           response_body: string;
           delay_seconds: number;
+          reply_text?: string | null;
+          reply_mode?: string | null;
         }>();
 
   for (const rule of commentRules.results) {
@@ -452,11 +456,11 @@ async function handleCommentEvent(
         .replace(/\{\{igsid\}\}/g, senderId)
         .replace(/\{\{username\}\}/g, value.from.username)
         .replace(/\{\{follower_id\}\}/g, String(follower.id));
-      const replyText = (rule as { reply_text?: string }).reply_text?.replace('{{username}}', value.from.username)
-        ?? `@${value.from.username} コメントありがとう！📩 DMを送りました！`;
+      const replyText = commentRulePublicReply(rule.reply_text, value.from.username);
       await enqueueCommentRuleJob(db, {
         accountId, ruleId: rule.id, commentId: value.id, followerId: follower.id,
         messageType: rule.response_type, body: expandedBody, replyText, delaySeconds: rule.delay_seconds, mediaId, commentCreatedAt: value.created_time, isLive: value.media.media_product_type === 'LIVE',
+        replyMode: normalizeReplyMode(rule.reply_mode),
       });
 
       break; // Only send first matching rule
@@ -543,3 +547,15 @@ async function handleMentionEvent(
 }
 
 export { webhook };
+
+export const DEFAULT_COMMENT_RULE_REPLY = '@{{username}} コメントありがとう！📩 DMを送りました！';
+
+/**
+ * Public reply text for a comment rule, separate from the DM body.
+ * NULL keeps the historical default text, '' disables the public reply.
+ */
+export function commentRulePublicReply(template: string | null | undefined, username: string): string | null {
+  const text = template === null || template === undefined ? DEFAULT_COMMENT_RULE_REPLY : template;
+  if (!text.trim()) return null;
+  return text.replace(/\{\{\s*username\s*\}\}/g, username);
+}

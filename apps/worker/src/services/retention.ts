@@ -13,3 +13,10 @@ export async function pruneExpiredMessages(db: D1Database, value?: string): Prom
     SELECT id FROM messages_log WHERE julianday(created_at)<julianday(?) ORDER BY created_at LIMIT 100
   )`).bind(cutoff).run();
 }
+/** Failure log is operational, not history: keep 90 days, bounded per run. */
+export async function pruneDeliveryFailures(db: D1Database, days = 90): Promise<void> {
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  await db.prepare(`DELETE FROM delivery_failures WHERE id IN (
+    SELECT id FROM delivery_failures WHERE julianday(created_at)<julianday(?) ORDER BY id LIMIT 200
+  )`).bind(cutoff).run();
+}

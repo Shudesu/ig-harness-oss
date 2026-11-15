@@ -1,4 +1,5 @@
 import { sha256 } from '../lib/security.js';
+import { recordDeliveryFailure } from '../lib/delivery-failures.js';
 
 export type QueuedEvent = { account_id: string; event_key: string; kind: string; payload: string; subject_id: string | null };
 
@@ -45,6 +46,7 @@ export async function drainWebhookEvents(db: D1Database, accountId: string, hand
       await db.prepare("UPDATE webhook_events SET status='uncertain', finished_at=? WHERE account_id=? AND event_key=?")
         .bind(new Date().toISOString(), accountId, event.event_key).run();
       console.error('Webhook event requires delivery review', { accountId, eventKey: event.event_key });
+      await recordDeliveryFailure(db, { accountId, source: 'webhook', stage: event.kind, refId: event.event_key, error });
     }
   }
 }

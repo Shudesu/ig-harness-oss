@@ -1,4 +1,5 @@
 import { listIgAccounts } from '@ig-harness/db';
+import { parseConnectionReport, type ConnectionReport } from './account-connection.js';
 
 // Upsert a key-value pair into integration_settings.
 const upsertSetting = (db: D1Database, key: string, value: string) =>
@@ -65,6 +66,8 @@ export interface AccountHealth {
   dm_failures_today: number;
   graph_usage?: Record<string, number> | null;
   graph_backoff_until?: string | null;
+  /** Last webhook-subscription / permission check (null = never run). */
+  connection?: ConnectionReport | null;
 }
 
 export interface HealthSnapshot {
@@ -126,6 +129,7 @@ export async function getHealthSnapshot(db: D1Database): Promise<HealthSnapshot>
         token_api_reason: tokenApiReason,
         last_webhook_event_at: map.get(`health:last_webhook_at:${a.id}`) ?? null,
         dm_failures_today: Number(map.get(`health:dm_failures:${a.id}:${day}`) ?? '0'),
+        connection: parseConnectionReport(map.get(`health:connection:${a.id}`)),
       };
     });
 

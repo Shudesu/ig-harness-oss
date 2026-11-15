@@ -3,6 +3,21 @@ import { jstNow } from '@ig-harness/db';
 import { resolveAccount } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
+const MAX_REPLY_TEXT = 2200;
+/** undefined = not provided; null = default text; '' = no public reply. */
+function readReplyText(body: { replyText?: unknown; replyComment?: unknown }): { ok: true; value: string | null | undefined } | { ok: false; error: string } {
+  const raw = body.replyText !== undefined ? body.replyText : body.replyComment;
+  if (raw === undefined) return { ok: true, value: undefined };
+  if (raw === null) return { ok: true, value: null };
+  if (typeof raw !== 'string' || raw.length > MAX_REPLY_TEXT) return { ok: false, error: `replyText must be a string up to ${MAX_REPLY_TEXT} characters or null` };
+  return { ok: true, value: raw };
+}
+function readReplyMode(value: unknown): { ok: true; value: 'thread' | 'mention' | undefined } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, value: undefined };
+  if (value === 'thread' || value === 'mention') return { ok: true, value };
+  return { ok: false, error: "replyMode must be 'thread' or 'mention'" };
+}
+
 const commentRules = new Hono<Env>();
 
 interface CommentRuleRow {
@@ -15,6 +30,8 @@ interface CommentRuleRow {
   response_type: string;
   response_body: string;
   delay_seconds: number;
+  reply_text: string | null;
+  reply_mode: string | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -31,6 +48,9 @@ function serialize(row: CommentRuleRow) {
     responseType: row.response_type,
     responseBody: JSON.parse(row.response_body),
     delaySeconds: row.delay_seconds,
+    /** Public comment reply (separate from the DM body). null = default text, '' = none. */
+    replyText: row.reply_text,
+    replyMode: row.reply_mode === 'mention' ? 'mention' : 'thread',
     isActive: Boolean(row.is_active),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -40,7 +60,8 @@ function serialize(row: CommentRuleRow) {
 // Recent delivery outcomes, scoped to the selected account. No message bodies.
 commentRules.get('/api/comment-rule-deliveries', async c => {
   const account=await resolveAccount(c); if (!account) return c.json({success:false,error:'account not found'},404);
-  const rows=await c.env.DB.prepare(`SELECT j.id,j.status,j.reason,j.delivery_mode AS deliveryMode,j.error_code AS errorCode,j.error_subcode AS errorSubcode,f.username
+  const rows=await c.env.DB.prepare(`SELECT j.id,j.status,j.reason,j.delivery_mode AS deliveryMode,j.error_code AS errorCode,j.error_subcode AS errorSubcode,j.error_message AS errorMessage,
+    j.reply_mode AS replyMode,j.public_reply_status AS publicReplyStatus,j.public_reply_error_code AS publicReplyErrorCode,j.public_reply_error_message AS publicReplyErrorMessage,j.due_at AS createdAt,f.username
     FROM comment_rule_jobs j JOIN followers f ON f.id=j.follower_id WHERE j.account_id=? ORDER BY j.rowid DESC LIMIT 30`).bind(account.id).all();
   return c.json({success:true,data:rows.results});
 });
@@ -92,7 +113,15 @@ commentRules.post('/api/comment-rules', async (c) => {
       responseType: string;
       responseBody: Record<string, unknown>;
       delaySeconds?: number;
+      replyText?: string | null;
+      replyComment?: string | null;
+      replyMode?: string;
     }>();
+
+    const replyText = readReplyText(body);
+    if (!replyText.ok) return c.json({ success: false, error: replyText.error }, 400);
+    const replyMode = readReplyMode(body.replyMode);
+    if (!replyMode.ok) return c.json({ success: false, error: replyMode.error }, 400);
 
     if (!body.name || !body.responseType || !body.responseBody) {
       return c.json(
@@ -105,8 +134,8 @@ commentRules.post('/api/comment-rules', async (c) => {
 
     const inserted = await c.env.DB
       .prepare(
-        `INSERT INTO comment_rules (name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, is_active, account_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) RETURNING id`,
+        `INSERT INTO comment_rules (name, trigger_type, media_id, keyword, match_type, response_type, response_body, delay_seconds, reply_text, reply_mode, is_active, account_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?) RETURNING id`,
       )
       .bind(
         body.name,
@@ -117,6 +146,8 @@ commentRules.post('/api/comment-rules', async (c) => {
         body.responseType,
         JSON.stringify(body.responseBody),
         body.delaySeconds || 0,
+        replyText.value ?? null,
+        replyMode.value ?? 'thread',
         account.id,
         now,
         now,
@@ -149,7 +180,14 @@ commentRules.put('/api/comment-rules/:id', async (c) => {
       responseBody?: Record<string, unknown>;
       delaySeconds?: number;
       isActive?: boolean;
+      replyText?: string | null;
+      replyComment?: string | null;
+      replyMode?: string;
     }>();
+    const replyText = readReplyText(body);
+    if (!replyText.ok) return c.json({ success: false, error: replyText.error }, 400);
+    const replyMode = readReplyMode(body.replyMode);
+    if (!replyMode.ok) return c.json({ success: false, error: replyMode.error }, 400);
 
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -163,6 +201,8 @@ commentRules.put('/api/comment-rules/:id', async (c) => {
     if (body.responseBody !== undefined) { fields.push('response_body = ?'); values.push(JSON.stringify(body.responseBody)); }
     if (body.delaySeconds !== undefined) { fields.push('delay_seconds = ?'); values.push(body.delaySeconds); }
     if (body.isActive !== undefined) { fields.push('is_active = ?'); values.push(body.isActive ? 1 : 0); }
+    if (replyText.value !== undefined) { fields.push('reply_text = ?'); values.push(replyText.value); }
+    if (replyMode.value !== undefined) { fields.push('reply_mode = ?'); values.push(replyMode.value); }
 
     if (fields.length === 0) {
       const row = await c.env.DB

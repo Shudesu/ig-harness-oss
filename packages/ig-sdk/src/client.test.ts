@@ -25,3 +25,25 @@ it('aborts timed-out requests and validates large rich messages before sending',
   await expect(client.getMe()).rejects.toMatchObject({ timedOut: true });
   await expect(client.sendRichMessage('456', Array.from({ length: 11 }, () => ({ type: 'text' as const, text: 'test' })))).rejects.toThrow('at most');
 });
+it('posts a public reply to the documented /{comment-id}/replies endpoint', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('{"id":"r1"}')); vi.stubGlobal('fetch', fetch);
+  const client = new InstagramClient({ accessToken: 'test', igUserId: '123' });
+  expect(await client.replyToComment('c-9', 'ありがとう @you')).toEqual({ id: 'r1' });
+  const [url, init] = fetch.mock.calls[0]!; const parsed = new URL(url);
+  expect(init.method).toBe('POST'); expect(parsed.pathname).toMatch(/\/c-9\/replies$/); expect(parsed.searchParams.get('message')).toBe('ありがとう @you');
+});
+it('subscribes the account to webhook fields and reads them back', async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(new Response('{"success":true}')).mockResolvedValueOnce(new Response('{"data":[{"subscribed_fields":["messages","comments"]}]}')); vi.stubGlobal('fetch', fetch);
+  const client = new InstagramClient({ accessToken: 'test', igUserId: '123' });
+  await client.subscribeApp(['messages', 'comments']);
+  expect(await client.getSubscribedFields()).toEqual(['messages', 'comments']);
+  const post = new URL(fetch.mock.calls[0]![0]); expect(fetch.mock.calls[0]![1].method).toBe('POST');
+  expect(post.pathname).toMatch(/\/123\/subscribed_apps$/); expect(post.searchParams.get('subscribed_fields')).toBe('messages,comments');
+  await expect(client.subscribeApp(['bad field'])).rejects.toThrow();
+});
+it('keeps Meta error message/type for operators but masks token-like strings', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":{"code":10,"type":"OAuthException","message":"(#10) No permission access_token=IGAAsecretsecret123"}}', { status: 400 })));
+  const client = new InstagramClient({ accessToken: 'test', igUserId: '123' });
+  const error = await client.replyToComment('c', 'x').catch((e) => e);
+  expect(error.metaMessage).toBe('(#10) No permission access_token=****'); expect(error.metaType).toBe('OAuthException'); expect(error.message).not.toContain('No permission');
+});

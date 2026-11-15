@@ -169,7 +169,7 @@ export async function getAccountClient(
   env: AccountEnv,
   db: D1Database,
   account: IgAccount,
-  options: { forHealthProbe?: boolean } = {},
+  options: { forHealthProbe?: boolean; skipTokenRefresh?: boolean } = {},
 ): Promise<InstagramClient> {
   await assertGraphAvailable(db,account.id);
   if (!options.forHealthProbe) {
@@ -181,7 +181,7 @@ export async function getAccountClient(
   }
   account = { ...account, access_token: await openToken(account.access_token, account.ig_user_id, env.TOKEN_ENCRYPTION_KEY) };
   let token = account.access_token;
-  try {
+  if (!options.skipTokenRefresh) try {
     const refreshed = await refreshAccountTokenIfNeeded(env, db, account);
     if (refreshed.token) token = refreshed.token;
   } catch (err) {

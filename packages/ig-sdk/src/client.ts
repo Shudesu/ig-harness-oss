@@ -2,7 +2,7 @@ import { createAppSecretProof } from './proof.js';
 import { graphApiVersion } from './config.js';
 export { DEFAULT_GRAPH_API_VERSION } from './config.js';
 import { parseGraphUsage, type GraphObservation } from './usage.js';
-import { InstagramApiError, InstagramTransportError } from './errors.js';
+import { InstagramApiError, InstagramTransportError, safeMetaText } from './errors.js';
 import type {
   SendTextPayload,
   SendImagePayload,
@@ -78,13 +78,13 @@ export class InstagramClient {
         const usage = parseGraphUsage(res.headers);
         let value: unknown;
         try { value=await res.json(); } catch (error) { if(res.ok) throw error; }
-        const graphError=value && typeof value==='object' ? (value as {error?:{code?:number;error_subcode?:number}}).error : undefined;
+        const graphError=value && typeof value==='object' ? (value as {error?:{code?:number;error_subcode?:number;message?:string;type?:string}}).error : undefined;
         if (res.ok && !graphError) { await observe({ status: res.status, usage }); return value as T; }
         const graph=graphError ?? {};
         const retryHeader = res.headers?.get('retry-after');
         const retryMs = retryHeader ? (/^\d+$/.test(retryHeader) ? Number(retryHeader) * 1000 : Date.parse(retryHeader) - Date.now()) : undefined;
         await observe({ status: res.status, code: graph.code, subcode: graph.error_subcode, retryAfterMs: retryMs, usage });
-        error = new InstagramApiError(`Instagram API error ${res.status}${graph.code ? ` (code ${graph.code})` : ''}`, res.status, graph.code, graph.error_subcode, retryMs);
+        error = new InstagramApiError(`Instagram API error ${res.status}${graph.code ? ` (code ${graph.code})` : ''}`, res.status, graph.code, graph.error_subcode, retryMs, safeMetaText(graph.message), safeMetaText(graph.type));
       } catch {
         // Never include a URL, token, or raw upstream response in the error.
         error = new InstagramTransportError(controller.signal.aborted);
@@ -196,6 +196,32 @@ export class InstagramClient {
   async replyToComment(commentId: string, message: string): Promise<{ id: string }> {
     // Use the documented message parameter encoding; access level is a separate concern.
     return this.request('POST', `/${commentId}/replies?message=${encodeURIComponent(message)}`);
+  }
+
+  /**
+   * Subscribe this Instagram professional account to the app's webhooks
+   * (POST /{ig-user-id}/subscribed_apps). Without it, comments/DMs never
+   * reach the webhook even when the app-level subscription is configured.
+   */
+  async subscribeApp(fields: readonly string[]): Promise<{ success?: boolean }> {
+    if (!fields.length || fields.some((f) => !/^[a-z_]+$/.test(f))) throw new Error('Invalid webhook field list');
+    return this.request('POST', `/${encodeURIComponent(this.igUserId)}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields.join(','))}`);
+  }
+
+  /** Webhook fields this account is currently subscribed to for the app. */
+  async getSubscribedFields(): Promise<string[]> {
+    const json = await this.request<{ data?: Array<{ subscribed_fields?: string[] }> }>('GET', `/${encodeURIComponent(this.igUserId)}/subscribed_apps`);
+    return [...new Set((json.data ?? []).flatMap((entry) => entry.subscribed_fields ?? []))];
+  }
+
+  /** Read-only probe that requires instagram_business_manage_messages. */
+  async probeConversations(): Promise<void> {
+    await this.request('GET', `/me/conversations?platform=instagram&limit=1&fields=id`);
+  }
+
+  /** Read-only probe that requires instagram_business_manage_comments. */
+  async probeMediaComments(mediaId: string): Promise<void> {
+    await this.request('GET', `/${encodeURIComponent(mediaId)}/comments?fields=id&limit=1`);
   }
 
   /**

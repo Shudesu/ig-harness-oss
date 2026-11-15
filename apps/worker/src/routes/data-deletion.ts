@@ -85,7 +85,7 @@ dataDeletion.post('/api/data-deletion/:code/resolve', requireRole('owner'), asyn
     UNION ALL SELECT 1 FROM comment_rule_jobs WHERE account_id=? AND status='processing'
     UNION ALL SELECT 1 FROM active_mutations LIMIT 1`).bind(account.id, account.id, account.id).first();
   if (busy) return c.json({ error: 'Account has in-flight delivery work; retry after it settles' }, 409);
-  for (const table of ['messages_log', 'link_clicks', 'form_submissions', 'follower_scenarios', 'follower_tags', 'gate_deliveries', 'broadcast_recipients', 'comment_rule_jobs']) {
+  for (const table of ['messages_log', 'link_clicks', 'form_submissions', 'follower_scenarios', 'follower_tags', 'gate_deliveries', 'broadcast_recipients', 'comment_rule_jobs', 'delivery_failures']) {
     statements.push(db.prepare(`DELETE FROM ${table} WHERE follower_id IN (SELECT id FROM followers WHERE ${condition})`).bind(...values));
   }
   statements.push(db.prepare(`DELETE FROM gate_clicks WHERE gate_id IN (SELECT id FROM engagement_gates WHERE account_id=?) AND igsid IN (SELECT igsid FROM followers WHERE ${condition})`).bind(account.id, ...values));
@@ -94,7 +94,7 @@ dataDeletion.post('/api/data-deletion/:code/resolve', requireRole('owner'), asyn
   statements.push(db.prepare(`UPDATE webhook_events SET payload=NULL, subject_id=NULL, status='completed', finished_at=? WHERE account_id=?${scoped ? ` AND subject_id IN (SELECT igsid FROM followers WHERE ${condition})` : ''}`).bind(new Date().toISOString(), account.id, ...(scoped ? values : [])));
   statements.push(db.prepare(`DELETE FROM followers WHERE ${condition}`).bind(...values));
   if (!scoped) {
-    for (const table of ['media_posts', 'broadcasts', 'engagement_gates', 'scenarios', 'forms', 'tracked_links', 'tags', 'rich_messages', 'comment_rules']) {
+    for (const table of ['media_posts', 'broadcasts', 'engagement_gates', 'scenarios', 'forms', 'tracked_links', 'tags', 'rich_messages', 'comment_rules', 'delivery_failures']) {
       statements.push(db.prepare(`DELETE FROM ${table} WHERE account_id=?`).bind(account.id));
     }
     // Keep the account tombstone so a stale env token cannot recreate it.

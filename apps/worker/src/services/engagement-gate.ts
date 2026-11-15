@@ -160,7 +160,7 @@ export async function triggerGateForComment(
       accountId: args.accountId, ruleId: `gate:${gate.id}`, commentId: args.commentId, followerId: args.follower.id,
       messageType: 'text', body: JSON.stringify({ text: `${gate.initial_dm_text}\n\n続けるには、このメッセージに返信してください。` }),
       replyText: reply, delaySeconds: 0, mediaId: args.postId, commentCreatedAt: args.commentCreatedAt,
-      gateDeliveryId: delivery.id, isLive: args.isLive,
+      gateDeliveryId: delivery.id, isLive: args.isLive, replyMode: gate.comment_reply_mode === 'mention' ? 'mention' : 'thread',
     });
     return true; // Only one gate per comment
   }

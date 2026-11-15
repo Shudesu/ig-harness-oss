@@ -13,7 +13,9 @@ import {
 } from '@ig-harness/db';
 import type { IgAccount } from '@ig-harness/db';
 import { requireRole } from '../middleware/role-guard.js';
-import { ensureDefaultAccount } from '../lib/accounts.js';
+import { ensureDefaultAccount, getAccountClient } from '../lib/accounts.js';
+import { checkAccountConnection, loadConnectionReport, saveConnectionReport, type ConnectionReport } from '../lib/account-connection.js';
+import { recordDeliveryFailure } from '../lib/delivery-failures.js';
 import type { Env } from '../index.js';
 
 const accounts = new Hono<Env>();
@@ -40,12 +42,38 @@ function serializeAccount(row: IgAccount) {
   };
 }
 
+/**
+ * Run the webhook-subscription + permission check and persist it. Never
+ * throws: a failed check must not undo an account that was saved.
+ */
+async function runConnectionCheck(env: Env['Bindings'], account: IgAccount, subscribe: boolean): Promise<ConnectionReport | null> {
+  try {
+    const client = await getAccountClient(env, env.DB, account, { forHealthProbe: true, skipTokenRefresh: true });
+    const report = await checkAccountConnection(client, { subscribe });
+    await saveConnectionReport(env.DB, account.id, report);
+    if (!report.ok) {
+      const problems = [
+        report.profile.state !== 'ok' ? `プロフィール: ${report.profile.message ?? report.profile.state}` : null,
+        report.webhook.state !== 'ok' ? `Webhook購読: ${report.webhook.message ?? report.webhook.state}` : null,
+        report.permissions.messages.state !== 'ok' ? `DM権限: ${report.permissions.messages.message ?? report.permissions.messages.state}` : null,
+        ['missing', 'error'].includes(report.permissions.comments.state) ? `コメント権限: ${report.permissions.comments.message ?? report.permissions.comments.state}` : null,
+      ].filter(Boolean).join(' / ');
+      await recordDeliveryFailure(env.DB, { accountId: account.id, source: 'account_setup', stage: subscribe ? 'subscribe_and_check' : 'check', detail: { message: problems } });
+    }
+    return report;
+  } catch (error) {
+    await recordDeliveryFailure(env.DB, { accountId: account.id, source: 'account_setup', stage: 'check', error });
+    return null;
+  }
+}
+
 // GET /api/accounts - list all IG accounts (tokens masked)
 accounts.get('/api/accounts', requireRole('owner', 'admin'), async (c) => {
   try {
     await ensureDefaultAccount(c.env, c.env.DB);
     const items = await listIgAccounts(c.env.DB);
-    return c.json({ success: true, data: items.map(serializeAccount) });
+    const data = await Promise.all(items.map(async (row) => ({ ...serializeAccount(row), connection: await loadConnectionReport(c.env.DB, row.id) })));
+    return c.json({ success: true, data });
   } catch (err) {
     console.error('GET /api/accounts error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -61,8 +89,11 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
       accessToken?: string;
       appSecret?: string | null;
       verifyToken?: string | null;
+      /** Default true: POST /{ig-user-id}/subscribed_apps right after saving. */
+      subscribeWebhooks?: boolean;
     }>();
 
+    if (body.subscribeWebhooks !== undefined && typeof body.subscribeWebhooks !== 'boolean') return c.json({ success: false, error: 'subscribeWebhooks must be a boolean' }, 400);
     if ((body.igUserId !== undefined && (typeof body.igUserId !== 'string' || !/^\d{1,64}$/.test(body.igUserId))) || typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) {
       return c.json({ success: false, error: 'A token and an optional numeric igUserId are required' }, 400);
     }
@@ -89,7 +120,8 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
     });
 
     await recordTokenValidity(c.env.DB,account.id,true).catch(()=>{});
-    return c.json({ success: true, data: { ...serializeAccount(account), verification: 'profile_only' } }, 201);
+    const connection = await runConnectionCheck(c.env, account, body.subscribeWebhooks !== false);
+    return c.json({ success: true, data: { ...serializeAccount(account), verification: connection ? 'connection_checked' : 'profile_only', connection } }, 201);
   } catch (err) {
     console.error('POST /api/accounts error:', err instanceof Error ? err.name : 'unknown');
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -138,6 +170,26 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
     console.error('PATCH /api/accounts/:id error:', err instanceof Error ? err.name : 'unknown');
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
+});
+
+// GET /api/accounts/:id/connection - last stored webhook/permission check
+accounts.get('/api/accounts/:id/connection', requireRole('owner', 'admin'), async (c) => {
+  const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  return c.json({ success: true, data: await loadConnectionReport(c.env.DB, account.id) });
+});
+
+// POST /api/accounts/:id/connection-check - re-run (optionally re-subscribe)
+accounts.post('/api/accounts/:id/connection-check', requireRole('owner'), async (c) => {
+  const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  if (!account.is_active) return c.json({ success: false, error: 'account is deactivated' }, 400);
+  let body: { subscribe?: unknown } = {};
+  try { body = await c.req.json(); } catch { /* empty body = check only */ }
+  if (body.subscribe !== undefined && typeof body.subscribe !== 'boolean') return c.json({ success: false, error: 'subscribe must be a boolean' }, 400);
+  const report = await runConnectionCheck(c.env, account, body.subscribe === true);
+  if (!report) return c.json({ success: false, error: '接続チェックを実行できませんでした（失敗ログを確認してください）' }, 502);
+  return c.json({ success: true, data: report });
 });
 
 export { accounts };
