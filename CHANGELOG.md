@@ -1,3 +1,19 @@
+## Unreleased — onboarding-impl (2026-11-16)
+
+- **mentions を正しく処理（B-14）**: `mentions` フィールドを標準購読に追加。通知の中身は `{media_id, comment_id}` だけなので、`GET /{comment-id}` / `GET /{ig-user-id}/mentioned_media` で本文を取得し、`mention_events`（migration 0026, additive）に記録してからコメントルールに一致したら `POST /{ig-user-id}/mentions` で公開返信する。メンションは DM 窓を開かないため DM は送らない（要実機確認）。
+- **live_comments（B-15）**: イベントを既存のコメント経路（ゲート→ルール→private reply）に通すようになり、黙って破棄されない。ライブコメントの private reply は配信中のみ有効で、`/{ig-user-id}/live_media` で終了を確認して skip（migration 0027 の `comment_rule_jobs.is_live`）。**Advanced Access（App Review）が別途必要（要実機）**。
+- **messaging_referral（B-16）**: ig.me の `?ref=` を `followers.metadata`（ref/ref_source/ref_received_at）に保存、mileage 転送に乗せ、`dm_keyword` の trigger_keyword に ref が一致したらシナリオに登録。
+- **コメントの自動非表示（B-18）**: NG ワード・スパムのルールを `integration_settings` に保存（`comment_moderation:{accountId}`）。一致したコメントを `POST /{comment-id}/hide` で非表示にし、直近100件のログを残して `POST /api/comment-moderation/unhide` で元に戻せる。MCP は `get/set_comment_moderation`、`unhide_comment`（書き込みは承認制）。
+- **アイスブレーカー／パーシステントメニュー（B-19）**: `messenger_profile` の GET/POST/DELETE を SDK・Worker（`/api/messenger-profile`）・MCP（`get/set/delete_messenger_profile`、書き込みは承認制）に追加。
+- **reactions / story_insights（B-20）**: `message_reactions` を計測イベントとして LINE マイレージに転送し、`story_insights` の最新値を `health:story_insights:{accountId}` に保存。どちらも DM 窓を開かない。
+- **旧→統合ログインの ID 照合手順（B-17）**: docs/operations/id-mapping-check-20261116.md を追加（実施は要実機）。
+
+- **送信時間帯を設定可能に（B-06）**: シナリオ配信の送信窓が1か所の設定（`integration_settings` の `delivery_window_start_jst` / `delivery_window_end_jst`）に統一され、既定は **24時間（制限なし）**。従来の 9〜23時（step-delivery / ガードレール表示）と 9〜21時（シナリオ初回ステップ）の二重定義を廃止。`POST /api/delivery-guardrails/window` で変更。窓の対象は **シナリオ配信のみ**（コメント DM・通常返信はもともと制限なし）で、ガードレール画面に明示。**既存のシナリオ配信時刻は保存済みの `next_step_at` を変えないため、窓の変更は次回以降のスケジューリングにのみ効く**。窓を 9〜23 に戻したければ同 API で設定する。
+- **署名検証の失敗を記録（B-02）**: POST /webhook の署名不一致を、時間バケット（`health:sig_fail` / `health:sig_ok`）＋最終時刻として記録。未検証 body は `entry[].id` の読み取り（アカウント推定）だけに使い処理しない。
+- **debug_token（B-04）**: 毎時の疎通確認に合わせ `GET /debug_token` を実行し、実際の有効期限・data access 期限・スコープ・app_id を `health:token_debug` に保存。統合ログインの「自動更新なし」固定表示が実値（無期限なら「無期限」、14日以内は残日数）になる。App Secret のみで動く（`IG_APP_ID` を設定すると app access token を使用）。
+- **アプリ側 Webhook の確認と修復（B-08/B-09）**: `GET /api/accounts/:id/app-webhook` が `GET /{app-id}/subscriptions` を読み、コールバック不一致・未購読・フィールド不足を検知。`POST /api/accounts/:id/fix-app-webhook`（＝MCP `fix_app_webhook`）は確認トークンを自動生成して設定し、**他人のコールバック URL は上書きしない**。
+- 新しいオプション環境変数 `IG_APP_ID`: app access token（`{app-id}|{app-secret}`）による debug_token / subscriptions の正確な照会用。未設定でもユーザートークン＋appsecret_proof で試行する。
+
 ## Unreleased — calm UX (2026-11-16)
 
 - Admin dashboard keeps the shell (sidebar) during the auth check and swaps only the content area to a partial skeleton. The full-screen spinner remount on every navigation is gone; the check runs once on mount with a stale-while-revalidate optimistic display.
@@ -5,7 +21,6 @@
 - IG branding applied: favicon added, worker/index.html title and LINE-green spinner replaced, neutral placeholder copy in settings.
 
 ## Unreleased — release 20261115 (unified login)
-
 - **Instagram API with Unified login** (EAA tokens, `graph.facebook.com`) is supported alongside the legacy Instagram Login (`IGAA…`, `graph.instagram.com`). The token prefix decides automatically; Unified login accounts never call `refresh_access_token`, and webhook subscription targets the linked Page when one is known. See docs/manual/09-unified-login.md. Migration 0025 (additive) adds `connection_type` (default `instagram_login`) and `page_id` to `ig_accounts`, so **existing accounts keep working unchanged**.
 - Migration/operations manual for this release: docs/manual/10-migration.md — update steps, checks before updating, how to roll back, and the common Meta errors (code 100 subcode 33, 190, …).
 - `subscribeApp` / `getSubscribedFields` are connection-type aware, so the automatic subscribe + permission check on account registration also covers Unified login accounts.

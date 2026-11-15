@@ -7,16 +7,28 @@ import { useAccount } from '@/contexts/account-context'
 
 const ACCENT = '#E1306C'
 
-/** tokenExpiresAt is epoch seconds; null means the expiry has not been fetched. */
-function formatExpiry(expiresAt: number | null, connectionType?: string): string {
-  // 統合ログイン（EAA…）は自動更新しない。システムユーザートークンは無期限。
-  if (connectionType === 'facebook_login') return expiresAt == null ? '自動更新なし' : new Date(expiresAt * 1000).toLocaleDateString('ja-JP')
-  if (expiresAt == null) return '未取得'
+/** Real expiry from debug_token when available; row epoch otherwise; 0 = 無期限. */
+function formatExpiry(
+  expiresAt: number | null,
+  connectionType?: string,
+  tokenDebug?: { status: string; expiresAt?: number | null; isValid?: boolean | null; missingScopes?: string[] } | null,
+): string {
+  // B-04: debug_token gives the real expiry even for Unified login tokens.
+  const real = tokenDebug?.status === 'ok' && typeof tokenDebug.expiresAt === 'number' ? tokenDebug.expiresAt : null;
+  if (real != null) {
+    if (real === 0) return '無期限';
+    const date = new Date(real * 1000).toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const daysLeft = Math.floor((real * 1000 - Date.now()) / 86_400_000);
+    const suffix = daysLeft <= 14 && daysLeft > 0 ? `（あと${daysLeft}日）` : daysLeft <= 0 ? '（期限切れ）' : '';
+    return `${date}${suffix}`;
+  }
+  if (connectionType === 'facebook_login') return expiresAt == null ? '自動更新なし（debug_token 未取得）' : new Date(expiresAt * 1000).toLocaleDateString('ja-JP');
+  if (expiresAt == null) return '未取得';
   return new Date(expiresAt * 1000).toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  })
+  });
 }
 
 export default function IgAccountsSection() {
@@ -40,6 +52,12 @@ export default function IgAccountsSection() {
   const [tokenEditId, setTokenEditId] = useState<string | null>(null)
   const [tokenDraft, setTokenDraft] = useState('')
   const [tokenSaving, setTokenSaving] = useState(false)
+
+  // Per-row credentials editing (B-01: app secret / verify token can now be
+  // added to an existing account — the 403 root cause fix)
+  const [credEditId, setCredEditId] = useState<string | null>(null)
+  const [credDraft, setCredDraft] = useState<{ appSecret: string; verifyToken: string }>({ appSecret: '', verifyToken: '' })
+  const [credSaving, setCredSaving] = useState(false)
 
   useEffect(() => {
     setIsOwner(sessionStorage.getItem('igh_staff_role') === 'owner')
@@ -115,6 +133,29 @@ export default function IgAccountsSection() {
 
   const [subscribingId, setSubscribingId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
+
+  const handleCredSave = async (account: IgAccountSummary) => {
+    if (!credDraft.appSecret.trim() && !credDraft.verifyToken.trim()) return
+    setCredSaving(true)
+    setError('')
+    try {
+      await accountsApi.update(account.id, {
+        ...(credDraft.appSecret.trim() ? { appSecret: credDraft.appSecret.trim() } : {}),
+        ...(credDraft.verifyToken.trim() ? { verifyToken: credDraft.verifyToken.trim() } : {}),
+      })
+      setCredEditId(null)
+      setCredDraft({ appSecret: '', verifyToken: '' })
+      setNotice('App Secret / Verify Token を保存しました。接続チェックを再実行しています…')
+      // Re-run the connection check so health reflects the new secrets.
+      try { await accountsApi.connectionCheck(account.id, false) } catch { /* surfaced via the connection page */ }
+      setNotice('保存し、接続チェックを再実行しました。')
+      await reloadAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '資格情報の保存に失敗しました')
+    } finally {
+      setCredSaving(false)
+    }
+  }
   const handleSubscribe = async (account: IgAccountSummary) => {
     setSubscribingId(account.id)
     setError('')
@@ -179,6 +220,7 @@ export default function IgAccountsSection() {
                 <th className="py-2 pr-3 font-medium">アカウント</th>
                 <th className="py-2 pr-3 font-medium">IG User ID</th>
                 <th className="py-2 pr-3 font-medium">トークン</th>
+                <th className="py-2 pr-3 font-medium">資格情報</th>
                 <th className="py-2 pr-3 font-medium">トークン期限</th>
                 <th className="py-2 pr-3 font-medium">状態</th>
                 {isOwner && <th className="py-2 font-medium">操作</th>}
@@ -194,7 +236,13 @@ export default function IgAccountsSection() {
                   </td>
                   <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.igUserId}</td>
                   <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.accessToken}</td>
-                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt, account.connectionType)}</td>
+                  <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">
+                    <span className="inline-flex gap-1 items-center">
+                      <span className={account.hasAppSecret ? 'text-green-600' : 'text-red-500'}>{account.hasAppSecret ? 'AppSecret✓' : 'AppSecret✗'}</span>
+                      <span className={account.hasVerifyToken ? 'text-green-600' : 'text-kumo-subtle'}>{account.hasVerifyToken ? 'VerifyToken✓' : 'VerifyToken—'}</span>
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt, account.connectionType, account.tokenDebug ?? null)}</td>
                   <td className="py-2.5 pr-3">
                     <span className="inline-flex items-center gap-1 flex-wrap">
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-kumo-tint text-kumo-subtle whitespace-nowrap">
@@ -212,6 +260,55 @@ export default function IgAccountsSection() {
                       )}
                     </span>
                   </td>
+                  {isOwner && (
+                    <td className="py-2.5 pr-3">
+                      {credEditId === account.id ? (
+                        <div className="flex flex-col gap-1">
+                          <input
+                            type="password"
+                            value={credDraft.appSecret}
+                            onChange={(e) => setCredDraft((d) => ({ ...d, appSecret: e.target.value }))}
+                            placeholder="Meta App の App Secret"
+                            autoFocus
+                            className="w-48 px-2 py-1 border border-kumo-line rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
+                          />
+                          <input
+                            type="password"
+                            value={credDraft.verifyToken}
+                            onChange={(e) => setCredDraft((d) => ({ ...d, verifyToken: e.target.value }))}
+                            placeholder="Webhook 検証用 Verify Token"
+                            className="w-48 px-2 py-1 border border-kumo-line rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#E1306C] placeholder:text-gray-300 placeholder:font-normal"
+                          />
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleCredSave(account)}
+                              disabled={credSaving || (!credDraft.appSecret.trim() && !credDraft.verifyToken.trim())}
+                              className="px-2 py-1 text-xs text-white rounded disabled:opacity-50"
+                              style={{ backgroundColor: ACCENT }}
+                            >
+                              {credSaving ? '...' : '保存して再チェック'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setCredEditId(null); setCredDraft({ appSecret: '', verifyToken: '' }) }}
+                              className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setCredEditId(account.id); setCredDraft({ appSecret: '', verifyToken: '' }) }}
+                          className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas whitespace-nowrap"
+                        >
+                          資格情報を編集
+                        </button>
+                      )}
+                    </td>
+                  )}
                   {isOwner && (
                     <td className="py-2.5">
                       {tokenEditId === account.id ? (

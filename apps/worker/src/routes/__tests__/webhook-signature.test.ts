@@ -7,6 +7,8 @@
  * (c) a missing X-Hub-Signature-256 header → 403
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { estimateAccountsForBody } from '../webhook.js';
+import type { IgAccount } from '@ig-harness/db';
 
 // ---------------------------------------------------------------------------
 // Mocks — must be declared before any dynamic imports
@@ -44,6 +46,8 @@ vi.mock('../../lib/accounts.js', () => ({
 // Mock health lib
 vi.mock('../../lib/health.js', () => ({
   recordWebhookReceived: vi.fn().mockResolvedValue(undefined),
+  recordSignatureFailure: vi.fn().mockResolvedValue(undefined),
+  recordSignatureSuccess: vi.fn().mockResolvedValue(undefined),
 }));
 
 // ---------------------------------------------------------------------------
@@ -184,5 +188,32 @@ describe('POST /webhook signature enforcement', () => {
     });
 
     expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// estimateAccountsForBody (B-02): account estimation from an unverified body
+// ---------------------------------------------------------------------------
+
+describe('estimateAccountsForBody', () => {
+  const accounts = [
+    { id: 'acc-1', ig_user_id: '111', is_active: 1 },
+    { id: 'acc-2', ig_user_id: '222', is_active: 1 },
+  ] as unknown as IgAccount[];
+
+  it('maps entry ids to account ids', async () => {
+    const { pickAccountForEntry } = await import('../../lib/accounts.js');
+    vi.mocked(pickAccountForEntry).mockImplementation(((accs: IgAccount[], id: string) => (accs as IgAccount[]).find((a) => a.ig_user_id === id) ?? null) as typeof pickAccountForEntry);
+    const body = JSON.stringify({ object: 'instagram', entry: [{ id: '111' }, { id: '222' }] });
+    expect(estimateAccountsForBody(body, accounts)).toEqual(['acc-1', 'acc-2']);
+  });
+
+  it('returns [] for a non-instagram object', () => {
+    const body = JSON.stringify({ object: 'page', entry: [{ id: '111' }] });
+    expect(estimateAccountsForBody(body, accounts)).toEqual([]);
+  });
+
+  it('never throws on a malformed body', () => {
+    expect(estimateAccountsForBody('not-json{', accounts)).toEqual([]);
   });
 });

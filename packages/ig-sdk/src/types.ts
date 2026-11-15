@@ -19,6 +19,8 @@ export interface MessagingEvent {
   timestamp: number;
   message?: IncomingMessage;
   postback?: Postback;
+  /** B-16: messaging_referral — ig.me entry point with the ref tag. */
+  referral?: { source?: string; type?: string; ref?: string };
 }
 
 export interface IncomingMessage {

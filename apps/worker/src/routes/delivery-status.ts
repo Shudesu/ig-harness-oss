@@ -5,6 +5,7 @@ import { getHealthSnapshot } from '../lib/health.js';
 import { graphApiVersion } from '@ig-harness/ig-sdk';
 import { listDeliveryFailures } from '../lib/delivery-failures.js';
 import { guardrailSnapshot, setOutboundPaused, setDmPresenceEnabled } from '../services/human-touch.js';
+import { setDeliveryWindowJst, getDeliveryWindowJst } from '@ig-harness/db';
 export const deliveryStatus = new Hono<Env>();
 deliveryStatus.get('/api/delivery-status', async (c) => {
     const account = await resolveAccount(c);
@@ -66,4 +67,17 @@ deliveryStatus.post('/api/delivery-guardrails/presence', async (c) => {
         return c.json({ success: false, error: 'enabled (boolean) is required' }, 400);
     await setDmPresenceEnabled(c.env.DB, body.enabled);
     return c.json({ success: true, data: { presenceEnabled: body.enabled } });
+});
+
+// B-06: configure the scenario delivery window (default 0-24 = 制限なし).
+// Only applies to scenario step sends; comment DMs and normal replies are
+// never windowed.
+deliveryStatus.post('/api/delivery-guardrails/window', async (c) => {
+    const body = await c.req.json().catch(() => null) as { startHourJst?: unknown; endHourJst?: unknown } | null;
+    const start = Number(body?.startHourJst);
+    const end = Number(body?.endHourJst);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > 23 || end < 1 || end > 24 || end <= start)
+        return c.json({ success: false, error: 'startHourJst (0-23) and endHourJst (1-24, > start) are required' }, 400);
+    await setDeliveryWindowJst(c.env.DB, { start, end });
+    return c.json({ success: true, data: { ...await getDeliveryWindowJst(c.env.DB) } });
 });

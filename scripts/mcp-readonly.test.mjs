@@ -31,8 +31,8 @@ async function listTools(readOnly) {
 }
 test('read-only MCP exposes only read tools, omitting all mixed/write tools', async () => {
   const read = await listTools(true);
-  assert.equal(read.length, 8);
-  assert.ok(read.every((name) => /^(list_|get_|account_summary$)/.test(name)));
+  assert.equal(read.length, 10);
+  assert.ok(read.every((name) => /^(list_|get_|connection_health$|next_actions$|account_summary$)/.test(name)));
   const full = await listTools(false);
   assert.ok(full.includes('broadcast')); assert.ok(full.includes('send_dm'));
   assert.ok(full.length > read.length);

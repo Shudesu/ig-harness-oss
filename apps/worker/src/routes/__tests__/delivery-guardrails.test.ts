@@ -19,7 +19,7 @@ it('returns the guardrail snapshot for the selected account', async () => {
     expect(result.data).toMatchObject({
       paused: false,
       presenceEnabled: true,
-      window: { startHourJst: 9, endHourJst: 23 },
+      window: { startHourJst: 0, endHourJst: 24, scope: 'scenario_only' },
       followers: { eligible: expect.any(Number), windowExpired: expect.any(Number), standby: expect.any(Number) },
       volume: { dmOut24h: expect.any(Number), pendingBroadcastRecipients: expect.any(Number), pendingCommentJobs: expect.any(Number), activeScenarios: expect.any(Number) },
     });

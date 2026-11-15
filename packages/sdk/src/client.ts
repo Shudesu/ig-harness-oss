@@ -17,6 +17,8 @@ import { PostsResource } from './resources/posts.js'
 import { AdPlatformsResource } from './resources/ad-platforms.js'
 import { MediaPostsResource } from './resources/media-posts.js'
 import { AccountsResource } from './resources/accounts.js'
+import { MessengerProfileResource } from './resources/messenger-profile.js'
+import { CommentModerationResource } from './resources/comment-moderation.js'
 import type { InstagramHarnessConfig } from './types.js'
 
 export class InstagramHarness {
@@ -38,6 +40,8 @@ export class InstagramHarness {
   readonly adPlatforms: AdPlatformsResource
   readonly mediaPosts: MediaPostsResource
   readonly accounts: AccountsResource
+  readonly messengerProfile: MessengerProfileResource
+  readonly commentModeration: CommentModerationResource
 
   constructor(config: InstagramHarnessConfig) {
     const apiUrl = config.apiUrl.replace(/\/$/, '')
@@ -67,5 +71,7 @@ export class InstagramHarness {
     this.adPlatforms = new AdPlatformsResource(http)
     this.mediaPosts = new MediaPostsResource(http)
     this.accounts = new AccountsResource(http)
+    this.messengerProfile = new MessengerProfileResource(http)
+    this.commentModeration = new CommentModerationResource(http)
   }
 }

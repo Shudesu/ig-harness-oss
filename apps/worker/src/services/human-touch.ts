@@ -1,4 +1,5 @@
 import type { InstagramClient } from '@ig-harness/ig-sdk';
+import { getDeliveryWindowJst, windowStatus } from '@ig-harness/db';
 
 // ── 配信ガードレール（U22 可視化・停止スイッチ）＋ 既読/入力中（U18） ──
 // 設定は integration_settings のキー値ペアで持つ（migration 追加なし）。
@@ -10,9 +11,8 @@ import type { InstagramClient } from '@ig-harness/ig-sdk';
 export const OUTBOUND_PAUSED_KEY = 'outbound_paused';
 export const DM_PRESENCE_ENABLED_KEY = 'dm_presence_enabled';
 
-/** 送信窓: step-delivery と同じ 9:00-23:00 JST。 */
-export const DELIVERY_WINDOW_START_HOUR_JST = 9;
-export const DELIVERY_WINDOW_END_HOUR_JST = 23;
+// B-06: the delivery window is a single configurable setting
+// (default 0-24 = 制限なし); see lib/delivery-window.ts and @ig-harness/db.
 
 export class OutboundPausedError extends Error {
   constructor() {
@@ -48,11 +48,13 @@ export async function setDmPresenceEnabled(db: D1Database, enabled: boolean): Pr
   await setSettingValue(db, DM_PRESENCE_ENABLED_KEY, enabled ? '1' : '0');
 }
 
-/** 送信窓内かどうか。step-delivery の processSingleDelivery と同じ JST 9-23 判定。 */
-export function isWithinDeliveryWindow(now = Date.now()): boolean {
-  const hour = new Date(now + 9 * 60 * 60_000).getUTCHours();
-  return hour >= DELIVERY_WINDOW_START_HOUR_JST && hour < DELIVERY_WINDOW_END_HOUR_JST;
+/** 送信窓内かどうか（B-06 設定値参照）。シナリオ配信のみが対象。 */
+export async function isWithinDeliveryWindowDb(db: D1Database, now = Date.now()): Promise<boolean> {
+  const { getDeliveryWindowJst, isWithinWindow, currentJstHour } = await import('@ig-harness/db');
+  return isWithinWindow(await getDeliveryWindowJst(db), currentJstHour(now));
 }
+
+
 
 /**
  * Stop switch check. Throws OutboundPausedError so callers can treat a
@@ -145,7 +147,7 @@ export function decorateWithPresence(db: D1Database, client: InstagramClient): I
 export async function guardrailSnapshot(db: D1Database, accountId: string | null, now = Date.now()): Promise<{
   paused: boolean;
   presenceEnabled: boolean;
-  window: { startHourJst: number; endHourJst: number; within: boolean; nowJst: string };
+  window: { startHourJst: number; endHourJst: number; within: boolean; nowJst: string; scope?: 'scenario_only' };
   followers: { eligible: number; windowExpired: number; standby: number };
   volume: { dmOut24h: number; pendingBroadcastRecipients: number; pendingCommentJobs: number; activeScenarios: number };
 }> {
@@ -168,15 +170,21 @@ export async function guardrailSnapshot(db: D1Database, accountId: string | null
         WHERE fs.status='active') AS activeScenarios`)
     .bind(...(accountId ? [accountId, accountId, accountId, accountId] : [])).all<{ dmOut24h: number; pendingBroadcastRecipients: number; pendingCommentJobs: number; activeScenarios: number }>();
   const counts = volume.results[0] ?? { dmOut24h: 0, pendingBroadcastRecipients: 0, pendingCommentJobs: 0, activeScenarios: 0 };
+  // B-06: single configurable window (default 0-24 = no restriction).
+  // 明示的に「対象: シナリオ配信のみ」をフロントに伝える。
+  const status = windowStatus(await getDeliveryWindowJst(db), now);
+  const windowView = {
+    startHourJst: status.window.start,
+    endHourJst: status.window.end,
+    within: status.within,
+    nowJst: new Date(now).toISOString(),
+    scope: 'scenario_only' as const,
+  };
   return {
     paused: await isOutboundPaused(db),
     presenceEnabled: await isDmPresenceEnabled(db),
-    window: {
-      startHourJst: DELIVERY_WINDOW_START_HOUR_JST,
-      endHourJst: DELIVERY_WINDOW_END_HOUR_JST,
-      within: isWithinDeliveryWindow(now),
-      nowJst: new Date(now).toISOString(),
-    },
+    window: windowView,
+
     followers: {
       eligible: Number(agg.eligible) || 0,
       windowExpired: Math.max(0, Number(agg.total) - Number(agg.eligible) - Number(agg.standby)) || 0,

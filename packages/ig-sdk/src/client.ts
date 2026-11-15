@@ -48,7 +48,7 @@ export function detectTokenConnectionType(token: string): IgConnectionType | nul
 }
 
 /** Webhook fields subscribed on the IG user node (Instagram Login and Unified login). */
-export const IG_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] as const;
+export const IG_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments', 'mentions'] as const;
 /**
  * Page-linked Facebook Login subscribes the Page edge, which takes Page field
  * names (plural messaging_referrals; IG comments arrive via the app-level
@@ -361,6 +361,66 @@ export class InstagramClient {
   async replyToComment(commentId: string, message: string): Promise<{ id: string }> {
     // Use the documented message parameter encoding; access level is a separate concern.
     return this.request('POST', `/${commentId}/replies?message=${encodeURIComponent(message)}`);
+  }
+
+  // ── B-14: mentions ──
+
+  /** Fetch a comment that mentioned this account (mentioned_comment webhook). */
+  async getMentionedComment(commentId: string): Promise<{ id: string; text?: string; username?: string; timestamp?: string; media?: { id: string; media_product_type?: string } }> {
+    return this.request('GET', `/${encodeURIComponent(commentId)}?fields=id,text,username,timestamp,media{id,media_product_type}`);
+  }
+
+  /** Fetch a media whose caption mentioned this account (mentioned_media webhook). */
+  async getMentionedMedia(mediaId: string): Promise<{ id: string; caption?: string; username?: string; media_type?: string; timestamp?: string }> {
+    return this.request('GET', `/${encodeURIComponent(this.igUserId)}/mentioned_media?media_id=${encodeURIComponent(mediaId)}&fields=id,caption,username,media_type,timestamp`);
+  }
+
+  /**
+   * Reply to a mention: POST /{ig-user-id}/mentions. A comment mention needs
+   * the comment_id; a caption mention replies on the media itself.
+   */
+  async sendMentionReply(message: string, commentId?: string, mediaId?: string): Promise<{ id: string }> {
+    const qs = new URLSearchParams({ message });
+    if (commentId) qs.set('comment_id', commentId);
+    if (mediaId) qs.set('media_id', mediaId);
+    return this.request('POST', `/${encodeURIComponent(this.igUserId)}/mentions?${qs.toString()}`);
+  }
+
+  // ── B-15: live comments ──
+
+  /** Media the account is currently broadcasting live (empty = not live). */
+  async getLiveMediaIds(): Promise<string[]> {
+    const json = await this.request<{ data?: Array<{ id: string }> }>('GET', `/${encodeURIComponent(this.igUserId)}/live_media?fields=id`);
+    return (json.data ?? []).map((row) => row.id);
+  }
+
+  // ── B-18: comment moderation ──
+
+  /**
+   * Hide a comment: POST /{comment-id}?hide=true (Comment moderation).
+   * Reversible via the same endpoint with hide=false.
+   */
+  async hideComment(commentId: string): Promise<{ success?: boolean }> {
+    return this.request('POST', `/${encodeURIComponent(commentId)}?hide=true`);
+  }
+
+  /** Un-hide a previously hidden comment. */
+  async unhideComment(commentId: string): Promise<{ success?: boolean }> {
+    return this.request('POST', `/${encodeURIComponent(commentId)}?hide=false`);
+  }
+
+  // ── B-19: ice breakers / persistent menu (messenger_profile) ──
+
+  async setMessengerProfile(payload: Record<string, unknown>): Promise<{ success?: boolean }> {
+    return this.request('POST', `/${encodeURIComponent(this.igUserId)}/messenger_profile`, payload);
+  }
+
+  async getMessengerProfile(fields: string): Promise<Record<string, unknown>> {
+    return this.request('GET', `/${encodeURIComponent(this.igUserId)}/messenger_profile?fields=${encodeURIComponent(fields)}`);
+  }
+
+  async deleteMessengerProfile(fields: string): Promise<{ success?: boolean }> {
+    return this.request('DELETE', `/${encodeURIComponent(this.igUserId)}/messenger_profile?fields=${encodeURIComponent(fields)}`);
   }
 
   /**

@@ -28,7 +28,8 @@ import { registerListRecentReels } from "./list-recent-reels.js";
 import { registerBulkApplyGatesToReels } from "./bulk-apply-gates.js";
 import { registerCreateMediaPost } from "./create-media-post.js";
 import { registerManageMediaPosts } from "./manage-media-posts.js";
-import { registerListAccounts, registerAccountTools } from "./manage-accounts.js";
+import { registerListAccounts, registerAccountTools, registerConnectionHealthTools } from "./manage-accounts.js";
+import { registerMessengerProfileTools, registerCommentModerationTools } from "./messenger-profile.js";
 
 export function registerAllTools(server: McpServer, readOnly = process.env.IG_HARNESS_READ_ONLY === 'true'): void {
   registerListFollowers(server);
@@ -39,6 +40,7 @@ export function registerAllTools(server: McpServer, readOnly = process.env.IG_HA
   registerListCrmObjects(server);
   registerListRecentReels(server);
   registerListAccounts(server);
+  registerConnectionHealthTools(server);
   // Mixed list/create/update tools are excluded as a whole, not merely hidden
   // write actions. No mutating tool is registered in read-only mode.
   if (readOnly) return;
@@ -65,4 +67,6 @@ export function registerAllTools(server: McpServer, readOnly = process.env.IG_HA
   registerCreateMediaPost(server);
   registerManageMediaPosts(server);
   registerAccountTools(server);
+  registerMessengerProfileTools(server);
+  registerCommentModerationTools(server);
 }

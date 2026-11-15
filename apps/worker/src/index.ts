@@ -21,6 +21,9 @@ import { processFollowupDrip } from './services/engagement-gate.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
 import { pruneExpiredMessages, pruneDeliveryFailures } from './services/retention.js';
+import { pruneSignatureBuckets } from './lib/health.js';
+import { refreshTokenDebugIfNeeded } from './lib/token-debug.js';
+import { runConnectionHealth } from './lib/connection-health.js';
 import { processQueuedWebhooks } from './routes/webhook.js';
 import { processCommentRuleJobs } from './services/comment-rule-jobs.js';
 import { webhook } from './routes/webhook.js';
@@ -43,6 +46,7 @@ import { lineConnections } from './routes/line-connections.js';
 import { accounts } from './routes/accounts.js';
 import { capabilities } from './routes/capabilities.js';
 import { mediaPosts } from './routes/media-posts.js';
+import { messengerProfile } from './routes/messenger-profile.js';
 import { processMediaPosts } from './services/media-publish.js';
 import { ensureDefaultAccount, getAccountClient, toIgAccountRef } from './lib/accounts.js';
 import { recordCronRun, recordTokenValidity } from './lib/health.js';
@@ -63,6 +67,8 @@ export type Env = {
     /** Optional override for the env-seeded default account: instagram_login | facebook_login. */
     IG_CONNECTION_TYPE?: string;
     IG_REQUIRE_APPSECRET_PROOF?: string;
+    /** Optional: the Meta App id, used to build the app access token for /debug_token and app subscriptions. */
+    IG_APP_ID?: string;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
     IG_USER_ID: string;
@@ -159,6 +165,7 @@ app.route('/', integrations);
 app.route('/', lineConnections);
 app.route('/', accounts);
 app.route('/', capabilities);
+app.route('/', messengerProfile);
 app.route('/', mediaPosts);
 
 // LINE Harness UUID linkage endpoint
@@ -312,6 +319,7 @@ export async function runScheduledJobs(
   await env.DB.prepare('DELETE FROM rate_limit_buckets WHERE expires_at < ?').bind(Date.now()).run().catch(() => { console.warn('[rate-limit] cleanup unavailable; apply migrations'); });
   await pruneExpiredMessages(env.DB, env.MESSAGES_RETENTION_DAYS);
   await pruneDeliveryFailures(env.DB).catch(() => { console.warn('[retention] delivery_failures cleanup unavailable; apply migrations'); });
+  await pruneSignatureBuckets(env.DB).catch(() => { console.warn('[retention] signature buckets cleanup unavailable; apply migrations'); });
   const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });
 
   for (const account of igAccounts) {
@@ -339,6 +347,10 @@ export async function runScheduledJobs(
           await recordTokenValidity(env.DB, account.id, identityMatches,identityMatches?undefined:'account_id_mismatch');
           if (!identityMatches) continue;
           if (identityMatches && me.username && me.username !== account.username) await updateIgAccount(env.DB, account.id, { username: me.username });
+          // B-04: real token expiry / data-access expiry / scopes via debug_token.
+          ctx.waitUntil(refreshTokenDebugIfNeeded(env.DB, env, current).catch(() => {}));
+          // B-07: hourly connection-health refresh (stores checks + transitions).
+          ctx.waitUntil(runConnectionHealth(env.DB, env, current as unknown as Parameters<typeof runConnectionHealth>[2]).catch(() => {}));
         } catch (error) { await recordTokenValidity(env.DB, account.id, false,error instanceof InstagramApiError && error.tokenExpired?'token_expired':'api_unavailable'); continue; }
       }
       const ref = toIgAccountRef(account, env);

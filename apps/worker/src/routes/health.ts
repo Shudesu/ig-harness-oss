@@ -6,8 +6,11 @@ import {
   getAccountMigrationById,
   createAccountMigration,
   updateAccountMigration,
+  listIgAccounts,
+  getIgAccountById,
 } from '@ig-harness/db';
 import { getHealthSnapshot } from '../lib/health.js';
+import { runConnectionHealth, loadConnectionHealth, summarizeNextActions, type ConnectionHealthAccount } from '../lib/connection-health.js';
 import type { Env } from '../index.js';
 
 const health = new Hono<Env>();
@@ -20,6 +23,37 @@ const health = new Hono<Env>();
 health.get('/api/health', async (c) => {
   const snapshot = await getHealthSnapshot(c.env.DB);
   return c.json({ success: true, data: snapshot });
+});
+
+// ========== B-07: connection-health contract ==========
+
+// GET /api/connection-health?account_id= — owner/admin. Same JSON the MCP
+// connection_health tool returns. refresh=true re-runs the Graph-backed
+// probes right now instead of returning the stored (hourly) result.
+health.get('/api/connection-health', async (c) => {
+  try {
+    const accountId = c.req.query('account_id');
+    const refresh = c.req.query('refresh') === 'true';
+    const accounts = await listIgAccounts(c.env.DB);
+    if (accountId) {
+      const account = await getIgAccountById(c.env.DB, accountId);
+      if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+      const report = refresh
+        ? await runConnectionHealth(c.env.DB, c.env, account as unknown as ConnectionHealthAccount, { live: true })
+        : (await loadConnectionHealth(c.env.DB, accountId)) ?? (await runConnectionHealth(c.env.DB, c.env, account as unknown as ConnectionHealthAccount));
+      return c.json({ success: true, data: report });
+    }
+    const reports = [];
+    for (const account of accounts) {
+      reports.push(refresh
+        ? await runConnectionHealth(c.env.DB, c.env, account as unknown as ConnectionHealthAccount, { live: true })
+        : (await loadConnectionHealth(c.env.DB, account.id)) ?? (await runConnectionHealth(c.env.DB, c.env, account as unknown as ConnectionHealthAccount)));
+    }
+    return c.json({ success: true, data: { checkedAt: new Date().toISOString(), accounts: reports, nextActions: summarizeNextActions(reports) } });
+  } catch (err) {
+    console.error('GET /api/connection-health error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
 });
 
 // ========== アカウントヘルス ==========

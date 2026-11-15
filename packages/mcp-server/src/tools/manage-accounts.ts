@@ -23,6 +23,35 @@ export function registerListAccounts(server: McpServer): void {
   );
 }
 
+/** B-07: read-only health/next-action tools (registered even in read-only mode). */
+export function registerConnectionHealthTools(server: McpServer): void {
+  server.tool(
+    "connection_health",
+    "Connection health for an account (or all accounts when accountId is omitted): stable check ids (secret presence, webhook signature, token validity/expiry/scopes, app-side subscription, subscribed_apps, permissions, app mode, webhook freshness, delivery window) with status, summary, secret-free evidence and a nextAction. refresh=true re-runs the Graph-backed probes now.",
+    {
+      accountId: z.string().min(1).optional().describe("Account id from list_accounts; omit for all accounts"),
+      refresh: z.boolean().default(false).describe("Re-run the probes right now instead of returning the stored hourly result"),
+    },
+    async ({ accountId, refresh }) => {
+      try {
+        return text({ success: true, data: await getClient(undefined).accounts.connectionHealth(accountId, { refresh }) });
+      } catch (err) { return fail(err); }
+    },
+  );
+
+  server.tool(
+    "next_actions",
+    "Prioritized list of every non-ok check across all accounts, each with the nextAction to take. Call this at session start to see what needs attention.",
+    {},
+    async () => {
+      try {
+        const data = await getClient(undefined).accounts.connectionHealth(undefined) as { accounts?: unknown[]; nextActions?: unknown };
+        return text({ success: true, nextActions: data.nextActions ?? [] });
+      } catch (err) { return fail(err); }
+    },
+  );
+}
+
 export function registerAccountTools(server: McpServer): void {
   server.tool(
     "add_account",
@@ -94,6 +123,77 @@ export function registerAccountTools(server: McpServer): void {
       if (resubscribe && !confirm) return text({ success: false, requiresApproval: true, preview: { action: "resubscribe_webhooks", accountId }, message: "ユーザーの承認を得てから confirm=true で再実行してください。" });
       try {
         return text({ success: true, connection: await getClient(undefined).accounts.checkConnection(accountId, { subscribe: resubscribe }) });
+      } catch (err) { return fail(err); }
+    },
+  );
+
+  // ── B-01: update credentials on an existing account ──
+  server.tool(
+    "update_account_credentials",
+    "Update credentials of an existing account (owner only): accessToken / appSecret / verifyToken (and isActive). Existing credentials are validated against Meta before saving and preserved on failure. Secrets are never returned. Requires explicit human approval: call with confirm=false for a preview first.",
+    {
+      accountId: z.string().min(1).describe("Account id from list_accounts"),
+      accessToken: z.string().max(8192).optional().describe("New access token (IGAA… / EAA…)"),
+      appSecret: z.string().max(512).optional().describe("Meta App secret for this account's app"),
+      verifyToken: z.string().max(512).optional().describe("Webhook verify token for this account's app"),
+      isActive: z.boolean().optional(),
+      confirm: z.boolean().default(false),
+    },
+    async ({ accountId, accessToken, appSecret, verifyToken, isActive, confirm }) => {
+      const fields = [accessToken !== undefined && "accessToken", appSecret !== undefined && "appSecret", verifyToken !== undefined && "verifyToken", isActive !== undefined && "isActive"].filter(Boolean);
+      if (!fields.length) return text({ success: false, error: "at least one of accessToken / appSecret / verifyToken / isActive is required" });
+      if (!confirm) {
+        return text({
+          success: false,
+          requiresApproval: true,
+          preview: { action: "update_account_credentials", accountId, fields },
+          message: "ユーザーの承認を得てから confirm=true で再実行してください。secret を会話に貼らせたくない場合は、管理画面のアカウント編集欄から入力してもらってください。",
+        });
+      }
+      try {
+        const account = await getClient(undefined).accounts.update(accountId, {
+          ...(accessToken !== undefined ? { accessToken } : {}),
+          ...(appSecret !== undefined ? { appSecret } : {}),
+          ...(verifyToken !== undefined ? { verifyToken } : {}),
+          ...(isActive !== undefined ? { isActive } : {}),
+        });
+        // After a credential change, re-check the connection so the health
+        // result reflects the new secrets immediately.
+        let connection: unknown = null;
+        try { connection = await getClient(undefined).accounts.checkConnection(accountId); } catch { /* report update only */ }
+        return text({ success: true, account, connection });
+      } catch (err) { return fail(err); }
+    },
+  );
+
+  // ── B-08: app-side webhook inspection (read-only) ──
+  server.tool(
+    "app_webhook_status",
+    "Read the app-side webhook subscriptions (GET /{app-id}/subscriptions) for an account's Meta app: callback URL, subscribed fields, and what is missing (owner/admin).",
+    { accountId: z.string().min(1).describe("Account id from list_accounts") },
+    async ({ accountId }) => {
+      try {
+        return text({ success: true, data: await getClient(undefined).accounts.appWebhook(accountId) });
+      } catch (err) { return fail(err); }
+    },
+  );
+
+  // ── B-09: fix the app-side webhook subscription (approval required) ──
+  server.tool(
+    "fix_app_webhook",
+    "Repair the app-side webhook subscription for an account's Meta app (owner only): reads the current subscriptions, generates a fresh verify token (saved on the account automatically), and configures callback URL + fields via approval. Refuses to overwrite a callback URL pointing at a different service. Requires explicit human approval: call with confirm=false for a preview first.",
+    {
+      accountId: z.string().min(1).describe("Account id from list_accounts"),
+      confirm: z.boolean().default(false).describe("Must be true, and only after the user explicitly approved writing to the Meta app"),
+    },
+    async ({ accountId, confirm }) => {
+      if (!confirm) {
+        let status: unknown = null;
+        try { status = await getClient(undefined).accounts.appWebhook(accountId); } catch { /* preview only */ }
+        return text({ success: false, requiresApproval: true, preview: { action: "fix_app_webhook", accountId, currentStatus: status }, message: "この操作は Meta アプリの Webhook 設定を書き換えます。ユーザーの承認を得てから confirm=true で再実行してください。" });
+      }
+      try {
+        return text({ success: true, data: await getClient(undefined).accounts.fixAppWebhook(accountId) });
       } catch (err) { return fail(err); }
     },
   );

@@ -16,6 +16,8 @@ import type { IgAccount } from '@ig-harness/db';
 import { requireRole } from '../middleware/role-guard.js';
 import { ensureDefaultAccount, getAccountClient } from '../lib/accounts.js';
 import { checkAccountConnection, loadConnectionReport, saveConnectionReport, type ConnectionReport } from '../lib/account-connection.js';
+import { loadTokenDebug } from '../lib/token-debug.js';
+import { checkAppWebhook, fixAppWebhook } from '../lib/app-webhook.js';
 import { recordDeliveryFailure } from '../lib/delivery-failures.js';
 
 import type { Env } from '../index.js';
@@ -76,7 +78,7 @@ accounts.get('/api/accounts', requireRole('owner', 'admin'), async (c) => {
   try {
     await ensureDefaultAccount(c.env, c.env.DB);
     const items = await listIgAccounts(c.env.DB);
-    const data = await Promise.all(items.map(async (row) => ({ ...serializeAccount(row), connection: await loadConnectionReport(c.env.DB, row.id) })));
+    const data = await Promise.all(items.map(async (row) => ({ ...serializeAccount(row), connection: await loadConnectionReport(c.env.DB, row.id), tokenDebug: await loadTokenDebug(c.env.DB, row.id) })));
     return c.json({ success: true, data });
   } catch (err) {
     console.error('GET /api/accounts error:', err);
@@ -181,8 +183,11 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
       ...(verified ? { connectionType: verified.connection_type, pageId: verified.page_id } : {}),
     });
 
-    if (body.accessToken !== undefined) await recordTokenValidity(c.env.DB,id,true).catch(()=>{});
-    if (body.accessToken !== undefined) await c.env.DB.prepare("DELETE FROM integration_settings WHERE key IN (?,?)").bind(`health:graph_backoff_until:${id}`,`health:token_refresh_attempt:${id}`).run();
+    if (body.accessToken !== undefined) {
+      await recordTokenValidity(c.env.DB,id,true).catch(()=>{});
+      // B-04: a new token invalidates the stored debug_token inspection.
+      await c.env.DB.prepare("DELETE FROM integration_settings WHERE key IN (?,?,?)").bind(`health:graph_backoff_until:${id}`,`health:token_refresh_attempt:${id}`,`health:token_debug:${id}`).run();
+    }
     return c.json({ success: true, data: updated ? serializeAccount(updated) : null });
   } catch (err) {
     console.error('PATCH /api/accounts/:id error:', err instanceof Error ? err.name : 'unknown');
@@ -195,6 +200,39 @@ accounts.get('/api/accounts/:id/connection', requireRole('owner', 'admin'), asyn
   const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   return c.json({ success: true, data: await loadConnectionReport(c.env.DB, account.id) });
+});
+
+// GET /api/accounts/:id/app-webhook - B-08: read the app-side webhook
+// subscriptions (GET /{app-id}/subscriptions with an app access token).
+accounts.get('/api/accounts/:id/app-webhook', requireRole('owner', 'admin'), async (c) => {
+  const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  try {
+    const report = await checkAppWebhook(c.env, c.env.DB, account);
+    return c.json({ success: true, data: report });
+  } catch (error) {
+    console.error('GET /api/accounts/:id/app-webhook error:', error instanceof Error ? error.name : 'unknown');
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// POST /api/accounts/:id/fix-app-webhook - B-09: repair the app-side
+// subscription with a freshly generated verify token. Refuses to overwrite a
+// foreign callback URL (the owner must fix that in the App Dashboard).
+accounts.post('/api/accounts/:id/fix-app-webhook', requireRole('owner'), async (c) => {
+  const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  if (!account.is_active) return c.json({ success: false, error: 'account is deactivated' }, 400);
+  try {
+    const result = await fixAppWebhook(c.env, c.env.DB, account, {
+      updateAccountVerifyToken: async (verifyToken) => { await updateIgAccount(c.env.DB, account.id, { verifyToken }); },
+    });
+    const status = result.fixed ? 200 : result.refused ? 409 : 502;
+    return c.json({ success: result.fixed, data: result }, status);
+  } catch (error) {
+    console.error('POST /api/accounts/:id/fix-app-webhook error:', error instanceof Error ? error.name : 'unknown');
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
 });
 
 // POST /api/accounts/:id/connection-check - re-run (optionally re-subscribe)

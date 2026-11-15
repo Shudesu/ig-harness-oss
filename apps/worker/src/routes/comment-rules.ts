@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { jstNow } from '@ig-harness/db';
-import { resolveAccount } from '../lib/accounts.js';
+import { resolveAccount, getAccountClient } from '../lib/accounts.js';
+import { loadModerationSettings, saveModerationSettings, parseModerationSettings, loadHiddenComments, unhideComment } from '../lib/comment-moderation.js';
+import { requireRole } from '../middleware/role-guard.js';
 import type { Env } from '../index.js';
 
 const MAX_REPLY_TEXT = 2200;
@@ -247,6 +249,37 @@ commentRules.delete('/api/comment-rules/:id', async (c) => {
     console.error('DELETE /api/comment-rules/:id error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
   }
+});
+
+// ── B-18: comment auto-hide (NG words / spam) ──
+
+commentRules.get('/api/comment-moderation', requireRole('owner', 'admin'), async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  return c.json({ success: true, data: { settings: await loadModerationSettings(c.env.DB, account.id), hidden: await loadHiddenComments(c.env.DB, account.id) } });
+});
+
+commentRules.put('/api/comment-moderation', requireRole('owner'), async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const body = await c.req.json().catch(() => null);
+  const parsed = parseModerationSettings(body);
+  if ('error' in parsed) return c.json({ success: false, error: parsed.error }, 400);
+  await saveModerationSettings(c.env.DB, account.id, parsed);
+  return c.json({ success: true, data: parsed });
+});
+
+commentRules.post('/api/comment-moderation/unhide', requireRole('owner'), async (c) => {
+  const account = await resolveAccount(c);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  const body = await c.req.json().catch(() => null) as { commentId?: unknown } | null;
+  if (!body || typeof body.commentId !== 'string' || !body.commentId.trim()) {
+    return c.json({ success: false, error: 'commentId is required' }, 400);
+  }
+  const client = await getAccountClient(c.env, c.env.DB, account);
+  const result = await unhideComment(c.env.DB, client, account.id, body.commentId.trim());
+  if (!result.ok) return c.json({ success: false, error: result.error ?? 'unhide failed' }, 502);
+  return c.json({ success: true, data: { commentId: body.commentId.trim() } });
 });
 
 export { commentRules };

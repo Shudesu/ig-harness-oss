@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { recordWebhookReceived, recordCronRun, recordDmFailure, recordTokenValidity, getHealthSnapshot } from '../health.js';
+import { recordWebhookReceived, recordCronRun, recordDmFailure, recordTokenValidity, getHealthSnapshot, recordSignatureFailure, recordSignatureSuccess, signatureFailures1h, signatureSuccesses1h, signatureLastAt } from '../health.js';
 import type { IgAccount } from '@ig-harness/db';
 
 // Mock DB that tracks upserts (run() calls) so we can assert on key names.
@@ -260,5 +260,38 @@ describe('health helpers', () => {
     expect(snap.accounts[0]!.token_days_left).toBeNull();
     // ok should be true when token_expires_at is null (unknown expiry, not expired)
     expect(snap.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B-02: webhook signature failure / success counters
+// ---------------------------------------------------------------------------
+
+describe('signature counters', () => {
+  it('recordSignatureFailure bumps the hourly bucket and stores lastAt', async () => {
+    const db = createMockDb();
+    await recordSignatureFailure(db, ['acc1']);
+    const bucket = db.upserts.find((u) => u.key.startsWith('health:sig_fail:acc1:'));
+    const lastAt = db.upserts.find((u) => u.key === 'health:sig_fail_last:acc1');
+    expect(bucket).toBeDefined();
+    expect(lastAt).toBeDefined();
+    expect(lastAt!.value).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('no account estimate is recorded under the unknown key', async () => {
+    const db = createMockDb();
+    await recordSignatureFailure(db, []);
+    expect(db.upserts.some((u) => u.key.startsWith('health:sig_fail:unknown:'))).toBe(true);
+  });
+
+  it('successes and failures are counted separately and summed over 2 hour buckets', async () => {
+    const db = createMockDb();
+    await recordSignatureSuccess(db, ['acc1']);
+    await recordSignatureFailure(db, ['acc1']);
+    await recordSignatureFailure(db, ['acc1']);
+    const settings = new Map(Object.entries(db.settings));
+    expect(signatureSuccesses1h(settings, 'acc1')).toBe(1);
+    expect(signatureFailures1h(settings, 'acc1')).toBe(2);
+    expect(signatureLastAt(settings, 'acc1')).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
