@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { accountsApi, type IgAccountSummary } from '@/lib/api'
+import { accountsApi, type ConnectionReport, type IgAccountSummary } from '@/lib/api'
+import ConnectionReportView from '@/components/connection-report'
 import { useAccount } from '@/contexts/account-context'
 
 const ACCENT = '#E1306C'
@@ -30,6 +31,8 @@ export default function IgAccountsSection() {
   const [verifyToken, setVerifyToken] = useState('')
   const [showAppFields, setShowAppFields] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [subscribeWebhooks, setSubscribeWebhooks] = useState(true)
+  const [addResult, setAddResult] = useState<{ name: string; connection: ConnectionReport | null } | null>(null)
 
   // Per-row token update mini form
   const [tokenEditId, setTokenEditId] = useState<string | null>(null)
@@ -66,12 +69,18 @@ export default function IgAccountsSection() {
     if (!accessToken.trim()) return
     setSaving(true)
     setError('')
+    setAddResult(null)
     try {
-      await accountsApi.create({
+      const created = await accountsApi.create({
         igUserId: igUserId.trim() || undefined,
         accessToken: accessToken.trim(),
         ...(appSecret.trim() ? { appSecret: appSecret.trim() } : {}),
         ...(verifyToken.trim() ? { verifyToken: verifyToken.trim() } : {}),
+        subscribeWebhooks,
+      })
+      setAddResult({
+        name: created.username ? `@${created.username}` : created.igUserId,
+        connection: created.connection ?? null,
       })
       setIgUserId('')
       setAccessToken('')
@@ -104,7 +113,7 @@ export default function IgAccountsSection() {
 
   const handleToggleActive = async (account: IgAccountSummary) => {
     const next = !account.isActive
-    if (!next && !confirm(`「${account.username ? `@${account.username}` : account.igUserId}」を停止しますか？\n停止中は Webhook 受信・配信が行われません`)) {
+    if (!next && !confirm(`「${account.username ? `@${account.username}` : account.igUserId}」の連携を解除（停止）しますか？\n解除中は Webhook 受信・配信が行われません。データは保持され、後から有効化できます`)) {
       return
     }
     setError('')
@@ -225,7 +234,7 @@ export default function IgAccountsSection() {
                                   : 'text-green-600 bg-kumo-base border-green-200 hover:bg-green-50'
                               }`}
                             >
-                              {account.isActive ? '停止' : '有効化'}
+                              {account.isActive ? '解除' : '有効化'}
                             </button>
                           )}
                         </div>
@@ -319,6 +328,16 @@ export default function IgAccountsSection() {
               )}
             </div>
 
+            <label className="flex items-center gap-2 text-xs text-kumo-default cursor-pointer">
+              <input
+                type="checkbox"
+                checked={subscribeWebhooks}
+                onChange={(e) => setSubscribeWebhooks(e.target.checked)}
+                className="w-4 h-4 rounded border-kumo-line"
+              />
+              Webhook購読を自動で行う（コメント・メッセージを受信するために必要）
+            </label>
+
             <div className="pt-1">
               <button
                 type="button"
@@ -330,6 +349,24 @@ export default function IgAccountsSection() {
                 {saving ? '追加中...' : 'アカウントを追加'}
               </button>
             </div>
+
+            {addResult && (
+              <div className="rounded-lg border border-green-200 bg-green-50/40 p-3 space-y-2" role="status">
+                <p className="text-xs font-semibold text-green-800">
+                  {addResult.name} を追加しました。購読結果・権限チェック:
+                </p>
+                {addResult.connection ? (
+                  <ConnectionReportView report={addResult.connection} />
+                ) : (
+                  <p className="text-xs text-kumo-subtle">
+                    接続チェックの結果は返されませんでした。「接続状態」ページで再チェックできます。
+                  </p>
+                )}
+                <a href="/connection/" className="inline-block text-xs underline text-kumo-subtle hover:text-[#E1306C]">
+                  接続状態ページで確認する →
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

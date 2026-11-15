@@ -3,8 +3,18 @@
 import DeliveryStatus from '@/components/delivery-status'
 
 import { useState, useEffect, useCallback } from 'react'
-import type { CommentRule, MatchType, ResponseType } from '@ig-harness/shared'
-import { api, postsApi, type MediaItem } from '@/lib/api'
+import type { MatchType, ResponseType } from '@ig-harness/shared'
+import {
+  api,
+  postsApi,
+  COMMENT_REPLY_MODE_LABELS,
+  type MediaItem,
+  type CommentRuleApi as CommentRule,
+  type CommentRuleInput,
+  type CommentRuleDelivery,
+  type CommentReplyMode,
+} from '@/lib/api'
+import { metaErrorHint, formatDateTime } from '@/lib/meta-errors'
 import Header from '@/components/layout/header'
 import MediaPickerModal from '@/components/media-picker-modal'
 
@@ -126,6 +136,127 @@ interface FormState {
   responseText: string
   delaySeconds: number
   isActive: boolean
+  /** Public comment reply text. '' = no public reply. */
+  replyText: string
+  /** When true, send null so the worker uses its default public reply. */
+  replyUseDefault: boolean
+  replyMode: CommentReplyMode
+}
+
+const DEFAULT_REPLY_PREVIEW = '@{{username}} コメントありがとう！📩 DMを送りました！'
+
+const DELIVERY_STATUS_LABELS: Record<string, string> = {
+  sent: '送信済み',
+  pending: '送信待ち',
+  processing: '処理中',
+  failed: '失敗',
+  skipped: '対象外',
+  uncertain: '要確認',
+}
+
+const DELIVERY_REASON_LABELS: Record<string, string> = {
+  window_closed: '24時間の送信枠外',
+  standby: '他のアプリが応答を担当',
+  private_reply_standby: '他のアプリが応答を担当',
+  rate_limited: 'Metaの制限により待機中',
+  outcome_unknown: '送信結果の確認が必要',
+  private_reply_outcome_unknown: '送信結果の確認が必要',
+  interrupted: '処理停止後の結果確認が必要',
+  public_reply_failed: '公開コメントの返信に失敗',
+  private_reply_expired: 'コメントから7日を超過',
+  private_reply_already_sent: 'このコメントには送信済み',
+  live_comment_not_supported: 'Liveコメントは未対応',
+}
+
+function describeError(code: number | null | undefined, message: string | null | undefined): string | null {
+  if ((code === null || code === undefined) && !message) return null
+  const hint = metaErrorHint(code)
+  const parts: string[] = []
+  if (code !== null && code !== undefined) parts.push(`Metaコード ${code}`)
+  if (hint) parts.push(hint)
+  if (message) parts.push(`（${message}）`)
+  return parts.join(' ')
+}
+
+function RecentDeliveries({ refreshKey }: { refreshKey: number }) {
+  const [rows, setRows] = useState<CommentRuleDelivery[] | null>(null)
+  const [error, setError] = useState('')
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    let active = true
+    setError('')
+    api.commentRules
+      .deliveries()
+      .then((res) => { if (active) setRows(res.data ?? []) })
+      .catch(() => { if (active) setError('配信履歴を取得できませんでした') })
+    return () => { active = false }
+  }, [refreshKey, tick])
+
+  return (
+    <section className="mt-8 bg-kumo-base rounded-lg border border-kumo-line p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-kumo-default">最近の配信結果</h2>
+        <button type="button" className="text-xs underline text-kumo-subtle" onClick={() => setTick((n) => n + 1)}>更新</button>
+      </div>
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {rows === null && !error ? (
+        <p className="text-sm text-kumo-subtle">読み込み中...</p>
+      ) : rows && rows.length === 0 ? (
+        <p className="text-sm text-kumo-subtle">まだ配信履歴はありません</p>
+      ) : rows ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] text-kumo-subtle border-b border-kumo-line">
+                <th className="py-2 pr-3 font-medium">日時</th>
+                <th className="py-2 pr-3 font-medium">相手</th>
+                <th className="py-2 pr-3 font-medium">DM</th>
+                <th className="py-2 pr-3 font-medium">公開返信</th>
+                <th className="py-2 font-medium">エラー内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const dmError = describeError(row.errorCode, row.errorMessage)
+                const replyError = describeError(row.publicReplyErrorCode, row.publicReplyErrorMessage)
+                return (
+                  <tr key={String(row.id)} className="border-b border-kumo-line align-top">
+                    <td className="py-2 pr-3 text-xs text-kumo-subtle whitespace-nowrap">{formatDateTime(row.createdAt)}</td>
+                    <td className="py-2 pr-3 text-xs">{row.username ? `@${row.username}` : '—'}</td>
+                    <td className="py-2 pr-3 text-xs whitespace-nowrap">
+                      <span className={row.status === 'sent' ? 'text-green-700' : row.status === 'failed' ? 'text-red-600' : 'text-kumo-default'}>
+                        {DELIVERY_STATUS_LABELS[row.status] ?? row.status}
+                      </span>
+                      {row.reason && (
+                        <div className="text-[11px] text-kumo-subtle">{DELIVERY_REASON_LABELS[row.reason] ?? row.reason}</div>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-xs whitespace-nowrap">
+                      {row.publicReplyStatus === 'sent' ? (
+                        <span className="text-green-700">✅ 返信済み</span>
+                      ) : row.publicReplyStatus === 'failed' ? (
+                        <span className="text-red-600">❌ 失敗</span>
+                      ) : (
+                        <span className="text-kumo-subtle">—</span>
+                      )}
+                      {row.replyMode && (
+                        <div className="text-[11px] text-kumo-subtle">{COMMENT_REPLY_MODE_LABELS[row.replyMode] ?? row.replyMode}</div>
+                      )}
+                    </td>
+                    <td className="py-2 text-xs text-kumo-default">
+                      {dmError && <div><span className="text-kumo-subtle">DM: </span>{dmError}</div>}
+                      {replyError && <div><span className="text-kumo-subtle">公開返信: </span>{replyError}</div>}
+                      {!dmError && !replyError && <span className="text-kumo-subtle">—</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  )
 }
 
 const DEFAULT_FORM: FormState = {
@@ -138,6 +269,9 @@ const DEFAULT_FORM: FormState = {
   responseText: '',
   delaySeconds: 0,
   isActive: true,
+  replyText: '',
+  replyUseDefault: true,
+  replyMode: 'thread',
 }
 
 export default function CommentRulesPage() {
@@ -149,6 +283,7 @@ export default function CommentRulesPage() {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  const [deliveryRefresh, setDeliveryRefresh] = useState(0)
 
   const loadRules = useCallback(async () => {
     setLoading(true)
@@ -191,6 +326,9 @@ export default function CommentRulesPage() {
       responseText: (rule.responseBody as { text?: string }).text || '',
       delaySeconds: rule.delaySeconds,
       isActive: rule.isActive,
+      replyText: rule.replyText ?? '',
+      replyUseDefault: rule.replyText === null || rule.replyText === undefined,
+      replyMode: rule.replyMode === 'mention' ? 'mention' : 'thread',
     })
     setFormError('')
     setShowForm(true)
@@ -224,7 +362,7 @@ export default function CommentRulesPage() {
         responseBody = { text: form.responseText }
     }
 
-    const payload: Omit<CommentRule, 'id' | 'createdAt' | 'updatedAt'> = {
+    const payload: CommentRuleInput = {
       name: form.name,
       mediaId: form.mediaId || null,
       keyword: form.keyword || null,
@@ -233,6 +371,8 @@ export default function CommentRulesPage() {
       responseBody,
       delaySeconds: form.delaySeconds,
       isActive: form.isActive,
+      replyText: form.replyUseDefault ? null : form.replyText.trim(),
+      replyMode: form.replyMode,
     }
 
     try {
@@ -247,6 +387,7 @@ export default function CommentRulesPage() {
         setForm(DEFAULT_FORM)
         setEditingId(null)
         loadRules()
+        setDeliveryRefresh((n) => n + 1)
       } else {
         setFormError(res.error || '保存に失敗しました')
       }
@@ -399,13 +540,13 @@ export default function CommentRulesPage() {
             </div>
             <div>
               <label className="block text-xs font-medium text-kumo-subtle mb-1">
-                {form.responseType === 'image' ? '画像URL' : '返信テキスト'}
+                {form.responseType === 'image' ? 'DMで送る画像URL' : 'DM本文（相手のDMに届く）'}
               </label>
               {form.responseType === 'text' ? (
                 <textarea
                   className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
                   rows={3}
-                  placeholder="自動返信するメッセージを入力"
+                  placeholder="DMで送るメッセージを入力"
                   value={form.responseText}
                   onChange={(e) => setForm({ ...form, responseText: e.target.value })}
                 />
@@ -418,6 +559,52 @@ export default function CommentRulesPage() {
                   onChange={(e) => setForm({ ...form, responseText: e.target.value })}
                 />
               )}
+            </div>
+            <div className="rounded-lg border border-kumo-line p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="ruleReplyText" className="block text-xs font-medium text-kumo-subtle">公開返信文（コメント欄に表示）</label>
+                <label className="flex items-center gap-1.5 text-xs text-kumo-default cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-kumo-line"
+                    checked={form.replyUseDefault}
+                    onChange={(e) => setForm({ ...form, replyUseDefault: e.target.checked })}
+                  />
+                  既定文を使う
+                </label>
+              </div>
+              {form.replyUseDefault ? (
+                <p className="text-xs text-kumo-subtle bg-kumo-canvas border border-kumo-line rounded px-3 py-2">
+                  既定文: {DEFAULT_REPLY_PREVIEW}
+                </p>
+              ) : (
+                <textarea
+                  id="ruleReplyText"
+                  className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+                  rows={2}
+                  placeholder="空欄なら公開返信しません（例: @{{username}} DM送ったよ📩）"
+                  value={form.replyText}
+                  onChange={(e) => setForm({ ...form, replyText: e.target.value })}
+                />
+              )}
+              {!form.replyUseDefault && !form.replyText.trim() && (
+                <p className="text-[11px] text-amber-700">空欄のため公開返信はしません（DMのみ）</p>
+              )}
+              <div>
+                <label htmlFor="ruleReplyMode" className="block text-xs font-medium text-kumo-subtle mb-1">返信方法</label>
+                <select
+                  id="ruleReplyMode"
+                  className="w-full border border-kumo-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-kumo-base"
+                  value={form.replyMode}
+                  onChange={(e) => setForm({ ...form, replyMode: e.target.value === 'mention' ? 'mention' : 'thread' })}
+                >
+                  <option value="thread">{COMMENT_REPLY_MODE_LABELS.thread}</option>
+                  <option value="mention">{COMMENT_REPLY_MODE_LABELS.mention}</option>
+                </select>
+                <p className="mt-1 text-[11px] text-kumo-subtle">
+                  <code className="font-mono">{'{{username}}'}</code> でコメントした人のユーザー名を差し込めます。自分が所有・管理するアカウントなら Standard Access で動作。他人のアカウントを扱う場合のみ App Review（Advanced Access）が必要。
+                </p>
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-kumo-subtle mb-1">遅延 (秒)</label>
@@ -511,7 +698,11 @@ export default function CommentRulesPage() {
                   ) : rule.keyword ? (
                     <span>キーワード: <span className="font-medium text-kumo-default">{rule.keyword}</span> ({MATCH_TYPE_LABELS[rule.matchType]})</span>
                   ) : null}
-                  <span>返信タイプ: <span className="font-medium text-kumo-default">{RESPONSE_TYPE_LABELS[rule.responseType]}</span></span>
+                  <span>DM: <span className="font-medium text-kumo-default">{RESPONSE_TYPE_LABELS[rule.responseType]}</span></span>
+                  <span>公開返信: <span className="font-medium text-kumo-default">
+                    {rule.replyText === '' ? 'しない' : rule.replyText == null ? '既定文' : 'カスタム'}
+                    {rule.replyText !== '' && `（${COMMENT_REPLY_MODE_LABELS[rule.replyMode === 'mention' ? 'mention' : 'thread']}）`}
+                  </span></span>
                   {rule.delaySeconds > 0 && (
                     <span>遅延: <span className="font-medium text-kumo-default">{rule.delaySeconds}秒</span></span>
                   )}
@@ -557,6 +748,7 @@ export default function CommentRulesPage() {
           ))}
         </div>
       )}
+      <RecentDeliveries refreshKey={deliveryRefresh} />
     </div>
   )
 }

@@ -8,6 +8,11 @@ import {
   lineConnectionsApi,
   richMessagesApi,
   postsApi,
+  deliveryFailuresApi,
+  COMMENT_REPLY_MODE_LABELS,
+  DELIVERY_FAILURE_SOURCE_LABELS,
+  type DeliveryFailure,
+  type DeliveryFailureSource,
   type EngagementGate,
   type LineConnection,
   type RichMessage,
@@ -16,6 +21,7 @@ import {
 } from '@/lib/api'
 import Header from '@/components/layout/header'
 import RichMessagePreview from '@/components/rich-message-preview'
+import { formatDateTime, metaErrorHint } from '@/lib/meta-errors'
 
 /**
  * Next.js static export bakes the generateStaticParams value ('_') into
@@ -364,10 +370,21 @@ export default function CampaignDetailClient() {
           </div>
         )}
 
+        {gate.trigger_type === 'comment_on_post' && (
+          <div>
+            <div className="text-xs font-medium text-kumo-subtle mb-1.5">返信方法（公開返信）</div>
+            <div className="text-sm text-kumo-default">
+              {gate.comment_reply_text
+                ? COMMENT_REPLY_MODE_LABELS[gate.comment_reply_mode === 'mention' ? 'mention' : 'thread']
+                : '公開返信しない（DMのみ）'}
+            </div>
+          </div>
+        )}
+
         {gate.trigger_type === 'comment_on_post' && gate.comment_reply_text && (
           <div>
             <div className="text-xs font-medium text-kumo-subtle mb-1.5">
-              コメント公開返信
+              公開返信文（コメント欄）
               {parseReplyPatterns(gate.comment_reply_text).length > 1 &&
                 `（${parseReplyPatterns(gate.comment_reply_text).length}パターンからランダム）`}
             </div>
@@ -463,7 +480,57 @@ export default function CampaignDetailClient() {
           <FlowStep kind="end" label="完了" sub="ユーザーは LP へ到達" />
         </div>
       </section>
+
+      {gate.trigger_type === 'comment_on_post' && <RecentReplyFailures />}
     </div>
+  )
+}
+
+/**
+ * Recent public-reply / comment-DM failures for the selected account.
+ * The failure log is account-scoped (not per campaign), so this lists every
+ * campaign's comment failures; good enough to spot permission/token issues.
+ */
+function RecentReplyFailures() {
+  const [rows, setRows] = useState<DeliveryFailure[] | null>(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    deliveryFailuresApi
+      .list({ limit: 20 })
+      .then((all) => {
+        if (active) setRows(all.filter((r) => r.source === 'public_reply' || r.source === 'private_reply'))
+      })
+      .catch(() => { if (active) setError('失敗ログを取得できませんでした') })
+    return () => { active = false }
+  }, [])
+  return (
+    <section className="mt-8 bg-kumo-base rounded-xl border border-kumo-line p-5">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold text-kumo-default">最近の失敗（コメント返信・コメントDM）</h2>
+        <Link href="/connection" className="text-xs underline text-kumo-subtle">接続状態・全ログ →</Link>
+      </div>
+      <p className="text-[11px] text-kumo-subtle mb-3">このアカウント全体の直近の失敗です（キャンペーン別ではありません）。</p>
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {rows === null && !error && <p className="text-sm text-kumo-subtle">読み込み中...</p>}
+      {rows && rows.length === 0 && <p className="text-sm text-green-700">✅ 最近の失敗はありません</p>}
+      {rows && rows.length > 0 && (
+        <ul className="divide-y divide-kumo-line">
+          {rows.map((r) => (
+            <li key={r.id} className="py-2 text-sm">
+              <div className="flex flex-wrap gap-x-3 text-xs text-kumo-subtle">
+                <span>{formatDateTime(r.createdAt)}</span>
+                <span>{DELIVERY_FAILURE_SOURCE_LABELS[r.source as DeliveryFailureSource] ?? r.source}</span>
+                {r.username && <span>@{r.username}</span>}
+                {r.errorCode !== null && <span>Metaコード {r.errorCode}</span>}
+              </div>
+              <div className="text-kumo-default">{r.hint ?? metaErrorHint(r.errorCode) ?? '原因を確認してください'}</div>
+              {r.message && <div className="text-xs text-kumo-subtle break-words">{r.message}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
