@@ -2,7 +2,7 @@ import { createAppSecretProof } from './proof.js';
 import { graphApiVersion } from './config.js';
 export { DEFAULT_GRAPH_API_VERSION } from './config.js';
 import { parseGraphUsage, type GraphObservation } from './usage.js';
-import { InstagramApiError, InstagramTransportError } from './errors.js';
+import { InstagramApiError, InstagramTransportError, safeMetaText } from './errors.js';
 import type {
   SendTextPayload,
   SendImagePayload,
@@ -22,10 +22,46 @@ import type {
 
 export const MAX_RICH_MESSAGE_BLOCKS = 10;
 
+/**
+ * How the token was issued.
+ * - instagram_login: Instagram API with Instagram Login (IGAA… tokens, graph.instagram.com)
+ * - facebook_login: Instagram API with Facebook Login / Unified login (EAA… user or
+ *   system-user tokens, graph.facebook.com). New Meta apps only offer this one.
+ */
+export type IgConnectionType = 'instagram_login' | 'facebook_login';
+export const IG_CONNECTION_TYPES: readonly IgConnectionType[] = ['instagram_login', 'facebook_login'];
+
+export function graphHost(connectionType: IgConnectionType = 'instagram_login'): string {
+  return connectionType === 'facebook_login' ? 'https://graph.facebook.com' : 'https://graph.instagram.com';
+}
+
+/**
+ * Best-effort token kind from its prefix. Facebook user / page / system-user
+ * tokens start with "EAA"; Instagram Login tokens start with "IG" (IGAA/IGQV…).
+ * Unknown prefixes return null so callers keep the historical default.
+ */
+export function detectTokenConnectionType(token: string): IgConnectionType | null {
+  const value = token.trim();
+  if (/^EAA/.test(value)) return 'facebook_login';
+  if (/^IG/.test(value)) return 'instagram_login';
+  return null;
+}
+
+/** Webhook fields subscribed on the IG user node (Instagram Login and Unified login). */
+export const IG_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] as const;
+/**
+ * Page-linked Facebook Login subscribes the Page edge, which takes Page field
+ * names (plural messaging_referrals; IG comments arrive via the app-level
+ * Instagram object subscription, not a Page field).
+ */
+export const PAGE_WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referrals'] as const;
+
 export class InstagramClient {
   private accessToken: string;
   private igUserId: string;
   private baseUrl: string;
+  readonly connectionType: IgConnectionType;
+  private pageId?: string;
   private timeoutMs: number;
   private maxReadRetries: number;
   private onResponse?: (observation: GraphObservation) => Promise<void> | void;
@@ -34,7 +70,7 @@ export class InstagramClient {
 
   private transformMessage?: (recipientId: string, message: unknown, recipient: { id?: string; comment_id?: string }) => Promise<unknown>;
 
-  constructor(opts: { transformMessage?: (recipientId: string, message: unknown, recipient: { id?: string; comment_id?: string }) => Promise<unknown>; accessToken: string; igUserId: string; apiVersion?: string; timeoutMs?: number; maxReadRetries?: number; appSecret?: string; beforeRequest?: () => Promise<void> | void; onResponse?: (observation: GraphObservation) => Promise<void> | void }) {
+  constructor(opts: { connectionType?: IgConnectionType; pageId?: string | null; transformMessage?: (recipientId: string, message: unknown, recipient: { id?: string; comment_id?: string }) => Promise<unknown>; accessToken: string; igUserId: string; apiVersion?: string; timeoutMs?: number; maxReadRetries?: number; appSecret?: string; beforeRequest?: () => Promise<void> | void; onResponse?: (observation: GraphObservation) => Promise<void> | void }) {
     this.accessToken = opts.accessToken;
     this.transformMessage = opts.transformMessage;
     this.igUserId = opts.igUserId;
@@ -42,7 +78,10 @@ export class InstagramClient {
     this.appSecret = opts.appSecret;
     this.onResponse = opts.onResponse;
     this.beforeRequest = opts.beforeRequest;
-    this.baseUrl = `https://graph.instagram.com/${version}`;
+    this.connectionType = opts.connectionType ?? 'instagram_login';
+    if (!IG_CONNECTION_TYPES.includes(this.connectionType)) throw new Error('Invalid connection type');
+    this.pageId = opts.pageId || undefined;
+    this.baseUrl = `${graphHost(this.connectionType)}/${version}`;
     this.timeoutMs = opts.timeoutMs ?? 8000;
     this.maxReadRetries = opts.maxReadRetries ?? 2;
     if (!Number.isFinite(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30_000) throw new Error('Invalid request timeout');
@@ -78,13 +117,13 @@ export class InstagramClient {
         const usage = parseGraphUsage(res.headers);
         let value: unknown;
         try { value=await res.json(); } catch (error) { if(res.ok) throw error; }
-        const graphError=value && typeof value==='object' ? (value as {error?:{code?:number;error_subcode?:number}}).error : undefined;
+        const graphError=value && typeof value==='object' ? (value as {error?:{code?:number;error_subcode?:number;message?:string;type?:string}}).error : undefined;
         if (res.ok && !graphError) { await observe({ status: res.status, usage }); return value as T; }
         const graph=graphError ?? {};
         const retryHeader = res.headers?.get('retry-after');
         const retryMs = retryHeader ? (/^\d+$/.test(retryHeader) ? Number(retryHeader) * 1000 : Date.parse(retryHeader) - Date.now()) : undefined;
         await observe({ status: res.status, code: graph.code, subcode: graph.error_subcode, retryAfterMs: retryMs, usage });
-        error = new InstagramApiError(`Instagram API error ${res.status}${graph.code ? ` (code ${graph.code})` : ''}`, res.status, graph.code, graph.error_subcode, retryMs);
+        error = new InstagramApiError(`Instagram API error ${res.status}${graph.code ? ` (code ${graph.code})` : ''}`, res.status, graph.code, graph.error_subcode, retryMs, safeMetaText(graph.message), safeMetaText(graph.type));
       } catch {
         // Never include a URL, token, or raw upstream response in the error.
         error = new InstagramTransportError(controller.signal.aborted);
@@ -98,18 +137,28 @@ export class InstagramClient {
     }
   }
 
+  /**
+   * Messaging node. Instagram Login sends from the IG user. With Facebook
+   * Login the documented node is the linked Page when one is known; without a
+   * Page (Unified login with an Instagram-only business asset) the IG user id
+   * is used, which Meta accepts for system-user tokens.
+   */
+  private messagesPath(): string {
+    return `/${encodeURIComponent(this.webhookNode())}/messages`;
+  }
+
   async sendText(recipientId: string, text: string): Promise<{ recipient_id: string; message_id: string }> {
     const payload: SendTextPayload = {
       recipient: { id: recipientId },
       message: { text },
     };
-    return this.request("POST", `/${this.igUserId}/messages`, payload);
+    return this.request("POST", this.messagesPath(), payload);
   }
 
   /** One private reply per comment. No automatic retries for mutations. */
   async sendPrivateReply(commentId: string, text: string): Promise<{ recipient_id: string; message_id: string }> {
     if (!commentId || !text || text.length > 1000) throw new Error('Private reply requires a comment ID and 1..1000 characters');
-    const result=await this.request<{recipient_id:string;message_id:string}>('POST', `/${this.igUserId}/messages`, { recipient: { comment_id: commentId }, message: { text } });
+    const result=await this.request<{recipient_id:string;message_id:string}>('POST', this.messagesPath(), { recipient: { comment_id: commentId }, message: { text } });
     if (typeof result?.message_id!=='string' || !result.message_id || typeof result.recipient_id!=='string') throw new InstagramTransportError(false);
     return result;
   }
@@ -130,7 +179,7 @@ export class InstagramClient {
         },
       },
     };
-    return this.request("POST", `/${this.igUserId}/messages`, payload);
+    return this.request("POST", this.messagesPath(), payload);
   }
 
   async sendGenericTemplate(
@@ -149,7 +198,7 @@ export class InstagramClient {
         },
       },
     };
-    return this.request("POST", `/${this.igUserId}/messages`, payload);
+    return this.request("POST", this.messagesPath(), payload);
   }
 
   async sendQuickReply(
@@ -161,7 +210,23 @@ export class InstagramClient {
       recipient: { id: recipientId },
       message: { text, quick_replies: quickReplies },
     };
-    return this.request("POST", `/${this.igUserId}/messages`, payload);
+    return this.request("POST", this.messagesPath(), payload);
+  }
+
+  /**
+   * Sender actions: mark_seen (既読) and typing_on/typing_off (入力中).
+   * These are not messages — the payload carries no `message` key, so
+   * transformMessage hooks are bypassed by request() by design.
+   */
+  async sendSenderAction(
+    recipientId: string,
+    action: "mark_seen" | "typing_on" | "typing_off",
+  ): Promise<void> {
+    if (!recipientId) throw new Error('Sender action requires a recipient ID');
+    await this.request("POST", this.messagesPath(), {
+      recipient: { id: recipientId },
+      sender_action: action,
+    });
   }
 
   /**
@@ -170,7 +235,107 @@ export class InstagramClient {
    * (OAuthException code 190), which is exactly what monitoring must catch.
    */
   async getMe(): Promise<{ user_id?: string; username?: string; id?: string }> {
+    if (this.connectionType === 'facebook_login') {
+      // A Facebook / system-user token's /me is the Facebook user, not the IG
+      // account. Read the IG user node and expose it in the Instagram Login shape
+      // so health probes compare the same identifier.
+      if (!/^\d+$/.test(this.igUserId)) throw new Error('Facebook Login requires a numeric Instagram user id');
+      const value = await this.request<{ id?: string; username?: string }>('GET', `/${this.igUserId}?fields=id,username`);
+      return { user_id: value.id, username: value.username, id: value.id };
+    }
     return this.request("GET", `/me?fields=user_id,username`);
+  }
+
+  /**
+   * Facebook Login / Unified login only: IG professional accounts this token
+   * can act for. Unified login system-user tokens list them through
+   * /me/assigned_instagram_accounts (no Page); Page-linked Facebook Login user
+   * tokens through /me/accounts → instagram_business_account.
+   */
+  async listLinkedInstagramAccounts(): Promise<Array<{ pageId?: string; pageName?: string; pageAccessToken?: string; igUserId: string; username?: string }>> {
+    if (this.connectionType !== 'facebook_login') throw new Error('Linked account lookup requires Facebook Login');
+    try {
+      const assigned = await this.readAllPages<{ id?: string; username?: string }>('/me/assigned_instagram_accounts?fields=id,username&limit=100');
+      const found = assigned.flatMap((a) => (a.id && /^\d+$/.test(a.id) ? [{ igUserId: a.id, username: a.username }] : []));
+      if (found.length) return found;
+    } catch (error) {
+      // Not a system-user token (or edge unavailable): fall back to Pages.
+      if (!(error instanceof InstagramApiError)) throw error;
+    }
+    // access_token here is the Page access token: Page-linked messaging and
+    // Page webhook subscriptions require it rather than the user token.
+    const pages = await this.readAllPages<{ id?: string; name?: string; access_token?: string; instagram_business_account?: { id?: string; username?: string } }>(
+      '/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&limit=100',
+    );
+    return pages.flatMap((page) => {
+      const ig = page.instagram_business_account;
+      if (!page.id || !ig?.id || !/^\d+$/.test(ig.id)) return [];
+      return [{ pageId: page.id, pageName: page.name, igUserId: ig.id, username: ig.username, ...(typeof page.access_token === 'string' && page.access_token ? { pageAccessToken: page.access_token } : {}) }];
+    });
+  }
+
+  /**
+   * Facebook Login only: when the token itself is a Page access token, its
+   * /me is the Page. Returns the Page and its linked IG account, or null when
+   * /me is not a Page with an IG account (user / system-user tokens).
+   */
+  async getTokenPage(): Promise<{ pageId: string; igUserId: string } | null> {
+    if (this.connectionType !== 'facebook_login') throw new Error('Page lookup requires Facebook Login');
+    try {
+      const me = await this.request<{ id?: string; instagram_business_account?: { id?: string } }>('GET', '/me?fields=id,instagram_business_account');
+      const igUserId = me.instagram_business_account?.id;
+      return me.id && igUserId && /^\d+$/.test(igUserId) ? { pageId: me.id, igUserId } : null;
+    } catch (error) {
+      if (error instanceof InstagramApiError) return null;
+      throw error;
+    }
+  }
+
+  /** Follow Graph cursor pagination (bounded) so discovery never decides on a partial list. */
+  private async readAllPages<T>(path: string, maxPages = 10): Promise<T[]> {
+    const items: T[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < maxPages; page++) {
+      const json = await this.request<{ data?: T[]; paging?: { cursors?: { after?: string }; next?: string } }>('GET', after ? `${path}&after=${encodeURIComponent(after)}` : path);
+      items.push(...(json.data ?? []));
+      after = json.paging?.next ? json.paging.cursors?.after : undefined;
+      if (!after) return items;
+    }
+    throw new Error('Too many linked accounts to list; enter the Instagram user ID explicitly');
+  }
+
+  /**
+   * Subscribe this account to the app's webhooks. Instagram Login and Unified
+   * login subscribe the IG user (POST /{ig-user-id}/subscribed_apps); Page-linked
+   * Facebook Login subscribes the Page when one is known. Returns the node.
+   */
+  /** Node that owns the per-account webhook subscription (see subscribeWebhooks). */
+  webhookNode(): string {
+    return this.connectionType === 'facebook_login' && this.pageId ? this.pageId : this.igUserId;
+  }
+
+  /**
+   * Required webhook fields for this connection type. Page-linked accounts
+   * use the Page field set (`messaging_referrals`, no IG-only extras);
+   * IG-user subscriptions use the Instagram field set.
+   */
+  requiredWebhookFields(): readonly string[] {
+    return this.connectionType === 'facebook_login' && this.pageId ? PAGE_WEBHOOK_FIELDS : IG_WEBHOOK_FIELDS;
+  }
+
+  async subscribeWebhooks(fields?: readonly string[]): Promise<{ node: string; fields: string[] }> {
+    fields ??= this.requiredWebhookFields();
+    if (!fields.length || fields.some((f) => !/^[a-z_]+$/.test(f))) throw new Error('Invalid webhook field list');
+    const node = this.webhookNode();
+    const path = `/${encodeURIComponent(node)}/subscribed_apps`;
+    const qs = new URLSearchParams({ subscribed_fields: fields.join(',') });
+    const result = await this.request<{ success?: boolean }>('POST', `${path}?${qs.toString()}`);
+    if (result?.success !== true) throw new InstagramTransportError(false);
+    const current = await this.request<{ data?: Array<{ subscribed_fields?: string[] }> }>('GET', path);
+    const active = new Set((current.data ?? []).flatMap((entry) => entry.subscribed_fields ?? []));
+    const missing = fields.filter((field) => !active.has(field));
+    if (missing.length) throw new Error(`Webhook subscription is incomplete: ${missing.join(',')}`);
+    return { node, fields: [...fields] };
   }
 
   async getUserProfile(igsid: string): Promise<UserProfile> {
@@ -196,6 +361,34 @@ export class InstagramClient {
   async replyToComment(commentId: string, message: string): Promise<{ id: string }> {
     // Use the documented message parameter encoding; access level is a separate concern.
     return this.request('POST', `/${commentId}/replies?message=${encodeURIComponent(message)}`);
+  }
+
+  /**
+   * Subscribe this Instagram professional account to the app's webhooks
+   * (POST /{ig-user-id}/subscribed_apps). Without it, comments/DMs never
+   * reach the webhook even when the app-level subscription is configured.
+   */
+  async subscribeApp(fields: readonly string[]): Promise<{ success?: boolean }> {
+    if (!fields.length || fields.some((f) => !/^[a-z_]+$/.test(f))) throw new Error('Invalid webhook field list');
+    // Connection-type aware: Unified login with a linked Page subscribes the
+    // Page node; otherwise the IG user node.
+    return this.request('POST', `/${encodeURIComponent(this.webhookNode())}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields.join(','))}`);
+  }
+
+  /** Webhook fields this account is currently subscribed to for the app. */
+  async getSubscribedFields(): Promise<string[]> {
+    const json = await this.request<{ data?: Array<{ subscribed_fields?: string[] }> }>('GET', `/${encodeURIComponent(this.webhookNode())}/subscribed_apps`);
+    return [...new Set((json.data ?? []).flatMap((entry) => entry.subscribed_fields ?? []))];
+  }
+
+  /** Read-only probe that requires instagram_business_manage_messages. */
+  async probeConversations(): Promise<void> {
+    await this.request('GET', `/me/conversations?platform=instagram&limit=1&fields=id`);
+  }
+
+  /** Read-only probe that requires instagram_business_manage_comments. */
+  async probeMediaComments(mediaId: string): Promise<void> {
+    await this.request('GET', `/${encodeURIComponent(mediaId)}/comments?fields=id&limit=1`);
   }
 
   /**

@@ -109,6 +109,9 @@ interface WizardState {
    *  webhook picks one at random so replies don't look robotic.
    *  Supports {{username}} placeholder. All blank = no public reply. */
   commentReplyTexts: string[]
+  /** How the public reply is posted: 'thread' = reply under the comment
+   *  (recommended), 'mention' = new top-level comment with @username. */
+  commentReplyMode: 'thread' | 'mention'
   /** Up to 3 follow-up DMs sent after the reward inside the 24h window. */
   followupSteps: FollowupStepInput[]
   /** DM sent when user clicks CTA but isn't following yet */
@@ -143,6 +146,7 @@ const DEFAULTS: WizardState = {
     '@{{username}} ありがとう🎁 DMチェックしてね',
     '@{{username}} 受け取れるようDM送ったよ✨',
   ],
+  commentReplyMode: 'thread',
   followupSteps: [],
   reminderMode: 'new',
   reminderExistingId: '',
@@ -537,6 +541,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
         reward_dm_rich_message_id: rewardId,
         follow_reminder_dm_rich_message_id: reminderId,
         comment_reply_text: buildCommentReplyPayload(s),
+        comment_reply_mode: s.commentReplyMode,
         followup_dm_sequence: buildFollowupPayload(s),
       } as const
       const gate = isEdit && existingGate
@@ -736,7 +741,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
               <div className="mt-4 pt-4 border-t border-kumo-line">
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-xs font-medium text-kumo-subtle">
-                    コメントへの公開返信（任意）
+                    公開返信文（コメント欄に表示・任意）
                   </label>
                   <span className="text-[10px] text-kumo-subtle">{s.commentReplyTexts.length}/3 パターン</span>
                 </div>
@@ -786,8 +791,23 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                 <p className="mt-2 text-[11px] text-kumo-subtle">
                   複数入れると毎回ランダムで1つ選ばれます（ボット感を減らす）。<code className="font-mono">{'{{username}}'}</code> でコメントした人の @username を差し込めます。全部空欄ならDMのみ。
                 </p>
+                <div className="mt-3">
+                  <label htmlFor="comment-reply-mode" className="block text-xs font-medium text-kumo-subtle mb-1">返信方法</label>
+                  <select
+                    id="comment-reply-mode"
+                    value={s.commentReplyMode}
+                    onChange={(e) => update('commentReplyMode', e.target.value === 'mention' ? 'mention' : 'thread')}
+                    className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm bg-kumo-base focus:outline-none focus:ring-2 focus:ring-[#E1306C]"
+                  >
+                    <option value="thread">スレッド返信（推奨）— コメントの下に返信</option>
+                    <option value="mention">@付き新規コメント — 投稿に @username 付きで新しくコメント</option>
+                  </select>
+                </div>
+                <p className="mt-2 text-[11px] text-kumo-subtle">
+                  ※ここは<strong>コメント欄に公開される返信</strong>です。相手に届く<strong>DM文</strong>は下の「③ コメントがきたら、このDMを送る」で設定します。
+                </p>
                 <p className="mt-1 text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
-                  ℹ️ IG仕様：これは <code className="font-mono">POST /&#123;media_id&#125;/comments</code> による @mention 付きトップレベルコメントとして投下されます（親コメント直下のスレッド返信ではありません）。本物のスレッド型 reply は Meta App Review (Advanced Access) 通過後のみ動作します。
+                  ℹ️ 自分が所有・管理するアカウントなら Standard Access で動作。他人のアカウントを扱う場合のみ App Review（Advanced Access）が必要。
                 </p>
                 <p className="mt-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                   ⚠️ IG仕様：未フォローのユーザーへのDMは「メッセージリクエスト」に振り分けられたり届かないことがあります。公開返信でリクエスト確認を促すと到達率UP。
@@ -824,7 +844,7 @@ export default function CampaignWizard({ existingGate }: CampaignWizardProps = {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-kumo-subtle mb-1">メッセージ</label>
+                  <label className="block text-xs font-medium text-kumo-subtle mb-1">DM文（相手のDMに届く本文）</label>
                   <textarea
                     value={s.ctaText}
                     onChange={(e) => update('ctaText', e.target.value)}
@@ -1263,6 +1283,7 @@ function hydrateStateFromGate(
     linePoolSlug: gate.line_pool_slug ?? '',
 
     commentReplyTexts: replyTexts.length > 0 ? replyTexts : [''],
+    commentReplyMode: gate.comment_reply_mode === 'mention' ? 'mention' : 'thread',
     followupSteps,
 
     reminderMode: reminderExisting ? 'existing' : 'new',

@@ -26,6 +26,8 @@ export interface IncomingMessage {
   text?: string;
   attachments?: Attachment[];
   quick_reply?: { payload: string };
+  /** Story reply: the inbound message replies to one of our stories (GAP#8). */
+  reply_to?: { story?: { url?: string; id?: string } };
   is_echo?: boolean;
 }
 

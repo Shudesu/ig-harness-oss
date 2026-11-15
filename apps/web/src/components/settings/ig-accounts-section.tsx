@@ -1,13 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { accountsApi, type IgAccountSummary } from '@/lib/api'
+import { accountsApi, type ConnectionReport, type IgAccountSummary } from '@/lib/api'
+import ConnectionReportView from '@/components/connection-report'
 import { useAccount } from '@/contexts/account-context'
 
 const ACCENT = '#E1306C'
 
 /** tokenExpiresAt is epoch seconds; null means the expiry has not been fetched. */
-function formatExpiry(expiresAt: number | null): string {
+function formatExpiry(expiresAt: number | null, connectionType?: string): string {
+  // 統合ログイン（EAA…）は自動更新しない。システムユーザートークンは無期限。
+  if (connectionType === 'facebook_login') return expiresAt == null ? '自動更新なし' : new Date(expiresAt * 1000).toLocaleDateString('ja-JP')
   if (expiresAt == null) return '未取得'
   return new Date(expiresAt * 1000).toLocaleDateString('ja-JP', {
     year: 'numeric',
@@ -30,6 +33,8 @@ export default function IgAccountsSection() {
   const [verifyToken, setVerifyToken] = useState('')
   const [showAppFields, setShowAppFields] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [subscribeWebhooks, setSubscribeWebhooks] = useState(true)
+  const [addResult, setAddResult] = useState<{ name: string; connection: ConnectionReport | null } | null>(null)
 
   // Per-row token update mini form
   const [tokenEditId, setTokenEditId] = useState<string | null>(null)
@@ -66,12 +71,18 @@ export default function IgAccountsSection() {
     if (!accessToken.trim()) return
     setSaving(true)
     setError('')
+    setAddResult(null)
     try {
-      await accountsApi.create({
+      const created = await accountsApi.create({
         igUserId: igUserId.trim() || undefined,
         accessToken: accessToken.trim(),
         ...(appSecret.trim() ? { appSecret: appSecret.trim() } : {}),
         ...(verifyToken.trim() ? { verifyToken: verifyToken.trim() } : {}),
+        subscribeWebhooks,
+      })
+      setAddResult({
+        name: created.username ? `@${created.username}` : created.igUserId,
+        connection: created.connection ?? null,
       })
       setIgUserId('')
       setAccessToken('')
@@ -102,9 +113,25 @@ export default function IgAccountsSection() {
     }
   }
 
+  const [subscribingId, setSubscribingId] = useState<string | null>(null)
+  const [notice, setNotice] = useState('')
+  const handleSubscribe = async (account: IgAccountSummary) => {
+    setSubscribingId(account.id)
+    setError('')
+    setNotice('')
+    try {
+      const result = await accountsApi.subscribeWebhooks(account.id)
+      setNotice(`Webhook購読を設定しました（${result.fields.join(', ')}）`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Webhook購読に失敗しました')
+    } finally {
+      setSubscribingId(null)
+    }
+  }
+
   const handleToggleActive = async (account: IgAccountSummary) => {
     const next = !account.isActive
-    if (!next && !confirm(`「${account.username ? `@${account.username}` : account.igUserId}」を停止しますか？\n停止中は Webhook 受信・配信が行われません`)) {
+    if (!next && !confirm(`「${account.username ? `@${account.username}` : account.igUserId}」の連携を解除（停止）しますか？\n解除中は Webhook 受信・配信が行われません。データは保持され、後から有効化できます`)) {
       return
     }
     setError('')
@@ -128,6 +155,12 @@ export default function IgAccountsSection() {
       {error && (
         <div className="mb-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
           {error}
+        </div>
+      )}
+
+      {notice && (
+        <div className="mb-3 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700">
+          {notice}
         </div>
       )}
 
@@ -161,9 +194,12 @@ export default function IgAccountsSection() {
                   </td>
                   <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.igUserId}</td>
                   <td className="py-2.5 pr-3 font-mono text-xs text-kumo-subtle">{account.accessToken}</td>
-                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt)}</td>
+                  <td className="py-2.5 pr-3 text-xs text-kumo-subtle">{formatExpiry(account.tokenExpiresAt, account.connectionType)}</td>
                   <td className="py-2.5 pr-3">
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 flex-wrap">
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-kumo-tint text-kumo-subtle whitespace-nowrap">
+                        {account.connectionType === 'facebook_login' ? '統合ログイン' : 'Instagramログイン'}
+                      </span>
                       {account.isDefault && (
                         <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700">
                           デフォルト
@@ -214,6 +250,16 @@ export default function IgAccountsSection() {
                           >
                             トークン更新
                           </button>
+                          {account.isActive && (
+                            <button
+                              type="button"
+                              onClick={() => handleSubscribe(account)}
+                              disabled={subscribingId === account.id}
+                              className="px-2 py-1 text-xs text-kumo-subtle bg-kumo-base border border-kumo-line rounded hover:bg-kumo-canvas whitespace-nowrap disabled:opacity-50"
+                            >
+                              {subscribingId === account.id ? '...' : 'Webhook購読'}
+                            </button>
+                          )}
                           {/* デフォルトアカウントは停止不可（API でも 400） */}
                           {!account.isDefault && (
                             <button
@@ -225,7 +271,7 @@ export default function IgAccountsSection() {
                                   : 'text-green-600 bg-kumo-base border-green-200 hover:bg-green-50'
                               }`}
                             >
-                              {account.isActive ? '停止' : '有効化'}
+                              {account.isActive ? '解除' : '有効化'}
                             </button>
                           )}
                         </div>
@@ -243,12 +289,12 @@ export default function IgAccountsSection() {
       {isOwner && (
         <div className="mt-5 pt-5 border-t border-kumo-line">
           <h3 className="text-xs font-semibold text-kumo-default mb-3">アカウントを追加</h3>
-          <p className="text-xs text-kumo-subtle mb-3">保存前にInstagramへ接続し、User IDを確認します。DM・コメント・投稿の権限はMeta側でも確認してください。長期トークンを使用してください。接頭辞だけで種類や有効期限は判定しません。</p>
+          <p className="text-xs text-kumo-subtle mb-3">保存前にInstagramへ接続し、User IDを確認します。DM・コメント・投稿の権限はMeta側でも確認してください。長期トークンを使用してください。EAAで始まるトークン（新しいMetaアプリの「統合ログイン」）は自動で統合ログイン扱いになり、IG User ID を空欄にするとFacebookページ経由で探します。見つからないときはMetaアプリ画面に出ている Instagram のIDを入れてください。追加後に「Webhook購読」を押してください。</p>
           <div className="space-y-3">
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="block text-xs font-medium text-kumo-subtle mb-1">
-                  IG User ID（任意・空欄なら自動取得）
+                  IG User ID（任意・空欄なら自動取得。統合ログインでページが無い場合は入力）
                 </label>
                 <input
                   type="text"
@@ -268,7 +314,7 @@ export default function IgAccountsSection() {
                 type="password"
                 value={accessToken}
                 onChange={(e) => setAccessToken(e.target.value)}
-                placeholder="Instagram Login access token"
+                placeholder="IGAA…（Instagramログイン）または EAA…（統合ログイン）"
                 className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>
@@ -319,6 +365,16 @@ export default function IgAccountsSection() {
               )}
             </div>
 
+            <label className="flex items-center gap-2 text-xs text-kumo-default cursor-pointer">
+              <input
+                type="checkbox"
+                checked={subscribeWebhooks}
+                onChange={(e) => setSubscribeWebhooks(e.target.checked)}
+                className="w-4 h-4 rounded border-kumo-line"
+              />
+              Webhook購読を自動で行う（コメント・メッセージを受信するために必要）
+            </label>
+
             <div className="pt-1">
               <button
                 type="button"
@@ -330,6 +386,24 @@ export default function IgAccountsSection() {
                 {saving ? '追加中...' : 'アカウントを追加'}
               </button>
             </div>
+
+            {addResult && (
+              <div className="rounded-lg border border-green-200 bg-green-50/40 p-3 space-y-2" role="status">
+                <p className="text-xs font-semibold text-green-800">
+                  {addResult.name} を追加しました。購読結果・権限チェック:
+                </p>
+                {addResult.connection ? (
+                  <ConnectionReportView report={addResult.connection} />
+                ) : (
+                  <p className="text-xs text-kumo-subtle">
+                    接続チェックの結果は返されませんでした。「接続状態」ページで再チェックできます。
+                  </p>
+                )}
+                <a href="/connection/" className="inline-block text-xs underline text-kumo-subtle hover:text-[#E1306C]">
+                  接続状態ページで確認する →
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

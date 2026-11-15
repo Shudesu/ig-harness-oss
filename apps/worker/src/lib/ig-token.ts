@@ -1,7 +1,7 @@
 import { readAppSecret, type CredentialEnv } from './credential-crypto.js';
 import { createAppSecretProof, InstagramApiError } from '@ig-harness/ig-sdk';
 import { sealToken } from './token-crypto.js';
-import { updateIgAccountToken, type IgAccount } from '@ig-harness/db';
+import { accountConnectionType, updateIgAccountToken, type IgAccount } from '@ig-harness/db';
 
 const REFRESH_WINDOW_SECONDS = 14 * 24 * 60 * 60;
 
@@ -39,6 +39,10 @@ export async function refreshAccountTokenIfNeeded(
   account: IgAccount,
 ): Promise<{ refreshed: boolean; token?: string; reason: string }> {
   const now = Math.floor(Date.now() / 1000);
+  // graph.instagram.com/refresh_access_token only accepts Instagram Login
+  // tokens. Unified login (Facebook Login) normally uses a system-user token
+  // that does not expire; a user token is replaced by reconnecting instead.
+  if (accountConnectionType(account) === 'facebook_login') return { refreshed: false, reason: 'facebook_login tokens are not refreshed' };
   if (account.token_expires_at && account.token_expires_at > now + REFRESH_WINDOW_SECONDS) {
     return { refreshed: false, reason: 'token still fresh' };
   }

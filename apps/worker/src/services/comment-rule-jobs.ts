@@ -2,6 +2,14 @@ import { InstagramApiError, InstagramTransportError, type InstagramClient } from
 import { deliveryFailure, sendIgMessage, validateBroadcastMessage } from './broadcast.js';
 import { messagingEligibility } from './messaging-window.js';
 import { sendCommentPrivateReply, PrivateReplyNotAttemptedError } from './private-reply.js';
+import { describeFailure, recordDeliveryFailure } from '../lib/delivery-failures.js';
+import { isOutboundPaused } from './human-touch.js';
+
+/** 'thread' = POST /{comment-id}/replies (nested reply, default). 'mention' = legacy top-level @username comment on the media. */
+export type PublicReplyMode = 'thread' | 'mention';
+export function normalizeReplyMode(value: unknown): PublicReplyMode {
+    return value === 'mention' ? 'mention' : 'thread';
+}
 type CommentJob = {
     id: string;
     follower_id: number;
@@ -16,6 +24,7 @@ type CommentJob = {
     comment_created_at: string | null;
     gate_delivery_id: string | null;
     attempt_count: number;
+    reply_mode: string | null;
 };
 export async function enqueueCommentRuleJob(db: D1Database, input: {
     accountId: string;
@@ -30,15 +39,16 @@ export async function enqueueCommentRuleJob(db: D1Database, input: {
     commentCreatedAt?: string;
     gateDeliveryId?: string;
     isLive?: boolean;
+    replyMode?: PublicReplyMode;
 }): Promise<void> {
     if (!Number.isFinite(input.delaySeconds) || input.delaySeconds < 0 || input.delaySeconds > 86400)
         throw new Error('Comment rule delay must be between 0 and 86400 seconds');
     validateBroadcastMessage(input.messageType, JSON.parse(input.body));
     const created = input.commentCreatedAt && Number.isFinite(Date.parse(input.commentCreatedAt)) ? input.commentCreatedAt : null;
     const statements = [db.prepare(`INSERT OR IGNORE INTO comment_rule_jobs
-    (id,account_id,follower_id,comment_id,message_type,body,reply_text,due_at,expires_at,delivery_mode,media_id,comment_created_at,gate_delivery_id,status,reason)
-    VALUES(?,?,?,?,?,?,?,?,?,'private_reply',?,?,?,?,?)`)
-            .bind(`${input.accountId}:${input.commentId}:${input.ruleId}`, input.accountId, input.followerId, input.commentId, input.messageType, input.body, input.replyText, new Date(Date.now() + input.delaySeconds * 1000).toISOString(), created ? new Date(Date.parse(created) + 7 * 86400000).toISOString() : '9999-01-01T00:00:00Z', input.mediaId ?? null, created, input.gateDeliveryId ?? null, input.isLive ? 'skipped' : 'pending', input.isLive ? 'live_comment_not_supported' : null)];
+    (id,account_id,follower_id,comment_id,message_type,body,reply_text,due_at,expires_at,delivery_mode,media_id,comment_created_at,gate_delivery_id,status,reason,reply_mode)
+    VALUES(?,?,?,?,?,?,?,?,?,'private_reply',?,?,?,?,?,?)`)
+            .bind(`${input.accountId}:${input.commentId}:${input.ruleId}`, input.accountId, input.followerId, input.commentId, input.messageType, input.body, input.replyText, new Date(Date.now() + input.delaySeconds * 1000).toISOString(), created ? new Date(Date.parse(created) + 7 * 86400000).toISOString() : '9999-01-01T00:00:00Z', input.mediaId ?? null, created, input.gateDeliveryId ?? null, input.isLive ? 'skipped' : 'pending', input.isLive ? 'live_comment_not_supported' : null, normalizeReplyMode(input.replyMode))];
     if (input.gateDeliveryId)
         statements.push(db.prepare("UPDATE gate_deliveries SET end_reason=NULL,metadata=json_set(metadata,'$.private_reply_queued',1) WHERE id=?").bind(input.gateDeliveryId));
     await db.batch(statements);
@@ -60,6 +70,8 @@ export async function resumeCommentJobs(db: D1Database, followerId: number, acco
     }
 }
 export async function processCommentRuleJobs(db: D1Database, client: InstagramClient, accountId: string): Promise<void> {
+    // Operator stop switch: jobs stay pending, they resume after unpausing.
+    if (await isOutboundPaused(db)) return;
     await db.prepare("UPDATE comment_rule_jobs SET status='uncertain', reason='interrupted' WHERE account_id=? AND status='processing' AND julianday(started_at)<julianday(?)").bind(accountId, new Date(Date.now() - 5 * 60000).toISOString()).run();
     const rows = await db.prepare(`SELECT j.*,f.igsid FROM comment_rule_jobs j JOIN followers f ON f.id=j.follower_id AND f.account_id=j.account_id
     WHERE j.account_id=? AND j.status='pending' AND j.delivery_mode!='awaiting_inbound' AND (j.gate_delivery_id IS NULL OR EXISTS(SELECT 1 FROM gate_deliveries d JOIN engagement_gates g ON g.id=d.gate_id WHERE d.id=j.gate_delivery_id AND g.status='active')) AND julianday(j.due_at)<=julianday(?) ORDER BY j.due_at LIMIT 5`)
@@ -79,11 +91,13 @@ export async function processCommentRuleJobs(db: D1Database, client: InstagramCl
                 if (outcome !== 'sent') {
                     await db.prepare('UPDATE comment_rule_jobs SET status=?,reason=? WHERE id=?').bind(outcome === 'outcome_unknown' ? 'uncertain' : outcome === 'rejected' ? 'failed' : 'skipped', `private_reply_${outcome}`, job.id).run();
                     await recordGateFailure(db,job,`private_reply_${outcome}`,outcome==='expired' || outcome==='rejected' || outcome==='standby');
+                    if (outcome !== 'already_sent')
+                        await recordDeliveryFailure(db, { accountId, source: 'private_reply', stage: `private_reply_${outcome}`, refId: job.id, followerId: job.follower_id, detail: { message: PRIVATE_REPLY_OUTCOME_MESSAGES[outcome] ?? null } });
                 continue;
                 }
                 const waiting = job.message_type !== 'text';
                 await db.batch([
-                    db.prepare("UPDATE comment_rule_jobs SET status=?,delivery_mode=?,reason=?,error_code=NULL,error_subcode=NULL,finished_at=? WHERE id=?").bind(waiting ? 'pending' : 'sent', waiting ? 'awaiting_inbound' : 'private_reply', waiting ? 'awaiting_inbound' : null, new Date().toISOString(), job.id),
+                    db.prepare("UPDATE comment_rule_jobs SET status=?,delivery_mode=?,reason=?,error_code=NULL,error_subcode=NULL,error_message=NULL,finished_at=? WHERE id=?").bind(waiting ? 'pending' : 'sent', waiting ? 'awaiting_inbound' : 'private_reply', waiting ? 'awaiting_inbound' : null, new Date().toISOString(), job.id),
                     db.prepare("INSERT INTO messages_log(follower_id,direction,message_type,body,trigger_source) VALUES(?,'out','text',?,?)").bind(job.follower_id, JSON.stringify({ text }), job.gate_delivery_id ? 'gate' : 'comment_rule'),
                     ...(job.gate_delivery_id ? [db.prepare("UPDATE gate_deliveries SET status='cta_sent',end_reason=NULL,metadata=json_set(metadata,'$.awaiting_reply',1,'$.comment_id',?) WHERE id=?").bind(job.comment_id, job.gate_delivery_id)] : []),
                 ]);
@@ -96,7 +110,7 @@ export async function processCommentRuleJobs(db: D1Database, client: InstagramCl
                 }
                 await sendIgMessage(client, job.igsid, job.message_type, JSON.parse(job.body));
                 await db.batch([
-                    db.prepare("UPDATE comment_rule_jobs SET status='sent',error_code=NULL,error_subcode=NULL,reason=NULL,finished_at=? WHERE id=?").bind(new Date().toISOString(), job.id),
+                    db.prepare("UPDATE comment_rule_jobs SET status='sent',error_code=NULL,error_subcode=NULL,error_message=NULL,reason=NULL,finished_at=? WHERE id=?").bind(new Date().toISOString(), job.id),
                     db.prepare("INSERT INTO messages_log(follower_id,direction,message_type,body,trigger_source) VALUES(?,'out',?,?,'comment_rule')").bind(job.follower_id, job.message_type, job.body),
                 ]);
             }
@@ -107,29 +121,53 @@ export async function processCommentRuleJobs(db: D1Database, client: InstagramCl
             const failure = deliveryFailure(cause);
             const requeue = retry && job.attempt_count < 4;
             const wait = cause instanceof InstagramApiError && Number.isFinite(cause.retryAfterMs) ? Math.max(1000, cause.retryAfterMs!) : Math.min(3600000, 60000 * 2 ** job.attempt_count);
-            await db.prepare('UPDATE comment_rule_jobs SET status=?,reason=?,error_code=?,error_subcode=?,due_at=? WHERE id=?')
-                .bind(requeue ? 'pending' : error instanceof PrivateReplyNotAttemptedError ? 'failed' : failure.status, requeue ? 'rate_limited' : failure.reason, cause instanceof InstagramApiError ? cause.code ?? null : null, cause instanceof InstagramApiError ? cause.subcode ?? null : null, new Date(Date.now() + wait).toISOString(), job.id).run();
+            const detail = describeFailure(cause);
+            await db.prepare('UPDATE comment_rule_jobs SET status=?,reason=?,error_code=?,error_subcode=?,error_message=?,due_at=? WHERE id=?')
+                .bind(requeue ? 'pending' : error instanceof PrivateReplyNotAttemptedError ? 'failed' : failure.status, requeue ? 'rate_limited' : failure.reason, cause instanceof InstagramApiError ? cause.code ?? null : null, cause instanceof InstagramApiError ? cause.subcode ?? null : null, detail.message, new Date(Date.now() + wait).toISOString(), job.id).run();
+            await recordDeliveryFailure(db, { accountId, source: job.delivery_mode === 'private_reply' ? 'private_reply' : 'dm', stage: requeue ? 'rate_limited' : failure.reason, refId: job.id, followerId: job.follower_id, error: cause });
             await recordGateFailure(db,job,requeue?'rate_limited':failure.reason,!requeue && (error instanceof PrivateReplyNotAttemptedError || cause instanceof InstagramApiError && cause.status<500));
             continue;
         }
-        if (job.reply_text && job.delivery_mode === 'private_reply') {
-            try {
-                // Keep each feature's existing public reply placement. Top-level
-                // mentions do not bypass Meta permissions or App Review.
-                if (job.gate_delivery_id && job.media_id)
-                    await client.postCommentToMedia(job.media_id, job.reply_text);
-                else
-                    await client.replyToComment(job.comment_id, job.reply_text);
-            }
-            catch (error) {
-                await db.prepare("UPDATE comment_rule_jobs SET reason='public_reply_failed',error_code=?,error_subcode=? WHERE id=?")
-                    .bind(error instanceof InstagramApiError ? error.code ?? null : null, error instanceof InstagramApiError ? error.subcode ?? null : null, job.id).run();
-            }
-        }
+        if (job.reply_text && job.delivery_mode === 'private_reply')
+            await postPublicReply(db, client, accountId, job);
     }
 }
 
 async function recordGateFailure(db:D1Database,job:CommentJob,reason:string,allowFreshComment:boolean):Promise<void> {
   if (!job.gate_delivery_id) return;
   await db.prepare("UPDATE gate_deliveries SET end_reason=?,metadata=json_set(metadata,'$.private_reply_queued',?) WHERE id=? AND status='triggered'").bind(reason,allowFreshComment?0:1,job.gate_delivery_id).run();
+}
+
+const PRIVATE_REPLY_OUTCOME_MESSAGES: Record<string, string> = {
+    expired: 'コメントから7日を過ぎたため、プライベート返信（DM）を送れませんでした。',
+    rejected: '以前のプライベート返信が Meta に拒否されたため、再送しませんでした。',
+    standby: '会話の操作権が別アプリ（受信箱など）にあるため送信を見送りました。',
+    outcome_unknown: '前回の送信結果が不明なため、二重送信を避けて再送しませんでした。',
+};
+
+/**
+ * Public reply after the DM succeeded. 'thread' posts a nested reply to the
+ * comment (POST /{comment-id}/replies); 'mention' keeps the legacy top-level
+ * @username comment on the media. Neither bypasses Meta permissions.
+ */
+async function postPublicReply(db: D1Database, client: Pick<InstagramClient, 'replyToComment' | 'postCommentToMedia'>, accountId: string, job: CommentJob): Promise<void> {
+    const mode = normalizeReplyMode(job.reply_mode) === 'mention' && job.media_id ? 'mention' : 'thread';
+    let result: unknown;
+    try {
+        result = mode === 'mention'
+            ? await client.postCommentToMedia(job.media_id!, job.reply_text!)
+            : await client.replyToComment(job.comment_id, job.reply_text!);
+    }
+    catch (error) {
+        const detail = describeFailure(error);
+        await db.prepare("UPDATE comment_rule_jobs SET public_reply_status='failed',public_reply_error_code=?,public_reply_error_message=? WHERE id=?")
+            .bind(detail.errorCode, detail.message, job.id).run()
+            .catch(() => console.warn('[comment-rule-jobs] could not record public reply failure'));
+        await recordDeliveryFailure(db, { accountId, source: 'public_reply', stage: mode === 'mention' ? 'media_comment' : 'comment_replies', refId: job.id, followerId: job.follower_id, error });
+        return;
+    }
+    // The reply is already public: a bookkeeping error must not be logged as a failed reply.
+    await db.prepare("UPDATE comment_rule_jobs SET public_reply_status='sent',public_reply_id=?,public_reply_error_code=NULL,public_reply_error_message=NULL WHERE id=?")
+        .bind((result as { id?: string } | undefined)?.id ?? null, job.id).run()
+        .catch(() => console.warn('[comment-rule-jobs] could not record public reply success'));
 }

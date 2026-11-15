@@ -20,6 +20,9 @@ export interface EngagementGate {
   reward_dm_rich_message_id: string | null;
   follow_reminder_dm_rich_message_id: string | null;
   comment_reply_text: string | null;
+  /** Public reply placement: 'thread' = nested reply under the comment
+   *  (default), 'mention' = top-level @username comment on the post. */
+  comment_reply_mode?: 'thread' | 'mention';
   /** JSON-serialized FollowupDmStep[]. Empty / NULL = no 24h drip. */
   followup_dm_sequence: string | null;
   /** When 1, every matching trigger creates a new delivery and the
@@ -108,8 +111,8 @@ export async function createEngagementGate(
         initial_dm_rich_message_id, reward_dm_rich_message_id,
         follow_reminder_dm_rich_message_id, comment_reply_text,
         followup_dm_sequence,
-        line_connection_id, line_pool_slug, allow_repeat, account_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        line_connection_id, line_pool_slug, allow_repeat, account_id, comment_reply_mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id, gate.name, gate.status, gate.trigger_type, gate.target_post_id,
@@ -126,6 +129,7 @@ export async function createEngagementGate(
       gate.line_pool_slug ?? null,
       gate.allow_repeat ?? 0,
       gate.accountId ?? null,
+      gate.comment_reply_mode === 'mention' ? 'mention' : 'thread',
     )
     .run();
   const row = await db
@@ -254,6 +258,7 @@ const UPDATABLE_GATE_FIELDS = [
   'reward_dm_rich_message_id',
   'follow_reminder_dm_rich_message_id',
   'comment_reply_text',
+  'comment_reply_mode',
   'followup_dm_sequence',
   'line_connection_id',
   'line_pool_slug',

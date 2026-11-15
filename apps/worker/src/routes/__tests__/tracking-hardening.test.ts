@@ -226,6 +226,8 @@ it('re-signs /click at the final DM boundary for the actual recipient and exact 
   account.token_expires_at = Math.floor(Date.now() / 1000) + 60 * 24 * 3600;
   const mocked = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ message_id: 'fake-sent' }));
   vi.stubGlobal('fetch', mocked);
+  // This test asserts exact request bodies/calls; presence is ON by default now.
+  f.sqlite.prepare("INSERT OR REPLACE INTO integration_settings(key,value) VALUES('dm_presence_enabled','0')").run();
   const client = await getAccountClient(f.env, f.db, account);
   const destination = 'https://example.com/reward?x=1&x=2';
   const old = await wrapClickTracking(f.env.WORKER_URL, 'gate', destination, '1002', f.env);

@@ -1,3 +1,25 @@
+## Unreleased — release 20261115 (unified login)
+
+- **Instagram API with Unified login** (EAA tokens, `graph.facebook.com`) is supported alongside the legacy Instagram Login (`IGAA…`, `graph.instagram.com`). The token prefix decides automatically; Unified login accounts never call `refresh_access_token`, and webhook subscription targets the linked Page when one is known. See docs/manual/09-unified-login.md. Migration 0025 (additive) adds `connection_type` (default `instagram_login`) and `page_id` to `ig_accounts`, so **existing accounts keep working unchanged**.
+- Migration/operations manual for this release: docs/manual/10-migration.md — update steps, checks before updating, how to roll back, and the common Meta errors (code 100 subcode 33, 190, …).
+- `subscribeApp` / `getSubscribedFields` are connection-type aware, so the automatic subscribe + permission check on account registration also covers Unified login accounts.
+
+## Unreleased — phase1 (2026-11-15)
+
+- Story replies (ストーリーへの返信) are now detected from the webhook `message.reply_to.story` field (GAP#8). A reply is logged with a `kind:'story_reply'` marker in `messages_log`, forwarded to the LINE Harness mileage endpoint as the new `instagram_story_replied` event type (U7), and branched through `dm_keyword` gates / scenarios like any keyword DM. No gate configured → nothing is sent (no schema change needed; `trigger_type` values stay additive-free).
+- Quick replies are received properly: `message.quick_reply.payload` (GAP#1b) branches gates and `dm_keyword` scenarios, and the selection is logged as message_type `quick_reply` with its payload. Plain text behavior is unchanged.
+- Optional 既読＋入力中 (mark_seen → typing_on → send → typing_off, U18 / GAP#20a): `sendSenderAction()` in `@ig-harness/ig-sdk`, wired to every DM send path by decorating the per-account client (`getAccountClient`). Toggle via `POST /api/delivery-guardrails/presence`; **default ON** since the 2026-11-15 release (explicit OFF persists). Private replies (comment recipients) never get sender actions.
+- 配信ガードレール (U22) made visible: `GET /api/delivery-guardrails` shows the 9:00–23:00 JST delivery window state, 24-hour messaging window counts, DM volume in the last 24 h, pending queue sizes and the switch states. A new stop switch (`POST /api/delivery-guardrails/pause`) halts all outbound senders — batch processors (broadcasts, comment-rule jobs, scenario steps, followup drips, webhook drains) skip their work and pending rows resume after unpausing; immediate webhook triggers skip their sends while inbound bookkeeping keeps running. No migration added (settings live in `integration_settings`).
+- Dashboard 配信状況 card now embeds the guardrail status with both toggles (stop switch, presence).
+
+## Unreleased — improve-all (2026-11-15)
+
+- Public comment replies now default to a thread reply (`POST /{comment-id}/replies`), including existing campaigns after migration 0024 (they previously posted a top-level @username comment); choose reply mode `mention` per campaign / comment rule to keep the old placement. Comment rules get a public reply text separate from the DM body (`replyText`: null = default text, '' = none; fixes #15).
+- New `delivery_failures` log (migration 0024, additive) with Meta error code/subcode and sanitized message for private replies, DMs, public replies, webhook processing and account setup; `GET /api/delivery-failures` and a 接続状態 page show it with hints. Retained 90 days; removed by data deletion.
+- Adding an account subscribes it to webhooks (`subscribed_apps`, opt-out) and probes comments/messages permissions; results via `/api/accounts`, `/api/health`, `/api/accounts/:id/connection(-check)`.
+- SDK `accounts` resource and MCP tools `list_accounts`, `add_account`, `switch_account`, `remove_account`, `check_account_connection` (approval-gated, tokens masked).
+- Admin: sidebar regrouped (comment rules / scenarios back), minimal broadcasts / forms / tags pages, connection status page.
+
 ## Unreleased — Meta API audit (2026-10-26)
 
 - Default Graph API v25.0, configurable through IG_GRAPH_API_VERSION; version setting shared by SDK, Worker and installer. Meta's general Graph version table lists v21.0 expiry as 2027-01-21.

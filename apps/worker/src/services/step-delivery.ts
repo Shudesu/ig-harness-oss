@@ -10,6 +10,7 @@ import {
 import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
 import { jitterDeliveryTime, addJitter, sleep } from './delivery-timing.js';
 import { recordDmFailure } from '../lib/health.js';
+import { isOutboundPaused } from './human-touch.js';
 
 /**
  * Replace template variables in message content.
@@ -60,6 +61,8 @@ export async function processStepDeliveries(
   accountId?: string,
 ): Promise<void> {
   const now = jstNow();
+  // Operator stop switch: due steps stay scheduled, resume after unpausing.
+  if (await isOutboundPaused(db)) return;
   const dueFriendScenarios = await getFriendScenariosDueForDelivery(db, now, accountId);
 
   for (let i = 0; i < dueFriendScenarios.length; i++) {

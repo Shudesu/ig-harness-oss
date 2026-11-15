@@ -18,10 +18,16 @@ export { EngagementGatesResource } from './resources/engagement-gates.js'
 export { LineConnectionsResource } from './resources/line-connections.js'
 export { AdPlatformsResource } from './resources/ad-platforms.js'
 export { MediaPostsResource } from './resources/media-posts.js'
+export { AccountsResource } from './resources/accounts.js'
 
 // All types
 export type {
   InstagramHarnessConfig,
+  IgAccount,
+  AddIgAccountInput,
+  AccountConnectionReport,
+  ConnectionCheckResult,
+  ConnectionCheckState,
   ApiResponse,
   PaginatedData,
   ScenarioTriggerType,

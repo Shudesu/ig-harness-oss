@@ -1,7 +1,7 @@
 import { readAppSecret, sealCredential } from '../lib/credential-crypto.js';
 import { recordTokenValidity } from '../lib/health.js';
-import { InstagramApiError, InstagramTransportError } from '@ig-harness/ig-sdk';
-import { validateIgAccount } from '../lib/validate-ig-account.js';
+import { InstagramApiError, InstagramTransportError, detectTokenConnectionType } from '@ig-harness/ig-sdk';
+import { validateIgAccount, resolveConnectionType } from '../lib/validate-ig-account.js';
 import { sealToken } from '../lib/token-crypto.js';
 import { Hono } from 'hono';
 import {
@@ -10,10 +10,14 @@ import {
   getIgAccountByIgUserId,
   createIgAccount,
   updateIgAccount,
+  accountConnectionType,
 } from '@ig-harness/db';
 import type { IgAccount } from '@ig-harness/db';
 import { requireRole } from '../middleware/role-guard.js';
-import { ensureDefaultAccount } from '../lib/accounts.js';
+import { ensureDefaultAccount, getAccountClient } from '../lib/accounts.js';
+import { checkAccountConnection, loadConnectionReport, saveConnectionReport, type ConnectionReport } from '../lib/account-connection.js';
+import { recordDeliveryFailure } from '../lib/delivery-failures.js';
+
 import type { Env } from '../index.js';
 
 const accounts = new Hono<Env>();
@@ -35,9 +39,36 @@ function serializeAccount(row: IgAccount) {
     hasVerifyToken: Boolean(row.verify_token),
     isActive: Boolean(row.is_active),
     isDefault: Boolean(row.is_default),
+    connectionType: accountConnectionType(row),
+    pageId: row.page_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+/**
+ * Run the webhook-subscription + permission check and persist it. Never
+ * throws: a failed check must not undo an account that was saved.
+ */
+async function runConnectionCheck(env: Env['Bindings'], account: IgAccount, subscribe: boolean): Promise<ConnectionReport | null> {
+  try {
+    const client = await getAccountClient(env, env.DB, account, { forHealthProbe: true, skipTokenRefresh: true });
+    const report = await checkAccountConnection(client, { subscribe });
+    await saveConnectionReport(env.DB, account.id, report);
+    if (!report.ok) {
+      const problems = [
+        report.profile.state !== 'ok' ? `プロフィール: ${report.profile.message ?? report.profile.state}` : null,
+        report.webhook.state !== 'ok' ? `Webhook購読: ${report.webhook.message ?? report.webhook.state}` : null,
+        report.permissions.messages.state !== 'ok' ? `DM権限: ${report.permissions.messages.message ?? report.permissions.messages.state}` : null,
+        ['missing', 'error'].includes(report.permissions.comments.state) ? `コメント権限: ${report.permissions.comments.message ?? report.permissions.comments.state}` : null,
+      ].filter(Boolean).join(' / ');
+      await recordDeliveryFailure(env.DB, { accountId: account.id, source: 'account_setup', stage: subscribe ? 'subscribe_and_check' : 'check', detail: { message: problems } });
+    }
+    return report;
+  } catch (error) {
+    await recordDeliveryFailure(env.DB, { accountId: account.id, source: 'account_setup', stage: 'check', error });
+    return null;
+  }
 }
 
 // GET /api/accounts - list all IG accounts (tokens masked)
@@ -45,7 +76,8 @@ accounts.get('/api/accounts', requireRole('owner', 'admin'), async (c) => {
   try {
     await ensureDefaultAccount(c.env, c.env.DB);
     const items = await listIgAccounts(c.env.DB);
-    return c.json({ success: true, data: items.map(serializeAccount) });
+    const data = await Promise.all(items.map(async (row) => ({ ...serializeAccount(row), connection: await loadConnectionReport(c.env.DB, row.id) })));
+    return c.json({ success: true, data });
   } catch (err) {
     console.error('GET /api/accounts error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -61,15 +93,22 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
       accessToken?: string;
       appSecret?: string | null;
       verifyToken?: string | null;
+      /** Default true: POST /{ig-user-id}/subscribed_apps right after saving. */
+      subscribeWebhooks?: boolean;
+      connectionType?: string;
     }>();
 
+    if (body.subscribeWebhooks !== undefined && typeof body.subscribeWebhooks !== 'boolean') return c.json({ success: false, error: 'subscribeWebhooks must be a boolean' }, 400);
     if ((body.igUserId !== undefined && (typeof body.igUserId !== 'string' || !/^\d{1,64}$/.test(body.igUserId))) || typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) {
       return c.json({ success: false, error: 'A token and an optional numeric igUserId are required' }, 400);
     }
 
+    let connectionType;
+    try { connectionType=resolveConnectionType(body.accessToken,body.connectionType); }
+    catch (error) { return c.json({ success:false,error:(error as Error).message },400); }
     let profile;
-    try { profile=await validateIgAccount(c.env,body.accessToken,body.igUserId,body.appSecret); }
-    catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). Check Instagram Login permissions.` : error instanceof InstagramTransportError ? 'Could not reach Instagram; account was not saved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
+    try { profile=await validateIgAccount(c.env,body.accessToken,body.igUserId,body.appSecret,{ connectionType }); }
+    catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). ${connectionType==='facebook_login' ? 'Check the Unified login (Facebook Login) permissions and the Instagram business asset.' : 'Check Instagram Login permissions.'}` : error instanceof InstagramTransportError ? 'Could not reach Instagram; account was not saved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
     const igUserId=profile.user_id;
     // Seed the env-based default first so a newly added account can never
     // become the default by being the first ig_accounts row.
@@ -83,13 +122,16 @@ accounts.post('/api/accounts', requireRole('owner'), async (c) => {
     const account = await createIgAccount(c.env.DB, {
       igUserId,
       username: profile.username,
-      accessToken: await sealToken(body.accessToken, igUserId, c.env.TOKEN_ENCRYPTION_KEY),
+      accessToken: await sealToken(profile.access_token, igUserId, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${igUserId}`, c.env) : null,
       verifyToken: body.verifyToken ?? null,
+      connectionType: profile.connection_type,
+      pageId: profile.page_id,
     });
 
     await recordTokenValidity(c.env.DB,account.id,true).catch(()=>{});
-    return c.json({ success: true, data: { ...serializeAccount(account), verification: 'profile_only' } }, 201);
+    const connection = await runConnectionCheck(c.env, account, body.subscribeWebhooks !== false);
+    return c.json({ success: true, data: { ...serializeAccount(account), verification: connection ? 'connection_checked' : 'profile_only', connection } }, 201);
   } catch (err) {
     console.error('POST /api/accounts error:', err instanceof Error ? err.name : 'unknown');
     return c.json({ success: false, error: 'Internal server error' }, 500);
@@ -106,6 +148,7 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
       appSecret?: string | null;
       verifyToken?: string | null;
       isActive?: boolean;
+      connectionType?: string;
     }>();
 
     const existing = await getIgAccountById(c.env.DB, id);
@@ -118,17 +161,24 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
     }
 
     let verifiedUsername = body.username;
+    let connectionType: 'instagram_login' | 'facebook_login' | undefined;
+    let verified: Awaited<ReturnType<typeof validateIgAccount>> | undefined;
+    if (body.connectionType !== undefined && body.accessToken === undefined) return c.json({ success:false,error:'connectionType can only change together with a new accessToken' },400);
     if (body.accessToken !== undefined) {
       if (typeof body.accessToken !== 'string' || !body.accessToken.trim() || body.accessToken.length>8192) return c.json({ success:false,error:'accessToken must not be empty' },400);
-      try { verifiedUsername=(await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env))).username; }
+      // Explicit choice, then the new token's prefix, then the account's current type.
+      try { connectionType = body.connectionType !== undefined ? resolveConnectionType(body.accessToken,body.connectionType) : detectTokenConnectionType(body.accessToken) ?? accountConnectionType(existing); }
+      catch (error) { return c.json({ success:false,error:(error as Error).message },400); }
+      try { verified=await validateIgAccount(c.env,body.accessToken,existing.ig_user_id,body.appSecret ?? await readAppSecret(existing, c.env),{ connectionType }); verifiedUsername=verified.username; }
       catch (error) { return c.json({ success:false,error:error instanceof InstagramApiError ? `Instagram token validation failed (code ${error.code ?? error.status}). Existing credentials were preserved.` : error instanceof InstagramTransportError ? 'Could not reach Instagram; existing credentials were preserved.' : (error as Error).message },error instanceof InstagramTransportError?502:400); }
     }
     const updated = await updateIgAccount(c.env.DB, id, {
       username: verifiedUsername,
-      accessToken: body.accessToken === undefined ? undefined : await sealToken(body.accessToken, existing.ig_user_id, c.env.TOKEN_ENCRYPTION_KEY),
+      accessToken: verified === undefined ? undefined : await sealToken(verified.access_token, existing.ig_user_id, c.env.TOKEN_ENCRYPTION_KEY),
       appSecret: body.appSecret === undefined ? undefined : body.appSecret ? await sealCredential(body.appSecret, `ig-app-secret:${existing.ig_user_id}`, c.env) : null,
       verifyToken: body.verifyToken,
       isActive: body.isActive,
+      ...(verified ? { connectionType: verified.connection_type, pageId: verified.page_id } : {}),
     });
 
     if (body.accessToken !== undefined) await recordTokenValidity(c.env.DB,id,true).catch(()=>{});
@@ -137,6 +187,46 @@ accounts.patch('/api/accounts/:id', requireRole('owner'), async (c) => {
   } catch (err) {
     console.error('PATCH /api/accounts/:id error:', err instanceof Error ? err.name : 'unknown');
     return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
+// GET /api/accounts/:id/connection - last stored webhook/permission check
+accounts.get('/api/accounts/:id/connection', requireRole('owner', 'admin'), async (c) => {
+  const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  return c.json({ success: true, data: await loadConnectionReport(c.env.DB, account.id) });
+});
+
+// POST /api/accounts/:id/connection-check - re-run (optionally re-subscribe)
+accounts.post('/api/accounts/:id/connection-check', requireRole('owner'), async (c) => {
+  const account = await getIgAccountById(c.env.DB, c.req.param('id')!);
+  if (!account) return c.json({ success: false, error: 'account not found' }, 404);
+  if (!account.is_active) return c.json({ success: false, error: 'account is deactivated' }, 400);
+  let body: { subscribe?: unknown } = {};
+  try { body = await c.req.json(); } catch { /* empty body = check only */ }
+  if (body.subscribe !== undefined && typeof body.subscribe !== 'boolean') return c.json({ success: false, error: 'subscribe must be a boolean' }, 400);
+  const report = await runConnectionCheck(c.env, account, body.subscribe === true);
+  if (!report) return c.json({ success: false, error: '接続チェックを実行できませんでした（失敗ログを確認してください）' }, 502);
+  return c.json({ success: true, data: report });
+});
+
+// POST /api/accounts/:id/subscribe-webhooks - subscribe the account to this
+// app's webhooks (messages, postbacks, referral, comments). Instagram Login
+// subscribes the IG user; Unified login subscribes the linked Page when known,
+// otherwise the IG user. Registration alone does not subscribe.
+accounts.post('/api/accounts/:id/subscribe-webhooks', requireRole('owner'), async (c) => {
+  try {
+    const existing = await getIgAccountById(c.env.DB, c.req.param('id')!);
+    if (!existing) return c.json({ success: false, error: 'account not found' }, 404);
+    if (existing.is_active !== 1) return c.json({ success: false, error: 'account is inactive' }, 400);
+    const client = await getAccountClient(c.env, c.env.DB, existing);
+    const result = await client.subscribeWebhooks();
+    return c.json({ success: true, data: { connectionType: accountConnectionType(existing), node: result.node === existing.page_id ? 'page' : 'instagram_user', fields: result.fields } });
+  } catch (error) {
+    if (error instanceof InstagramApiError) return c.json({ success: false, error: `Webhook subscription failed (code ${error.code ?? error.status}). Check that the app has webhooks configured and the token has the messaging/comment permissions.` }, 400);
+    if (error instanceof InstagramTransportError) return c.json({ success: false, error: 'Could not reach Meta; subscription state is unknown.' }, 502);
+    console.error('POST /api/accounts/:id/subscribe-webhooks error:', error instanceof Error ? error.name : 'unknown');
+    return c.json({ success: false, error: error instanceof Error && error.message.startsWith('Webhook subscription is incomplete') ? error.message : 'Internal server error' }, error instanceof Error && error.message.startsWith('Webhook subscription is incomplete') ? 400 : 500);
   }
 });
 

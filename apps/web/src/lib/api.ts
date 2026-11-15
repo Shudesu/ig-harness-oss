@@ -159,6 +159,8 @@ export interface EngagementGate {
   reward_dm_rich_message_id?: string | null
   follow_reminder_dm_rich_message_id?: string | null
   comment_reply_text?: string | null
+  /** 'thread' = reply under the comment (default), 'mention' = new @username comment. */
+  comment_reply_mode?: CommentReplyMode | null
   followup_dm_sequence?: string | null
   /** LINE Harness cross-link binding. When set, reward DM URLs are auto
    *  rewritten through a LINE Harness tracked link so IG↔LINE userId is
@@ -324,9 +326,35 @@ export interface IgAccountSummary {
   hasVerifyToken: boolean
   isActive: boolean
   isDefault: boolean
+  /** instagram_login = Instagramログイン（IGAA…）/ facebook_login = 統合ログイン（EAA…） */
+  connectionType?: 'instagram_login' | 'facebook_login'
+  pageId?: string | null
   createdAt: string
   updatedAt: string
+  /** Last saved connection check (null = never checked). */
+  connection?: ConnectionReport | null
 }
+
+export type CheckState = 'ok' | 'missing' | 'error' | 'skipped'
+
+export interface ConnectionReport {
+  checkedAt: string
+  ok: boolean
+  profile: { state: CheckState; username?: string | null; message?: string | null }
+  webhook: {
+    state: CheckState
+    fields: string[]
+    missingFields: string[]
+    subscribedNow: boolean
+    message?: string | null
+  }
+  permissions: {
+    comments: { state: CheckState; message?: string | null }
+    messages: { state: CheckState; message?: string | null }
+  }
+}
+
+export type IgAccountCreateResult = IgAccountSummary & { connection?: ConnectionReport | null }
 
 export const accountsApi = {
   list: async (): Promise<IgAccountSummary[]> => {
@@ -339,8 +367,9 @@ export const accountsApi = {
     username?: string
     appSecret?: string
     verifyToken?: string
-  }): Promise<IgAccountSummary> => {
-    const res = await fetchApi<ApiResponse<IgAccountSummary>>('/api/accounts', {
+    subscribeWebhooks?: boolean
+  }): Promise<IgAccountCreateResult> => {
+    const res = await fetchApi<ApiResponse<IgAccountCreateResult>>('/api/accounts', {
       method: 'POST',
       body: JSON.stringify(input),
     })
@@ -363,6 +392,261 @@ export const accountsApi = {
     })
     if (!res.data) throw new Error(res.error || 'アカウントの更新に失敗しました')
     return res.data
+  },
+  connection: async (id: string): Promise<ConnectionReport | null> => {
+    const res = await fetchApi<ApiResponse<ConnectionReport | null>>(`/api/accounts/${encodeURIComponent(id)}/connection`)
+    return res.data ?? null
+  },
+  connectionCheck: async (id: string, subscribe = false): Promise<ConnectionReport> => {
+    const res = await fetchApi<ApiResponse<ConnectionReport>>(
+      `/api/accounts/${encodeURIComponent(id)}/connection-check`,
+      { method: 'POST', body: JSON.stringify({ subscribe }) },
+    )
+    if (!res.data) throw new Error(res.error || '接続チェックに失敗しました')
+    return res.data
+  },
+  subscribeWebhooks: async (id: string): Promise<{ connectionType: string; node: string; fields: string[] }> => {
+    const res = await fetchApi<ApiResponse<{ connectionType: string; node: string; fields: string[] }>>(`/api/accounts/${id}/subscribe-webhooks`, { method: 'POST' })
+    if (!res.data) throw new Error(res.error || 'Webhook購読に失敗しました')
+    return res.data
+  },
+}
+
+// ── Health snapshot (GET /api/health) ──
+
+export interface AccountHealthApi {
+  account_id: string
+  username: string | null
+  token_expires_at: number | null
+  token_days_left: number | null
+  token_api_ok: boolean | null
+  token_api_checked_at: string | null
+  token_api_reason?: string | null
+  last_webhook_event_at: string | null
+  dm_failures_today: number
+  graph_usage?: Record<string, number> | null
+  graph_backoff_until?: string | null
+  connection?: ConnectionReport | null
+}
+
+export interface HealthSnapshotApi {
+  ok: boolean
+  checked_at: string
+  accounts: AccountHealthApi[]
+  dm_sent_24h: number
+  cron_last_run_at: string | null
+  db_ok: boolean
+}
+
+export const healthApi = {
+  get: async (): Promise<HealthSnapshotApi | null> => {
+    const res = await fetchApi<ApiResponse<HealthSnapshotApi>>('/api/health')
+    return res.data ?? null
+  },
+}
+
+// ── Delivery failure log (GET /api/delivery-failures) ──
+
+export type DeliveryFailureSource =
+  | 'public_reply'
+  | 'private_reply'
+  | 'dm'
+  | 'webhook'
+  | 'broadcast'
+  | 'scenario'
+  | 'account_setup'
+
+export const DELIVERY_FAILURE_SOURCE_LABELS: Record<DeliveryFailureSource, string> = {
+  public_reply: '公開返信',
+  private_reply: 'コメントDM',
+  dm: 'DM',
+  webhook: 'Webhook',
+  broadcast: '一斉配信',
+  scenario: 'シナリオ',
+  account_setup: 'アカウント設定',
+}
+
+export interface DeliveryFailure {
+  id: string
+  source: DeliveryFailureSource | string
+  stage: string | null
+  refId: string | null
+  followerId: string | null
+  username: string | null
+  errorCode: number | null
+  errorSubcode: number | null
+  httpStatus: number | null
+  message: string | null
+  hint: string | null
+  createdAt: string
+}
+
+export const deliveryFailuresApi = {
+  list: async (params: { source?: string; limit?: number } = {}): Promise<DeliveryFailure[]> => {
+    const qs = new URLSearchParams()
+    if (params.source) qs.set('source', params.source)
+    if (params.limit) qs.set('limit', String(Math.max(1, Math.min(200, params.limit))))
+    const q = qs.toString()
+    const res = await fetchApi<ApiResponse<DeliveryFailure[]>>(`/api/delivery-failures${q ? `?${q}` : ''}`)
+    return res.data ?? []
+  },
+}
+
+// ── Comment rules: public reply fields + delivery log ──
+
+export type CommentReplyMode = 'thread' | 'mention'
+
+export const COMMENT_REPLY_MODE_LABELS: Record<CommentReplyMode, string> = {
+  thread: 'スレッド返信（推奨）',
+  mention: '@付き新規コメント',
+}
+
+/** Wire shape of a comment rule including the public-reply fields. */
+export type CommentRuleApi = CommentRule & {
+  /** null = default text, '' = no public reply. */
+  replyText?: string | null
+  replyMode?: CommentReplyMode
+}
+
+export type CommentRuleInput = Omit<CommentRule, 'id' | 'createdAt' | 'updatedAt'> & {
+  replyText?: string | null
+  replyMode?: CommentReplyMode
+}
+
+export interface CommentRuleDelivery {
+  id: string | number
+  status: string
+  reason: string | null
+  deliveryMode: string | null
+  errorCode: number | null
+  errorSubcode: number | null
+  errorMessage?: string | null
+  username: string | null
+  publicReplyStatus?: 'sent' | 'failed' | null
+  publicReplyErrorCode?: number | null
+  publicReplyErrorMessage?: string | null
+  replyMode?: CommentReplyMode | null
+  createdAt?: string | null
+}
+
+// ── Broadcasts ──
+
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent'
+
+export interface BroadcastApi {
+  id: string
+  name: string
+  messageType: 'text' | 'image' | 'template' | 'quick_reply'
+  /** JSON string, e.g. {"text":"..."} */
+  body: string
+  /** JSON string {"tagId": "..."} or null */
+  tagFilter: string | null
+  status: BroadcastStatus
+  scheduledAt: string | null
+  sentAt: string | null
+  totalSent: number
+  createdAt: string
+  updatedAt: string
+  deliverySummary?: Array<{
+    status: string
+    reason: string | null
+    errorCode: number | null
+    errorSubcode: number | null
+    count: number
+  }>
+}
+
+export const broadcastsApi = {
+  list: async (): Promise<BroadcastApi[]> => {
+    const res = await fetchApi<ApiResponse<BroadcastApi[]>>('/api/broadcasts')
+    return res.data ?? []
+  },
+  get: async (id: string): Promise<BroadcastApi> => {
+    const res = await fetchApi<ApiResponse<BroadcastApi>>(`/api/broadcasts/${encodeURIComponent(id)}`)
+    if (!res.data) throw new Error(res.error || '配信の取得に失敗しました')
+    return res.data
+  },
+  createText: async (input: { name: string; text: string; tagId?: string | null }): Promise<BroadcastApi> => {
+    const res = await fetchApi<ApiResponse<BroadcastApi>>('/api/broadcasts', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: input.name,
+        messageType: 'text',
+        body: JSON.stringify({ text: input.text }),
+        tagFilter: input.tagId ? JSON.stringify({ tagId: input.tagId }) : null,
+      }),
+    })
+    if (!res.data) throw new Error(res.error || '下書きの作成に失敗しました')
+    return res.data
+  },
+  send: async (id: string): Promise<BroadcastApi | null> => {
+    const res = await fetchApi<ApiResponse<BroadcastApi | null>>(
+      `/api/broadcasts/${encodeURIComponent(id)}/send`,
+      { method: 'POST' },
+    )
+    return res.data ?? null
+  },
+  remove: async (id: string): Promise<void> => {
+    await fetchApi<ApiResponse<null>>(`/api/broadcasts/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+}
+
+// ── Forms ──
+
+export interface FormField {
+  name: string
+  label: string
+  type: 'text' | 'email' | 'tel' | 'textarea' | 'select'
+  required?: boolean
+  options?: string[]
+}
+
+export interface FormApi {
+  id: string
+  name: string
+  description: string | null
+  fields: FormField[]
+  onSubmitTagId: string | null
+  onSubmitScenarioId: string | null
+  onSubmitMessageType: string | null
+  onSubmitMessageContent: string | null
+  saveToMetadata: boolean
+  isActive: boolean
+  submitCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FormSubmissionApi {
+  id: string
+  formId: string
+  friendId: string | null
+  friendName: string | null
+  data: Record<string, unknown>
+  createdAt: string
+}
+
+export const formsApi = {
+  list: async (): Promise<FormApi[]> => {
+    const res = await fetchApi<ApiResponse<FormApi[]>>('/api/forms')
+    return res.data ?? []
+  },
+  create: async (input: { name: string; description?: string | null; fields: FormField[]; onSubmitTagId?: string | null }): Promise<FormApi> => {
+    const res = await fetchApi<ApiResponse<FormApi>>('/api/forms', { method: 'POST', body: JSON.stringify(input) })
+    if (!res.data) throw new Error(res.error || 'フォームの作成に失敗しました')
+    return res.data
+  },
+  update: async (id: string, patch: Partial<{ name: string; isActive: boolean }>): Promise<FormApi> => {
+    const res = await fetchApi<ApiResponse<FormApi>>(`/api/forms/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(patch) })
+    if (!res.data) throw new Error(res.error || 'フォームの更新に失敗しました')
+    return res.data
+  },
+  remove: async (id: string): Promise<void> => {
+    await fetchApi<ApiResponse<null>>(`/api/forms/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  submissions: async (id: string): Promise<FormSubmissionApi[]> => {
+    const res = await fetchApi<ApiResponse<FormSubmissionApi[]>>(`/api/forms/${encodeURIComponent(id)}/submissions`)
+    return res.data ?? []
   },
 }
 
@@ -687,16 +971,18 @@ export const api = {
   },
   commentRules: {
     list: () =>
-      fetchApi<ApiResponse<CommentRule[]>>('/api/comment-rules'),
+      fetchApi<ApiResponse<CommentRuleApi[]>>('/api/comment-rules'),
+    deliveries: () =>
+      fetchApi<ApiResponse<CommentRuleDelivery[]>>('/api/comment-rule-deliveries'),
     get: (id: string) =>
       fetchApi<ApiResponse<CommentRule>>(`/api/comment-rules/${id}`),
-    create: (data: Omit<CommentRule, 'id' | 'createdAt' | 'updatedAt'>) =>
-      fetchApi<ApiResponse<CommentRule>>('/api/comment-rules', {
+    create: (data: CommentRuleInput) =>
+      fetchApi<ApiResponse<CommentRuleApi>>('/api/comment-rules', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Partial<Omit<CommentRule, 'id' | 'createdAt' | 'updatedAt'>>) =>
-      fetchApi<ApiResponse<CommentRule>>(`/api/comment-rules/${id}`, {
+    update: (id: string, data: Partial<CommentRuleInput>) =>
+      fetchApi<ApiResponse<CommentRuleApi>>(`/api/comment-rules/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),

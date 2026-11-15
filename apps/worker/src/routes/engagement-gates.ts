@@ -178,6 +178,8 @@ engagementGates.post('/api/engagement-gates', async (c) => {
     reward_dm_rich_message_id?: string | null;
     follow_reminder_dm_rich_message_id?: string | null;
     comment_reply_text?: string | null;
+    /** 'thread' (default) = nested reply via /{comment-id}/replies; 'mention' = top-level @username comment. */
+    comment_reply_mode?: 'thread' | 'mention';
     followup_dm_sequence?: string | null;
     /** When 1, every matching trigger creates a new delivery and the
      *  service skips the idempotent early-return so the same follower
@@ -196,6 +198,9 @@ engagementGates.post('/api/engagement-gates', async (c) => {
 
   if (!body.name || !body.trigger_type) {
     return c.json({ success: false, error: 'missing required fields: name, trigger_type' }, 400);
+  }
+  if (body.comment_reply_mode !== undefined && body.comment_reply_mode !== 'thread' && body.comment_reply_mode !== 'mention') {
+    return c.json({ success: false, error: "comment_reply_mode must be 'thread' or 'mention'" }, 400);
   }
 
   // Legacy text fields are only required when the corresponding rich-message
@@ -266,6 +271,7 @@ engagementGates.post('/api/engagement-gates', async (c) => {
     reward_dm_rich_message_id: body.reward_dm_rich_message_id ?? null,
     follow_reminder_dm_rich_message_id: body.follow_reminder_dm_rich_message_id ?? null,
     comment_reply_text: body.comment_reply_text ?? null,
+    comment_reply_mode: body.comment_reply_mode ?? 'thread',
     followup_dm_sequence: body.followup_dm_sequence ?? null,
     line_connection_id: body.line_connection_id ?? null,
     line_pool_slug: body.line_pool_slug ?? null,
@@ -295,6 +301,9 @@ engagementGates.patch('/api/engagement-gates/:id', async (c) => {
 
   const existing = await getEngagementGate(c.env.DB, id);
   if (!existing) return c.json({ success: false, error: 'not found' }, 404);
+  if ('comment_reply_mode' in patch && patch.comment_reply_mode !== 'thread' && patch.comment_reply_mode !== 'mention') {
+    return c.json({ success: false, error: "comment_reply_mode must be 'thread' or 'mention'" }, 400);
+  }
 
   // Invalidate the cached tracked-link id when any of the three fields
   // that bake into the tracked link change: connection, pool, or reward_url.

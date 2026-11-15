@@ -20,7 +20,7 @@ import { processScheduledBroadcasts } from './services/broadcast.js';
 import { processFollowupDrip } from './services/engagement-gate.js';
 import { authMiddleware } from './middleware/auth.js';
 import { rateLimitMiddleware } from './middleware/rate-limit.js';
-import { pruneExpiredMessages } from './services/retention.js';
+import { pruneExpiredMessages, pruneDeliveryFailures } from './services/retention.js';
 import { processQueuedWebhooks } from './routes/webhook.js';
 import { processCommentRuleJobs } from './services/comment-rule-jobs.js';
 import { webhook } from './routes/webhook.js';
@@ -60,6 +60,8 @@ export type Env = {
     TRACKING_ALLOW_UNSIGNED_ACTIONS?: string;
     IG_LINK_TOKEN_SECRET?: string;
     IG_GRAPH_API_VERSION?: string;
+    /** Optional override for the env-seeded default account: instagram_login | facebook_login. */
+    IG_CONNECTION_TYPE?: string;
     IG_REQUIRE_APPSECRET_PROOF?: string;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
@@ -309,6 +311,7 @@ export async function runScheduledJobs(
   }
   await env.DB.prepare('DELETE FROM rate_limit_buckets WHERE expires_at < ?').bind(Date.now()).run().catch(() => { console.warn('[rate-limit] cleanup unavailable; apply migrations'); });
   await pruneExpiredMessages(env.DB, env.MESSAGES_RETENTION_DAYS);
+  await pruneDeliveryFailures(env.DB).catch(() => { console.warn('[retention] delivery_failures cleanup unavailable; apply migrations'); });
   const igAccounts = await listIgAccounts(env.DB, { activeOnly: true });
 
   for (const account of igAccounts) {

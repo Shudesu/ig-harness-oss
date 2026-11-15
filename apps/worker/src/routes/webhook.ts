@@ -24,7 +24,9 @@ import { listIgAccounts, getIgAccountById } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
 import { recordWebhookReceived } from '../lib/health.js';
 import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
-import { enqueueCommentRuleJob, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
+import { enqueueCommentRuleJob, normalizeReplyMode, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
+import { forwardLinkedInstagramEngagement } from '../services/line-mileage.js';
+import { isOutboundPaused } from '../services/human-touch.js';
 import type { IgAccount } from '@ig-harness/db';
 import type { Env } from '../index.js';
 
@@ -146,6 +148,8 @@ webhook.post('/webhook', async (c) => {
 });
 
 export async function processQueuedWebhooks(db: D1Database, client: InstagramClient, account: IgAccount, workerUrl?: string, env?: CredentialEnv): Promise<void> {
+  // Operator stop switch: leave events pending, they resume after unpausing.
+  if (await isOutboundPaused(db)) return;
   await drainWebhookEvents(db, account.id, async (event) => {
     const value = JSON.parse(event.payload);
     const ref = toIgAccountRef(account, env);
@@ -206,17 +210,75 @@ export async function handleMessagingEvent(
   }
   if (accountId) await resumeCommentJobs(db,follower.id,accountId);
 
-  if (event.message?.text) {
-    const incomingText = event.message.text;
+  // Operator stop switch (U22): inbound bookkeeping above still runs, but no
+  // automated send below happens while paused. Queue processors also skip
+  // their drains, so pending deliveries resume after unpausing.
+  const paused = await isOutboundPaused(db);
 
-    // Log incoming message
+  const inboundId = event.message?.mid ?? event.postback?.mid;
+  if (inboundId) {
+    await forwardLinkedInstagramEngagement(db, {
+      followerId: follower.id,
+      eventType: 'instagram_dm_received',
+      sourceEventId: `${accountId ?? 'default'}:${inboundId}`,
+      subjectKey: accountId ?? 'default',
+      metadata: {
+        accountId: accountId ?? null,
+        kind: event.postback ? 'postback' : event.message?.attachments?.length ? 'attachment' : 'text',
+      },
+    });
+  }
+
+  // Story reply (GAP#8): detected independently of the text/quick-reply
+  // handling, so an attachment-only story reply still gets its log entry and
+  // mileage event. Uses the story id as the subject so LINE-side scoring can
+  // see which story produced the reply.
+  const story = event.message?.reply_to?.story ?? null;
+  if (story) {
+    // messages_log.trigger_source has a CHECK constraint (additive-only
+    // migration policy), so the story-reply kind lives in the body JSON.
     await db
       .prepare(
         `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
          VALUES (?, 'in', 'text', ?, NULL)`,
       )
-      .bind(follower.id, JSON.stringify({ text: incomingText }))
+      .bind(follower.id, JSON.stringify({ text: event.message?.text ?? '', kind: 'story_reply', story }))
       .run();
+    await forwardLinkedInstagramEngagement(db, {
+      followerId: follower.id,
+      eventType: 'instagram_story_replied',
+      sourceEventId: `${accountId ?? 'default'}:story:${event.message?.mid ?? senderId}`,
+      subjectKey: story.id ?? story.url ?? null,
+      metadata: { accountId: accountId ?? null, storyUrl: story.url ?? null, text: event.message?.text ?? '' },
+    });
+  }
+
+  // Quick replies arrive as the button label in `text` plus the machine
+  // payload in `message.quick_reply.payload` (GAP#1b). Branch on the
+  // payload so selections route through gates/scenarios like keywords.
+  const quickPayload = event.message?.quick_reply?.payload;
+  const incomingText = quickPayload ?? event.message?.text ?? '';
+
+  if (incomingText) {
+    if (!story) {
+      // Log incoming message (story replies are logged above).
+      await db
+        .prepare(
+          `INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source)
+           VALUES (?, 'in', ?, ?, NULL)`,
+        )
+        .bind(
+          follower.id,
+          quickPayload ? 'quick_reply' : 'text',
+          JSON.stringify(quickPayload ? { text: event.message?.text ?? '', payload: quickPayload } : { text: incomingText }),
+        )
+        .run();
+    }
+
+    // Operator stop switch (U22): inbound bookkeeping above still runs, but no
+    // automated send below happens while paused. Queue processors also skip
+    // their drains, so pending deliveries resume after unpausing.
+    if (paused) return;
 
     // Check LINE Harness UUID linkage token
     if (incomingText.startsWith('CONNECT:')) {
@@ -237,7 +299,7 @@ export async function handleMessagingEvent(
             .bind(uid, follower.id)
             .run();
 
-          await igClient.sendText(senderId, '✅ LINE連携が完了しました！LINEとInstagramのアカウントが紐づけられました。');
+          if (!paused) await igClient.sendText(senderId, '✅ LINE連携が完了しました！LINEとInstagramのアカウントが紐づけられました。');
 
           await db
             .prepare(
@@ -248,7 +310,7 @@ export async function handleMessagingEvent(
             .run();
         }
       } else {
-        await igClient.sendText(senderId, '❌ 無効な連携コードです。LINEから再度リンクを取得してください。');
+        if (!paused) await igClient.sendText(senderId, '❌ 無効な連携コードです。LINEから再度リンクを取得してください。');
       }
       return; // Don't process further
     }
@@ -300,10 +362,12 @@ export async function handleMessagingEvent(
         }
       }
     }
-
+  } else if (story) {
+    // Attachment-only story reply: logged and forwarded above, nothing to branch.
+    return;
   }
 
-  if (event.message && !event.message.text) {
+  if (event.message && !event.message.text && !event.message.quick_reply && !event.message.reply_to?.story) {
     await logMessage(db, { followerId: follower.id, direction: 'in', messageType: 'text', body: JSON.stringify({ text: '[attachment]' }), triggerSource: null });
     if (accountId && await resumeCommentGate(db, igClient, { id: follower.id, igsid: senderId }, accountId, igAccount)) return;
   }
@@ -313,7 +377,7 @@ export async function handleMessagingEvent(
   }
 
   // Handle postback events
-  if (event.postback) {
+  if (event.postback && !paused) {
     const payload = parsePostbackPayload(event.postback.payload ?? '');
     if (payload.kind === 'check_follow') {
       try {
@@ -367,6 +431,18 @@ async function handleCommentEvent(
   const follower = (await getFriendByIgsid(db,senderId)) ?? await upsertFriend(db,{ igsid:senderId,username:value.from.username,accountId });
   if (accountId && follower.account_id !== accountId) throw new Error('Follower account mismatch');
 
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_comment_created',
+    sourceEventId: `${accountId ?? 'default'}:${value.id}`,
+    subjectKey: mediaId,
+    metadata: { accountId: accountId ?? null, mediaId },
+  });
+
+  // Operator stop switch: skip gate triggers and comment rules while paused.
+  // Inbound engagement forwarding above still runs so LINE mileage is kept.
+  if (await isOutboundPaused(db)) return;
+
   // Engagement gate trigger — runs FIRST so a configured gate takes precedence
   // over the legacy comment-rule flow. If a gate fires, we skip the rule loop
   // and the gate-triggered scenarios below to avoid double DMs.
@@ -399,6 +475,8 @@ async function handleCommentEvent(
         response_type: string;
         response_body: string;
         delay_seconds: number;
+        reply_text?: string | null;
+        reply_mode?: string | null;
       }> }
     : await db
         .prepare(
@@ -423,6 +501,8 @@ async function handleCommentEvent(
           response_type: string;
           response_body: string;
           delay_seconds: number;
+          reply_text?: string | null;
+          reply_mode?: string | null;
         }>();
 
   for (const rule of commentRules.results) {
@@ -452,11 +532,11 @@ async function handleCommentEvent(
         .replace(/\{\{igsid\}\}/g, senderId)
         .replace(/\{\{username\}\}/g, value.from.username)
         .replace(/\{\{follower_id\}\}/g, String(follower.id));
-      const replyText = (rule as { reply_text?: string }).reply_text?.replace('{{username}}', value.from.username)
-        ?? `@${value.from.username} コメントありがとう！📩 DMを送りました！`;
+      const replyText = commentRulePublicReply(rule.reply_text, value.from.username);
       await enqueueCommentRuleJob(db, {
         accountId, ruleId: rule.id, commentId: value.id, followerId: follower.id,
         messageType: rule.response_type, body: expandedBody, replyText, delaySeconds: rule.delay_seconds, mediaId, commentCreatedAt: value.created_time, isLive: value.media.media_product_type === 'LIVE',
+        replyMode: normalizeReplyMode(rule.reply_mode),
       });
 
       break; // Only send first matching rule
@@ -491,6 +571,7 @@ async function handleMentionEvent(
   value: { media_id?: string; comment_id?: string; mentioned_user_id?: string },
   igAccount?: IgAccountRef,
   accountId?: string,
+  sourceEventId?: string,
 ): Promise<void> {
   // When someone mentions us in their story, send them a DM
   const mentionerId = (value as any).from?.id ?? (value as any).mentioned_user_id;
@@ -507,8 +588,21 @@ async function handleMentionEvent(
     accountId,
   });
 
+  // Engagement forwarding runs regardless of DM eligibility — a caption/media
+  // mention still counts as an engagement even when messaging isn't eligible.
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_story_mentioned',
+    sourceEventId: sourceEventId ?? `${accountId ?? 'default'}:${mentionerId}:${value.media_id ?? 'mention'}`,
+    subjectKey: value.media_id ?? accountId ?? 'default',
+    metadata: { accountId: accountId ?? null, mediaId: value.media_id ?? null },
+  });
+
   // A caption/media mention is not itself an inbound DM.
   if (await messagingEligibility(db,follower.id,accountId) !== 'eligible') return;
+
+  // Operator stop switch: skip automated sends while paused.
+  if (await isOutboundPaused(db)) return;
 
   // Engagement gate trigger (story_mention) — fires before the legacy thank-you DM
   // so a configured campaign takes precedence over the hard-coded reply.
@@ -543,3 +637,15 @@ async function handleMentionEvent(
 }
 
 export { webhook };
+
+export const DEFAULT_COMMENT_RULE_REPLY = '@{{username}} コメントありがとう！📩 DMを送りました！';
+
+/**
+ * Public reply text for a comment rule, separate from the DM body.
+ * NULL keeps the historical default text, '' disables the public reply.
+ */
+export function commentRulePublicReply(template: string | null | undefined, username: string): string | null {
+  const text = template === null || template === undefined ? DEFAULT_COMMENT_RULE_REPLY : template;
+  if (!text.trim()) return null;
+  return text.replace(/\{\{\s*username\s*\}\}/g, username);
+}
