@@ -18,7 +18,7 @@ it('returns the guardrail snapshot for the selected account', async () => {
     const result = await response.json() as any;
     expect(result.data).toMatchObject({
       paused: false,
-      presenceEnabled: false,
+      presenceEnabled: true,
       window: { startHourJst: 9, endHourJst: 23 },
       followers: { eligible: expect.any(Number), windowExpired: expect.any(Number), standby: expect.any(Number) },
       volume: { dmOut24h: expect.any(Number), pendingBroadcastRecipients: expect.any(Number), pendingCommentJobs: expect.any(Number), activeScenarios: expect.any(Number) },

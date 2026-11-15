@@ -52,7 +52,9 @@ it('registers an EAA token with an explicit IG user id against graph.facebook.co
     const body = await res.json() as any;
     expect(body.data).toMatchObject({ igUserId: '17841400000000001', username: 'new_owner', connectionType: 'facebook_login', pageId: null });
     expect(JSON.stringify(body)).not.toContain('EAAsecret-token');
-    expect(String(fetch.mock.calls.at(-1)?.[0])).toBe('https://graph.facebook.com/v25.0/17841400000000001?fields=id,username');
+    // Registration is followed by a connection check (improve-all), so the
+    // profile fetch is no longer necessarily the last call.
+    expect(fetch.mock.calls.some(([url]) => String(url) === 'https://graph.facebook.com/v25.0/17841400000000001?fields=id,username')).toBe(true);
     expect(f.row("ig_user_id='17841400000000001'")).toMatchObject({ connection_type: 'facebook_login', access_token: expect.stringMatching(/^enc:v1:/) });
   } finally { f.sqlite.close(); }
 });
@@ -83,7 +85,9 @@ it('finds the IG account assigned to a Unified login system-user token without a
     vi.stubGlobal('fetch', fetch);
     expect((await f.request('/api/accounts', 'POST', { accessToken: 'EAAsuat' })).status).toBe(201);
     expect(f.row("ig_user_id='17841400000000004'")).toMatchObject({ connection_type: 'facebook_login', page_id: null });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    // Registration is followed by a connection check; assert the validation calls happened.
+    expect(new URL(String(fetch.mock.calls[0]?.[0])).pathname).toBe('/v25.0/me/assigned_instagram_accounts');
+    expect(fetch.mock.calls.some(([url]) => String(url) === 'https://graph.facebook.com/v25.0/17841400000000004?fields=id,username')).toBe(true);
   } finally { f.sqlite.close(); }
 });
 
@@ -173,6 +177,8 @@ it('builds a graph.facebook.com client for Unified login accounts and keeps the 
     f.sqlite.prepare("UPDATE ig_accounts SET token_expires_at=? WHERE id='a'").run(Math.floor(Date.now() / 1000) + 60 * 86400);
     f.sqlite.prepare("INSERT INTO ig_accounts(id,ig_user_id,access_token,is_default,created_at,updated_at,connection_type,page_id) VALUES('b','178','EAAstored',0,'2026-01-01','2026-01-01','facebook_login',NULL)").run();
     const fetch = vi.fn().mockImplementation(async () => json({ recipient_id: 'r', message_id: 'm' })); vi.stubGlobal('fetch', fetch);
+    // Presence is ON by default now; this test is about routing, so turn it off.
+    f.sqlite.prepare("INSERT INTO integration_settings(key,value) VALUES('dm_presence_enabled','0')").run();
     await (await getAccountClient(f.env, f.db, f.row("id='a'"))).sendText('user', 'hi');
     await (await getAccountClient(f.env, f.db, f.row("id='b'"))).sendText('user', 'hi');
     const urls = fetch.mock.calls.map(([url]) => new URL(String(url)));

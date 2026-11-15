@@ -40,6 +40,7 @@ describe('presence setting (U18, default ON since 2026-11-15)', () => {
 
     it('sends without sender actions when OFF', async () => {
         const client = fakeClient();
+        await setDmPresenceEnabled(state.db, false);
         await sendWithPresence(state.db, client as never, 'igsid-1', () => client.sendText('igsid-1', 'hi'));
         expect(client.sendSenderAction).not.toHaveBeenCalled();
         expect(client.sendText).toHaveBeenCalledTimes(1);
@@ -128,6 +129,7 @@ describe('presence setting (U18, default ON since 2026-11-15)', () => {
     });
 
     it('does not decorate when disabled', async () => {
+        await setDmPresenceEnabled(state.db, false);
         const mocks = {
             sendText: vi.fn(async () => ({})),
             sendSenderAction: vi.fn(async () => undefined),
