@@ -182,8 +182,50 @@ export async function processQueuedWebhooks(db: D1Database, client: InstagramCli
     if (event.kind === 'messaging' || event.kind === 'standby') await handleMessagingEvent(db, client, value, workerUrl, ref, account.id, event.kind === 'standby');
     else if (event.kind === 'comments') await handleCommentEvent(db, client, value, account.ig_user_id, workerUrl, ref, account.id);
     else if (event.kind === 'mentions') await handleMentionEvent(db, client, value, ref, account.id);
+    // B-15: live comments look like ordinary comment payloads — reuse that
+    // pipeline (gate → rules → private reply). Requires the live_comments
+    // app subscription and Advanced Access (要実機).
+    else if (event.kind === 'live_comments') await handleCommentEvent(db, client, value, account.ig_user_id, workerUrl, ref, account.id);
+    // B-20: ingest-only metrics events (never ack-less, never a DM path).
+    else if (event.kind === 'message_reactions') await handleReactionEvent(db, client, value, ref, account.id);
+    else if (event.kind === 'story_insights') await recordStoryInsights(db, account.id, value);
+    // Anything else stays queued with kind recorded; add handlers here.
   });
   await processCommentRuleJobs(db, client, account.id);
+}
+
+/**
+ * B-20: message_reactions ingestion. Only meaningful when a sender id is
+ * present; recorded as an engagement log so scoring/reporting can use it
+ * later. Reactions never open the 24h window and never trigger a send.
+ */
+async function handleReactionEvent(
+  db: D1Database,
+  _client: InstagramClient,
+  value: { reaction?: { mid?: string; action?: string; reaction?: string; emoji?: string }; from?: { id?: string } },
+  igAccount?: IgAccountRef,
+  accountId?: string,
+): Promise<void> {
+  const senderId = value.from?.id ?? (value as { sender?: { id?: string } }).sender?.id;
+  if (!senderId) return;
+  const follower = await getFriendByIgsid(db, senderId);
+  if (!follower) return;
+  await forwardLinkedInstagramEngagement(db, {
+    followerId: follower.id,
+    eventType: 'instagram_message_reacted',
+    sourceEventId: `${accountId ?? 'default'}:${value.reaction?.mid ?? 'reaction'}`,
+    subjectKey: accountId ?? 'default',
+    metadata: { accountId: accountId ?? null, action: value.reaction?.action ?? null, reaction: value.reaction?.reaction ?? value.reaction?.emoji ?? null },
+  });
+}
+
+/** B-20: story_insights change values — keep the latest snapshot per account. */
+export async function recordStoryInsights(db: D1Database, accountId: string, value: unknown): Promise<void> {
+  await db.prepare(
+    `INSERT INTO integration_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))`,
+  ).bind(`health:story_insights:${accountId}`, JSON.stringify({ receivedAt: new Date().toISOString(), value })).run().catch(() => {});
 }
 
 export async function getOrRefreshFollower(db: D1Database, client: InstagramClient, igsid: string, accountId?: string, username?: string) {
@@ -284,6 +326,45 @@ export async function handleMessagingEvent(
   // payload so selections route through gates/scenarios like keywords.
   const quickPayload = event.message?.quick_reply?.payload;
   const incomingText = quickPayload ?? event.message?.text ?? '';
+
+  // B-16: messaging_referral — ig.me/m/xxx?ref=… (and ad) entry points.
+  // The ref lands on the follower as metadata.ref (source tag), is logged
+  // like any inbound, is attached to the mileage event, and can trigger a
+  // scenario whose dm_keyword matches the ref value.
+  if (event.referral && typeof event.referral.ref === 'string') {
+    const ref = event.referral.ref.slice(0, 256);
+    try {
+      await db.prepare(`UPDATE followers SET metadata = json_set(COALESCE(metadata,'{}'), '$.ref', ?, '$.ref_source', ?, '$.ref_received_at', ?) WHERE id = ?`)
+        .bind(ref, event.referral.source ?? null, new Date().toISOString(), follower.id).run();
+    } catch { /* metadata is best-effort */ }
+    await db.prepare(`INSERT INTO messages_log (follower_id, direction, message_type, body, trigger_source) VALUES (?, 'in', 'text', ?, NULL)`)
+      .bind(follower.id, JSON.stringify({ text: '', kind: 'messaging_referral', ref, source: event.referral.source ?? null })).run();
+    await forwardLinkedInstagramEngagement(db, {
+      followerId: follower.id,
+      eventType: 'instagram_referral_received',
+      sourceEventId: `${accountId ?? 'default'}:ref:${ref}`,
+      subjectKey: ref,
+      metadata: { accountId: accountId ?? null, ref, source: event.referral.source ?? null },
+    });
+    if (!paused && ref) {
+      const scenarios = await getScenarios(db, { accountId });
+      for (const scenario of scenarios) {
+        if (scenario.trigger_type === 'dm_keyword' && scenario.is_active && scenario.trigger_keyword && ref.includes(scenario.trigger_keyword)) {
+          const existing = await db.prepare(`SELECT id FROM follower_scenarios WHERE follower_id = ? AND scenario_id = ?`).bind(follower.id, scenario.id).first<{ id: string }>();
+          if (!existing) {
+            const friendScenario = await enrollFriendInScenario(db, follower.id, scenario.id);
+            const steps = await getScenarioSteps(db, scenario.id);
+            const firstStep = steps[0];
+            if (firstStep && firstStep.delay_minutes === 0 && friendScenario.status === 'active') {
+              await processSingleDelivery(db, igClient, { ...friendScenario, id: String(friendScenario.id), follower_id: String(friendScenario.follower_id), scenario_id: String(friendScenario.scenario_id) }, workerUrl, true);
+            }
+          }
+          break;
+        }
+      }
+    }
+    return;
+  }
 
   if (incomingText) {
     if (!story) {
@@ -599,6 +680,15 @@ async function handleMentionEvent(
   accountId?: string,
   sourceEventId?: string,
 ): Promise<void> {
+  // B-14: a comments/caption mention carries {media_id, comment_id} and no
+  // sender. The content lives in the mentioned_comment / mentioned_media
+  // node; fetch it, record it, and run comment rules with a public mention
+  // reply. Story mentions (DM attachment path) keep the DM flow below.
+  if (value.comment_id || (value.media_id && !value.mentioned_user_id)) {
+    await handleMentionContentEvent(db, igClient, value, igAccount, accountId, sourceEventId);
+    return;
+  }
+
   // When someone mentions us in their story, send them a DM
   const mentionerId = (value as any).from?.id ?? (value as any).mentioned_user_id;
   if (!mentionerId) return;
@@ -660,6 +750,91 @@ async function handleMentionEvent(
   } catch (err) {
     console.error('Mention DM failed:', err);
   }
+}
+
+/**
+ * B-14: comments/caption mention ingestion. The webhook only gives
+ * {media_id, comment_id}; the sender never comes with the event, so the
+ * content is read from the mentioned node. Everything is recorded in
+ * mention_events (additive migration), matched against comment rules, and
+ * answered with a public reply via POST /{ig-user-id}/mentions. Mentions do
+ * NOT open the 24h DM window, so no DM is attempted.
+ */
+async function handleMentionContentEvent(
+  db: D1Database,
+  igClient: InstagramClient,
+  value: { media_id?: string; comment_id?: string },
+  igAccount?: IgAccountRef,
+  accountId?: string,
+  sourceEventId?: string,
+): Promise<void> {
+  const commentId = value.comment_id ?? null;
+  const mediaId = value.media_id ?? null;
+  const kind = commentId ? 'comment' : 'media';
+  let text: string | null = null;
+  let username: string | null = null;
+  let contentMediaId: string | null = mediaId;
+  try {
+    if (commentId) {
+      const comment = await igClient.getMentionedComment(commentId);
+      text = comment.text ?? null;
+      username = comment.username ?? null;
+      contentMediaId = comment.media?.id ?? mediaId;
+    } else if (mediaId) {
+      const media = await igClient.getMentionedMedia(mediaId);
+      text = media.caption ?? null;
+      username = media.username ?? null;
+    }
+  } catch (error) {
+    console.warn('[webhook] mention content fetch failed:', error instanceof Error ? error.name : 'unknown');
+  }
+
+  // Record (mention_events, additive migration 0026).
+  const record = await db.prepare(
+    `INSERT INTO mention_events (account_id, kind, comment_id, media_id, username, text)
+     VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+  ).bind(accountId ?? 'default', kind, commentId, contentMediaId, username, text).first<{ id: number }>().catch(() => null);
+
+  // Operator stop switch: record but never auto-reply while paused.
+  if (await isOutboundPaused(db)) return;
+
+  // Comment rules (media filter + keyword) — same precedence as comments.
+  if (!accountId) return;
+  const rules = await db.prepare(
+    `SELECT * FROM comment_rules WHERE is_active = 1 AND account_id = ?
+     ORDER BY CASE match_type WHEN 'any_comment' THEN 1 ELSE 0 END ASC,
+              CASE WHEN media_id IS NULL THEN 1 ELSE 0 END ASC,
+              created_at ASC`,
+  ).bind(accountId).all<{
+    id: string; keyword: string; match_type: string; media_id: string | null; response_type: string; response_body: string; reply_text?: string | null;
+  }>();
+  const mentionText = text ?? '';
+  for (const rule of rules.results) {
+    if (rule.media_id && rule.media_id !== contentMediaId) continue;
+    let isMatch = false;
+    if (rule.match_type === 'any_comment') isMatch = true;
+    else if (rule.match_type === 'exact') isMatch = mentionText === rule.keyword;
+    else if (rule.match_type === 'contains') isMatch = mentionText.toLowerCase().includes(rule.keyword.toLowerCase());
+    else if (rule.match_type === 'regex') { try { isMatch = new RegExp(rule.keyword, 'i').test(mentionText); } catch { isMatch = false; } }
+    if (!isMatch) continue;
+
+    const expandedBody = rule.response_body
+      .replace(/\{\{username\}\}/g, username ?? '')
+      .replace(/\{\{igsid\}\}/g, username ?? '');
+    const replyText = rule.reply_text ? commentRulePublicReply(rule.reply_text, username ?? '') : null;
+    const message = (replyText ? `${replyText} ` : '') + expandedBody;
+    try {
+      // Public mention reply: POST /{ig-user-id}/mentions with comment_id
+      // when available; caption mentions reply on the media itself.
+      await igClient.sendMentionReply(message.slice(0, 1000), commentId ?? undefined, commentId ? undefined : (contentMediaId ?? undefined));
+      await db.prepare('UPDATE mention_events SET replied = 1, replied_at = ? WHERE id = ?').bind(new Date().toISOString(), record?.id ?? 0).run().catch(() => {});
+    } catch (error) {
+      console.warn('[webhook] mention reply failed:', error instanceof Error ? error.name : 'unknown');
+    }
+    break; // first matching rule only, same as comment events
+  }
+  void igAccount;
+  void sourceEventId;
 }
 
 export { webhook };
