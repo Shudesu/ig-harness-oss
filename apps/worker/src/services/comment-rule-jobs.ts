@@ -3,6 +3,7 @@ import { deliveryFailure, sendIgMessage, validateBroadcastMessage } from './broa
 import { messagingEligibility } from './messaging-window.js';
 import { sendCommentPrivateReply, PrivateReplyNotAttemptedError } from './private-reply.js';
 import { describeFailure, recordDeliveryFailure } from '../lib/delivery-failures.js';
+import { isOutboundPaused } from './human-touch.js';
 
 /** 'thread' = POST /{comment-id}/replies (nested reply, default). 'mention' = legacy top-level @username comment on the media. */
 export type PublicReplyMode = 'thread' | 'mention';
@@ -69,6 +70,8 @@ export async function resumeCommentJobs(db: D1Database, followerId: number, acco
     }
 }
 export async function processCommentRuleJobs(db: D1Database, client: InstagramClient, accountId: string): Promise<void> {
+    // Operator stop switch: jobs stay pending, they resume after unpausing.
+    if (await isOutboundPaused(db)) return;
     await db.prepare("UPDATE comment_rule_jobs SET status='uncertain', reason='interrupted' WHERE account_id=? AND status='processing' AND julianday(started_at)<julianday(?)").bind(accountId, new Date(Date.now() - 5 * 60000).toISOString()).run();
     const rows = await db.prepare(`SELECT j.*,f.igsid FROM comment_rule_jobs j JOIN followers f ON f.id=j.follower_id AND f.account_id=j.account_id
     WHERE j.account_id=? AND j.status='pending' AND j.delivery_mode!='awaiting_inbound' AND (j.gate_delivery_id IS NULL OR EXISTS(SELECT 1 FROM gate_deliveries d JOIN engagement_gates g ON g.id=d.gate_id WHERE d.id=j.gate_delivery_id AND g.status='active')) AND julianday(j.due_at)<=julianday(?) ORDER BY j.due_at LIMIT 5`)

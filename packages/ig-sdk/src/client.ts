@@ -165,6 +165,22 @@ export class InstagramClient {
   }
 
   /**
+   * Sender actions: mark_seen (既読) and typing_on/typing_off (入力中).
+   * These are not messages — the payload carries no `message` key, so
+   * transformMessage hooks are bypassed by request() by design.
+   */
+  async sendSenderAction(
+    recipientId: string,
+    action: "mark_seen" | "typing_on" | "typing_off",
+  ): Promise<void> {
+    if (!recipientId) throw new Error('Sender action requires a recipient ID');
+    await this.request("POST", `/${this.igUserId}/messages`, {
+      recipient: { id: recipientId },
+      sender_action: action,
+    });
+  }
+
+  /**
    * Cheapest possible token liveness probe. Succeeds only when the token is
    * actually usable — expiry alone misses checkpoint/freeze invalidation
    * (OAuthException code 190), which is exactly what monitoring must catch.

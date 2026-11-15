@@ -13,6 +13,7 @@ import {
 import type { Context } from 'hono';
 import type { IgAccountRef } from '../services/line-cross-link.js';
 import { refreshAccountTokenIfNeeded } from './ig-token.js';
+import { decorateWithPresence } from '../services/human-touch.js';
 import type { Env } from '../index.js';
 
 export type AccountEnv = CredentialEnv & {
@@ -194,7 +195,7 @@ export async function getAccountClient(
   if (env.IG_REQUIRE_APPSECRET_PROOF==='true' && !proofSecret) throw new Error('Instagram App Secret required for appsecret_proof');
   let blockedUntil=0;
   const observe=graphObserver(db,account.id);
-  return new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
+  const client = new InstagramClient({ accessToken:token,igUserId:account.ig_user_id,apiVersion:env.IG_GRAPH_API_VERSION,appSecret:proofSecret,
     transformMessage: async (recipientId, message, recipient) => {
       let igsid = recipientId;
       if (!igsid && recipient.comment_id) {
@@ -210,4 +211,5 @@ export async function getAccountClient(
       await observe(observation);
     },
   });
+  return decorateWithPresence(db, client);
 }

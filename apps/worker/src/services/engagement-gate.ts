@@ -7,6 +7,7 @@ import type { EngagementGate, GateDelivery } from '@ig-harness/db';
 import type { UserProfile, RichMessageBlock, RichMessageContext } from '@ig-harness/ig-sdk';
 import { resolveLineCrossLinkUrl, type IgAccountRef } from './line-cross-link.js';
 import { recordDmFailure } from '../lib/health.js';
+import { isOutboundPaused } from './human-touch.js';
 
 /**
  * Compute the outbound reward URL for one recipient, optionally rewritten
@@ -564,6 +565,8 @@ export async function processFollowupDrip(
   igAccount?: IgAccountRef,
   accountId?: string,
 ): Promise<{ sent: number; skipped: number }> {
+  // Operator stop switch: followups stay queued, resume after unpausing.
+  if (await isOutboundPaused(db)) return { sent: 0, skipped: 0 };
   const now = new Date().toISOString().slice(0, 19) + 'Z';
   // When accountId is given, scope the due extraction to deliveries whose
   // gate belongs to that IG account (multi-account cron loop).

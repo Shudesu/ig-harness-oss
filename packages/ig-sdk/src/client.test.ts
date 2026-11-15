@@ -32,6 +32,21 @@ it('posts a public reply to the documented /{comment-id}/replies endpoint', asyn
   const [url, init] = fetch.mock.calls[0]!; const parsed = new URL(url);
   expect(init.method).toBe('POST'); expect(parsed.pathname).toMatch(/\/c-9\/replies$/); expect(parsed.searchParams.get('message')).toBe('ありがとう @you');
 });
+it('sends sender actions without a message payload (mark_seen / typing_on)', async () => {
+  const fetch = vi.fn().mockImplementation(async () => new Response('{}')); vi.stubGlobal('fetch', fetch);
+  const client = new InstagramClient({ accessToken: 'test', igUserId: '123' });
+  await client.sendSenderAction('456', 'mark_seen');
+  await client.sendSenderAction('456', 'typing_on');
+  const bodies = fetch.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string));
+  expect(bodies[0]).toEqual({ recipient: { id: '456' }, sender_action: 'mark_seen' });
+  expect(bodies[1]).toEqual({ recipient: { id: '456' }, sender_action: 'typing_on' });
+  // Sender actions are never passed through message rewriting hooks.
+  const transformed = new InstagramClient({ accessToken: 'test', igUserId: '123', transformMessage: async () => { throw new Error('should not be called'); } });
+  fetch.mockClear().mockImplementation(async () => new Response('{}'));
+  await transformed.sendSenderAction('456', 'typing_off');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await expect(client.sendSenderAction('', 'mark_seen')).rejects.toThrow('recipient');
+});
 it('subscribes the account to webhook fields and reads them back', async () => {
   const fetch = vi.fn().mockResolvedValueOnce(new Response('{"success":true}')).mockResolvedValueOnce(new Response('{"data":[{"subscribed_fields":["messages","comments"]}]}')); vi.stubGlobal('fetch', fetch);
   const client = new InstagramClient({ accessToken: 'test', igUserId: '123' });

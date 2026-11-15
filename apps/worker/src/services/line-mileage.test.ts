@@ -47,4 +47,20 @@ describe('forwardLinkedInstagramEngagement', () => {
       sourceEventId: 'comment-1',
     });
   });
+
+  it('accepts the instagram_story_replied event type (U7 story_reply種別)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    expect(await forwardLinkedInstagramEngagement(fakeDb('line-friend-2'), {
+      followerId: 3,
+      eventType: 'instagram_story_replied',
+      sourceEventId: 'a:story:mid-9',
+      subjectKey: 'story-9',
+      metadata: { storyUrl: 'https://example.com/s/9' },
+    }, fetchImpl)).toBe(true);
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body as string)).toMatchObject({
+      eventType: 'instagram_story_replied',
+      sourceEventId: 'a:story:mid-9',
+      subjectKey: 'story-9',
+    });
+  });
 });

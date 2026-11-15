@@ -4,6 +4,7 @@ import { resolveAccount } from '../lib/accounts.js';
 import { getHealthSnapshot } from '../lib/health.js';
 import { graphApiVersion } from '@ig-harness/ig-sdk';
 import { listDeliveryFailures } from '../lib/delivery-failures.js';
+import { guardrailSnapshot, setOutboundPaused, setDmPresenceEnabled } from '../services/human-touch.js';
 export const deliveryStatus = new Hono<Env>();
 deliveryStatus.get('/api/delivery-status', async (c) => {
     const account = await resolveAccount(c);
@@ -33,4 +34,36 @@ deliveryStatus.get('/api/delivery-failures', async (c) => {
     const limit = Number(c.req.query('limit') ?? 50);
     const data = await listDeliveryFailures(c.env.DB, account.id, { source: c.req.query('source') ?? undefined, limit: Number.isFinite(limit) ? limit : 50 });
     return c.json({ success: true, data });
+});
+
+// ── 配信ガードレールの見える化（U22）＋ 停止スイッチ ＋ 既読/入力中設定 ──
+
+deliveryStatus.get('/api/delivery-guardrails', async (c) => {
+    const account = await resolveAccount(c);
+    if (!account)
+        return c.json({ success: false, error: 'account not found' }, 404);
+    const data = await guardrailSnapshot(c.env.DB, account.id);
+    return c.json({ success: true, data });
+});
+
+deliveryStatus.post('/api/delivery-guardrails/pause', async (c) => {
+    const account = await resolveAccount(c);
+    if (!account)
+        return c.json({ success: false, error: 'account not found' }, 404);
+    const body = await c.req.json().catch(() => null) as { paused?: unknown } | null;
+    if (!body || typeof body.paused !== 'boolean')
+        return c.json({ success: false, error: 'paused (boolean) is required' }, 400);
+    await setOutboundPaused(c.env.DB, body.paused);
+    return c.json({ success: true, data: { paused: body.paused } });
+});
+
+deliveryStatus.post('/api/delivery-guardrails/presence', async (c) => {
+    const account = await resolveAccount(c);
+    if (!account)
+        return c.json({ success: false, error: 'account not found' }, 404);
+    const body = await c.req.json().catch(() => null) as { enabled?: unknown } | null;
+    if (!body || typeof body.enabled !== 'boolean')
+        return c.json({ success: false, error: 'enabled (boolean) is required' }, 400);
+    await setDmPresenceEnabled(c.env.DB, body.enabled);
+    return c.json({ success: true, data: { presenceEnabled: body.enabled } });
 });

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { fetchApi } from '@/lib/api';
 import { useAccount } from '@/contexts/account-context';
+import DeliveryGuardrails from '@/components/delivery-guardrails';
 type Data = {
     graphApiVersion: string;
     account: {
@@ -61,5 +62,6 @@ export default function DeliveryStatus() {
       {data.broadcasts.map(row => <div key={row.id} className="text-sm border-t border-kumo-line pt-2"><strong>{row.name}</strong><p>送信済み {row.sent} ／ 未送信 {row.pending} ／ 対象外 {row.skipped} ／ 要確認 {row.attention}</p></div>)}
       <details><summary className="text-sm cursor-pointer">コメント・シナリオの配信記録（{data.deliveries.length}件）</summary><ul className="mt-2 space-y-2 text-sm">{data.deliveries.map(row => <li key={`${row.kind}:${row.id}`}><span>{row.name}：</span>{row.reason ? (reasons[row.reason] ?? '配信条件・権限を確認してください') : row.status === 'sent' ? '送信済み' : row.status === 'pending' ? '送信待ち' : row.status === 'processing' ? '処理中' : '結果の確認が必要'}{row.errorCode !== null && <span className="text-xs">（Metaコード {row.errorCode}）</span>}{row.publicReplyStatus === 'failed' && <span className="text-xs text-red-600"> ／ 公開返信に失敗{row.publicReplyErrorCode != null ? `（Metaコード ${row.publicReplyErrorCode}）` : ''}</span>}</li>)}</ul></details>
     </>}
+    <DeliveryGuardrails />
   </section>;
 }

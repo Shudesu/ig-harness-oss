@@ -1,7 +1,8 @@
 export type InstagramMileageEventType =
   | 'instagram_dm_received'
   | 'instagram_comment_created'
-  | 'instagram_story_mentioned';
+  | 'instagram_story_mentioned'
+  | 'instagram_story_replied';
 
 type LineConnection = {
   id: string;

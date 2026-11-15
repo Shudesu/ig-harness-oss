@@ -3,6 +3,7 @@ import { getBroadcastById } from '@ig-harness/db';
 import type { Broadcast } from '@ig-harness/db';
 import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
 import { recordDmFailure } from '../lib/health.js';
+import { isOutboundPaused } from './human-touch.js';
 
 const BATCH_SIZE = 10;
 const WINDOW_MS = 24 * 60 * 60_000;
@@ -26,6 +27,8 @@ export async function processBroadcastSend(
   let broadcast = await getBroadcastById(db, broadcastId);
   if (!broadcast) throw new Error(`Broadcast ${broadcastId} not found`);
   if (!broadcast.account_id || (accountId && broadcast.account_id !== accountId)) throw new Error('Broadcast account mismatch');
+  // Operator stop switch: the broadcast stays scheduled, resume after unpausing.
+  if (broadcast.status !== 'sent' && await isOutboundPaused(db)) return broadcast;
   if (broadcast.status === 'sent') return broadcast;
   // Validate before claiming, then use the row returned by the atomic claim:
   // an edit may have won after our initial read. Editing/deleting helpers also
@@ -108,6 +111,8 @@ export async function processBroadcastSend(
 
 export async function processScheduledBroadcasts(db: D1Database, client: InstagramClient, workerUrl?: string, accountId?: string): Promise<void> {
   if (!accountId) return;
+  // Operator stop switch: broadcasts stay scheduled, resume after unpausing.
+  if (await isOutboundPaused(db)) return;
   const rows = await db.prepare(`SELECT id FROM broadcasts WHERE account_id=? AND
     (status='sending' OR (status='scheduled' AND julianday(scheduled_at)<=julianday(?))) ORDER BY updated_at, id LIMIT 3`)
     .bind(accountId, new Date().toISOString()).all<{ id: number }>();
