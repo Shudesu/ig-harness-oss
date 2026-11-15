@@ -39,4 +39,41 @@ export class AccountsResource {
     const res = await this.http.post<ApiResponse<AccountConnectionReport>>(`/api/accounts/${encodeURIComponent(id)}/connection-check`, { subscribe: options.subscribe === true })
     return res.data
   }
+
+  /**
+   * B-07: connection-health contract. Single account, or all accounts when
+   * id is omitted (returns { accounts, nextActions }). refresh=true re-runs
+   * the Graph-backed probes immediately.
+   */
+  async connectionHealth(id?: string, options: { refresh?: boolean } = {}): Promise<unknown> {
+    if (id) {
+      const res = await this.http.get<ApiResponse<unknown>>(
+        `/api/connection-health?account_id=${encodeURIComponent(id)}${options.refresh ? '&refresh=true' : ''}`,
+      )
+      return res.data
+    }
+    const res = await this.http.get<ApiResponse<unknown>>(`/api/connection-health${options.refresh ? '?refresh=true' : ''}`)
+    return res.data
+  }
+
+  /** B-08: read the app-side webhook subscriptions for the account's app. */
+  async appWebhook(id: string): Promise<unknown> {
+    const res = await this.http.get<ApiResponse<unknown>>(`/api/accounts/${encodeURIComponent(id)}/app-webhook`)
+    return res.data
+  }
+
+  /** B-09: repair the app-side subscription (owner, approval required). Refuses a foreign callback URL. */
+  async fixAppWebhook(id: string): Promise<unknown> {
+    const res = await this.http.post<ApiResponse<unknown>>(`/api/accounts/${encodeURIComponent(id)}/fix-app-webhook`, {})
+    return res.data
+  }
+
+  /**
+   * B-01: update existing credentials (owner). Only sent fields change; the
+   * response never echoes secrets (masked tokens, hasAppSecret booleans).
+   */
+  async update(id: string, input: { accessToken?: string; appSecret?: string; verifyToken?: string; isActive?: boolean }): Promise<IgAccount> {
+    const res = await this.http.patch<ApiResponse<IgAccount>>(`/api/accounts/${encodeURIComponent(id)}`, input)
+    return res.data
+  }
 }
