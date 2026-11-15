@@ -106,6 +106,32 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Update notes (latest first) */}
+      <div className="mb-6 rounded-lg border border-kumo-line bg-kumo-base p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-bold text-kumo-default">アップデート情報</h2>
+          <a
+            href="https://github.com/Shudesu/ig-harness-oss/blob/main/docs/manual/10-migration.md"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-kumo-subtle underline underline-offset-4"
+          >
+            更新手順（移行マニュアル）↗
+          </a>
+        </div>
+        <ul className="mt-3 space-y-2 text-sm text-kumo-default">
+          <li className="flex flex-wrap gap-x-3">
+            <span className="shrink-0 font-mono text-xs text-kumo-subtle">2026-11-16</span>
+            <span>統合ログイン（新Metaアプリ）での登録に対応。コメントはスレッド返信＋DMの自動返信。管理画面の表示を落ち着かせました（読み込み中も枠を保持、古い応答を破棄）。</span>
+          </li>
+          <li className="flex flex-wrap gap-x-3">
+            <span className="shrink-0 font-mono text-xs text-kumo-subtle">2026-11-15</span>
+            <span>リリース 20261115：既読＋入力中の既定ON、移行マニュアル追加。マイグレーション0025（追加のみ）。</span>
+          </li>
+        </ul>
+        <p className="mt-2 text-xs text-kumo-subtle">更新はマイグレーションを先に適用してからWorkerを更新します。詳細は上の移行マニュアルを参照してください。</p>
+      </div>
+
       <div className="mb-6"><DeliveryStatus /></div>
 
       {/* Summary cards */}
