@@ -1,6 +1,5 @@
 import { InstagramApiError, type InstagramClient } from '@ig-harness/ig-sdk';
 import { describeFailure, failureHint } from './delivery-failures.js';
-
 /** Fields IG Harness relies on (same list as the create-ig-harness installer). */
 export const WEBHOOK_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referral', 'comments'] as const;
 
@@ -14,7 +13,7 @@ export interface ConnectionReport {
   permissions: { comments: CheckResult; messages: CheckResult };
 }
 
-type ConnectionClient = Pick<InstagramClient, 'getMe' | 'subscribeApp' | 'getSubscribedFields' | 'probeConversations' | 'probeMediaComments' | 'getMyMedia'>;
+type ConnectionClient = Pick<InstagramClient, 'getMe' | 'subscribeApp' | 'getSubscribedFields' | 'probeConversations' | 'probeMediaComments' | 'getMyMedia' | 'requiredWebhookFields'>;
 
 /** Permission-shaped Graph errors: (#10), (#3), (#200-299). */
 function isPermissionError(error: unknown): boolean {
@@ -55,13 +54,13 @@ export async function checkAccountConnection(client: ConnectionClient, opts: { s
       // fields the operator subscribed manually (e.g. mentions, standby).
       let current: string[] = [];
       try { current = await client.getSubscribedFields(); } catch { /* fall back to the required set */ }
-      const result = await client.subscribeApp([...new Set([...WEBHOOK_FIELDS, ...current])]);
+      const result = await client.subscribeApp([...new Set([...client.requiredWebhookFields(), ...current])]);
       report.webhook.subscribedNow = result?.success === true;
     } catch (error) { subscribeError = error; }
   }
   try {
     const fields = await client.getSubscribedFields();
-    const missing = WEBHOOK_FIELDS.filter((f) => !fields.includes(f));
+    const missing = client.requiredWebhookFields().filter((f) => !fields.includes(f));
     report.webhook = { ...report.webhook, fields, missingFields: missing, state: missing.length ? 'missing' : 'ok',
       message: missing.length ? `未購読: ${missing.join(', ')}${subscribeError ? `（購読の実行に失敗: ${failed(subscribeError).message}）` : ''}` : null };
   } catch (error) {

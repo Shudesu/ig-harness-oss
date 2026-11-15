@@ -105,7 +105,7 @@ describe('checkAccountConnection', () => {
     const expired = await checkAccountConnection({ getMe: vi.fn().mockRejectedValue(new InstagramApiError('x', 401, 190)) } as any, { subscribe: true });
     expect(expired.ok).toBe(false);
     expect(expired.profile.message).toContain('トークン');
-    const client: any = { getMe: vi.fn(async () => ({ username: 'u' })), subscribeApp: vi.fn(), getSubscribedFields: vi.fn(async () => [...WEBHOOK_FIELDS]), probeConversations: vi.fn(), getMyMedia: vi.fn(async () => []), probeMediaComments: vi.fn() };
+    const client: any = { getMe: vi.fn(async () => ({ username: 'u' })), subscribeApp: vi.fn(), getSubscribedFields: vi.fn(async () => [...WEBHOOK_FIELDS]), probeConversations: vi.fn(), getMyMedia: vi.fn(async () => []), probeMediaComments: vi.fn(), requiredWebhookFields: () => WEBHOOK_FIELDS };
     const report = await checkAccountConnection(client, { subscribe: false });
     expect(client.subscribeApp).not.toHaveBeenCalled();
     expect(report.permissions.comments.state).toBe('skipped');
@@ -115,7 +115,7 @@ describe('checkAccountConnection', () => {
 
 describe('re-subscribe keeps extra fields', () => {
   it('unions the required fields with fields already subscribed (e.g. mentions)', async () => {
-    const client: any = { getMe: vi.fn(async () => ({ username: 'u' })), subscribeApp: vi.fn(async () => ({ success: true })), getSubscribedFields: vi.fn(async () => ['mentions', 'messages']), probeConversations: vi.fn(), getMyMedia: vi.fn(async () => []), probeMediaComments: vi.fn() };
+    const client: any = { getMe: vi.fn(async () => ({ username: 'u' })), subscribeApp: vi.fn(async () => ({ success: true })), getSubscribedFields: vi.fn(async () => ['mentions', 'messages']), probeConversations: vi.fn(), getMyMedia: vi.fn(async () => []), probeMediaComments: vi.fn(), requiredWebhookFields: () => WEBHOOK_FIELDS };
     await checkAccountConnection(client, { subscribe: true });
     expect(client.subscribeApp.mock.calls[0][0]).toEqual([...WEBHOOK_FIELDS, 'mentions']);
   });
@@ -133,5 +133,45 @@ describe('comment rule API separates DM body and public reply', () => {
       expect(updated.data).toMatchObject({ replyText: '', replyMode: 'mention' });
       expect((await f.request(`/api/comment-rules/${rule.id}`, 'PUT', { replyMode: 'top' })).status).toBe(400);
     } finally { f.sqlite.close(); }
+  });
+});
+
+describe('connection-type aware required webhook fields', () => {
+  it('page-linked clients subscribe and validate Page fields (no IG-only extras)', async () => {
+    const PAGE_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referrals'];
+    const client: any = {
+      getMe: vi.fn(async () => ({ username: 'shop' })),
+      subscribeApp: vi.fn(async () => ({ success: true })),
+      getSubscribedFields: vi.fn(async () => ['messages']),
+      probeConversations: vi.fn(),
+      probeMediaComments: vi.fn(),
+      getMyMedia: vi.fn(async () => []),
+      requiredWebhookFields: () => PAGE_FIELDS,
+    };
+    const report = await checkAccountConnection(client, { subscribe: true });
+    // subscribes the union of required Page fields and the current list
+    expect(client.subscribeApp.mock.calls[0][0]).toEqual([...PAGE_FIELDS]);
+    // missing is judged against the Page field set (comments is IG-only)
+    expect(report.webhook.missingFields).toEqual(['messaging_postbacks', 'messaging_referrals']);
+    expect(report.webhook.state).toBe('missing');
+    expect(report.ok).toBe(false);
+  });
+
+  it('passes for page-linked clients with all Page fields subscribed', async () => {
+    const PAGE_FIELDS = ['messages', 'messaging_postbacks', 'messaging_referrals'];
+    const client: any = {
+      getMe: vi.fn(async () => ({ username: 'shop' })),
+      subscribeApp: vi.fn(async () => ({ success: true })),
+      getSubscribedFields: vi.fn(async () => [...PAGE_FIELDS, 'mentions']),
+      probeConversations: vi.fn(),
+      probeMediaComments: vi.fn(),
+      getMyMedia: vi.fn(async () => []),
+      requiredWebhookFields: () => PAGE_FIELDS,
+    };
+    const report = await checkAccountConnection(client, { subscribe: true });
+    // keeps the operator's extra field (mentions) when re-subscribing
+    expect(client.subscribeApp.mock.calls[0][0]).toEqual([...PAGE_FIELDS, 'mentions']);
+    expect(report.webhook).toMatchObject({ state: 'ok', missingFields: [] });
+    expect(report.ok).toBe(true);
   });
 });

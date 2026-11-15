@@ -223,7 +223,7 @@ export class InstagramClient {
     action: "mark_seen" | "typing_on" | "typing_off",
   ): Promise<void> {
     if (!recipientId) throw new Error('Sender action requires a recipient ID');
-    await this.request("POST", `/${this.igUserId}/messages`, {
+    await this.request("POST", this.messagesPath(), {
       recipient: { id: recipientId },
       sender_action: action,
     });
@@ -314,8 +314,17 @@ export class InstagramClient {
     return this.connectionType === 'facebook_login' && this.pageId ? this.pageId : this.igUserId;
   }
 
+  /**
+   * Required webhook fields for this connection type. Page-linked accounts
+   * use the Page field set (`messaging_referrals`, no IG-only extras);
+   * IG-user subscriptions use the Instagram field set.
+   */
+  requiredWebhookFields(): readonly string[] {
+    return this.connectionType === 'facebook_login' && this.pageId ? PAGE_WEBHOOK_FIELDS : IG_WEBHOOK_FIELDS;
+  }
+
   async subscribeWebhooks(fields?: readonly string[]): Promise<{ node: string; fields: string[] }> {
-    fields ??= this.connectionType === 'facebook_login' && this.pageId ? PAGE_WEBHOOK_FIELDS : IG_WEBHOOK_FIELDS;
+    fields ??= this.requiredWebhookFields();
     if (!fields.length || fields.some((f) => !/^[a-z_]+$/.test(f))) throw new Error('Invalid webhook field list');
     const node = this.webhookNode();
     const path = `/${encodeURIComponent(node)}/subscribed_apps`;
