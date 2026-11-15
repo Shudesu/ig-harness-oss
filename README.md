@@ -116,6 +116,8 @@ CLI が以下を全部やる:
 - **複数 Instagram アカウント** を 1 つの Worker / ダッシュボードで管理
 - **アカウント別スコープ** — フォロワー・ゲート・配信をアカウント単位で分離
 - **Webhook ルーティング** — `entry.id` で受信アカウントを自動判定、別 Meta App もマルチシークレット署名検証で対応
+- **統合ログイン対応** — 2026-10 以降の新しい Meta アプリ（`EAA…` トークン / `graph.facebook.com`）と従来の Instagram ログイン（`IGAA…`）を自動判定で併用。既存アカウントは更新後もそのまま動作（移行手順は [docs/manual/10-migration.md](docs/manual/10-migration.md)）
+- **既読＋入力中** — 自動DMの前に既読・入力中を表示（既定 ON、配信ガードレールカードから切替可）
 
 ### 運用監視
 - **`GET /api/health`** — アカウント毎のトークン残日数・API 実叩きの生死（チェックポイント / 凍結検知）・最終 webhook 受信・DM 配信失敗数・cron 死活
@@ -169,6 +171,8 @@ MetaのStandard/Advanced Accessは、対象のInstagramプロアカウントの�
 
 - [セットアップガイド (動画・YouTube)](https://youtu.be/xzEanXQtlO0)
 - [セットアップガイド (スクショ付き)](https://harness-wiki.pages.dev/article/ig-harness-complete-setup-guide)
+- [統合ログインの手順（新しい Meta アプリ）](docs/manual/09-unified-login.md)
+- [更新手順と移行サポート（2026-11-15 リリース）](docs/manual/10-migration.md)
 - [npm: @ig-harness/sdk](https://www.npmjs.com/package/@ig-harness/sdk)
 - [npm: @ig-harness/mcp-server](https://www.npmjs.com/package/@ig-harness/mcp-server)
 - [npm: create-ig-harness](https://www.npmjs.com/package/create-ig-harness)
