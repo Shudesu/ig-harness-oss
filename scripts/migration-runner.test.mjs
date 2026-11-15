@@ -19,7 +19,7 @@ test('fresh install, second run, staff hashing and account ownership preservatio
   await applyMigrations(adapter(db));
   assert.match(db.prepare('SELECT api_key FROM staff_members').get().api_key, /^sha256:[a-f0-9]{64}$/);
   assert.equal(db.prepare('SELECT account_id FROM comment_rules').get().account_id, 'account-a');
-  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 24);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 25);
   db.close();
 });
 test('a failed file has no success marker and can resume without losing earlier migrations', async () => {
@@ -64,6 +64,6 @@ test('adopts legacy repeat-delivery history without recreating the removed uniqu
   await applyMigrations(adapter(db));
   assert.equal(db.prepare('SELECT COUNT(*) n FROM gate_deliveries').get().n, 2);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='uq_gate_deliveries_gate_follower'").get().n, 0);
-  assert.equal(db.prepare('SELECT COUNT(*) n FROM ig_schema_migrations').get().n, 24);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM ig_schema_migrations').get().n, 25);
   db.close();
 });

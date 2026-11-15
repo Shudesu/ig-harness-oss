@@ -60,6 +60,8 @@ export type Env = {
     TRACKING_ALLOW_UNSIGNED_ACTIONS?: string;
     IG_LINK_TOKEN_SECRET?: string;
     IG_GRAPH_API_VERSION?: string;
+    /** Optional override for the env-seeded default account: instagram_login | facebook_login. */
+    IG_CONNECTION_TYPE?: string;
     IG_REQUIRE_APPSECRET_PROOF?: string;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;

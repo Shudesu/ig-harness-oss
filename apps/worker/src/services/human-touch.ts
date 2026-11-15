@@ -4,7 +4,8 @@ import type { InstagramClient } from '@ig-harness/ig-sdk';
 // 設定は integration_settings のキー値ペアで持つ（migration 追加なし）。
 // 既定値:
 //   outbound_paused     = '0'（送信許可）
-//   dm_presence_enabled = '0'（既読/入力中 OFF。野田さん未決のため既定OFF）
+//   dm_presence_enabled = '1'（既読/入力中 ON。野田さん承認 2026-11-15「全部オン」。
+//     明示的に '0' を保存した場合のみ OFF）
 
 export const OUTBOUND_PAUSED_KEY = 'outbound_paused';
 export const DM_PRESENCE_ENABLED_KEY = 'dm_presence_enabled';
@@ -38,9 +39,9 @@ export async function setOutboundPaused(db: D1Database, paused: boolean): Promis
   await setSettingValue(db, OUTBOUND_PAUSED_KEY, paused ? '1' : '0');
 }
 
-/** 既定は OFF（未設定='0'）。 */
+/** 既定は ON（未設定='1'）。明示的に '0' を保存した場合のみ OFF。 */
 export async function isDmPresenceEnabled(db: D1Database): Promise<boolean> {
-  return (await readSetting(db, DM_PRESENCE_ENABLED_KEY)) === '1';
+  return (await readSetting(db, DM_PRESENCE_ENABLED_KEY)) !== '0';
 }
 
 export async function setDmPresenceEnabled(db: D1Database, enabled: boolean): Promise<void> {

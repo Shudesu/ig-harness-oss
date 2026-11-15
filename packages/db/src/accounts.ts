@@ -1,5 +1,8 @@
 import { jstNow } from './utils.js';
 
+/** Mirrors IgConnectionType in @ig-harness/ig-sdk (db must not depend on the SDK). */
+export type IgAccountConnectionType = 'instagram_login' | 'facebook_login';
+
 export interface IgAccount {
   id: string;
   ig_user_id: string;
@@ -11,8 +14,15 @@ export interface IgAccount {
   verify_token: string | null;
   is_active: number;
   is_default: number;
+  /** Added by 0025. Optional in the type so pre-0024 rows/fixtures read as instagram_login. */
+  connection_type?: IgAccountConnectionType | null;
+  page_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export function accountConnectionType(account: Pick<IgAccount, 'connection_type'>): IgAccountConnectionType {
+  return account.connection_type === 'facebook_login' ? 'facebook_login' : 'instagram_login';
 }
 
 export async function listIgAccounts(
@@ -61,6 +71,8 @@ export interface CreateIgAccountInput {
   appSecret?: string | null;
   verifyToken?: string | null;
   isDefault?: boolean;
+  connectionType?: IgAccountConnectionType;
+  pageId?: string | null;
 }
 
 export async function createIgAccount(
@@ -73,8 +85,9 @@ export async function createIgAccount(
     .prepare(
       `INSERT INTO ig_accounts
         (id, ig_user_id, username, access_token, token_expires_at, token_refreshed_at,
-         app_secret, verify_token, is_active, is_default, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+         app_secret, verify_token, is_active, is_default, created_at, updated_at,
+         connection_type, page_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
     )
     .bind(
       id,
@@ -88,6 +101,8 @@ export async function createIgAccount(
       input.isDefault ? 1 : 0,
       now,
       now,
+      input.connectionType ?? 'instagram_login',
+      input.pageId ?? null,
     )
     .run();
   return (await getIgAccountById(db, id))!;
@@ -100,6 +115,9 @@ export interface UpdateIgAccountInput {
   appSecret?: string | null;
   verifyToken?: string | null;
   isActive?: boolean;
+  /** Only switched together with a validated replacement token. */
+  connectionType?: IgAccountConnectionType;
+  pageId?: string | null;
 }
 
 export async function updateIgAccount(
@@ -117,6 +135,7 @@ export async function updateIgAccount(
     .prepare(
       `UPDATE ig_accounts SET
          username = ?, access_token = ?, app_secret = ?, verify_token = ?, is_active = ?,
+         connection_type = ?, page_id = ?,
          token_expires_at = CASE WHEN ? THEN NULL ELSE token_expires_at END,
          token_refreshed_at = CASE WHEN ? THEN NULL ELSE token_refreshed_at END,
          updated_at = ?
@@ -128,6 +147,8 @@ export async function updateIgAccount(
       patch.appSecret !== undefined ? patch.appSecret : existing.app_secret,
       patch.verifyToken !== undefined ? patch.verifyToken : existing.verify_token,
       patch.isActive !== undefined ? (patch.isActive ? 1 : 0) : existing.is_active,
+      patch.connectionType ?? accountConnectionType(existing),
+      patch.pageId !== undefined ? patch.pageId : existing.page_id ?? null,
       tokenReplaced ? 1 : 0,
       tokenReplaced ? 1 : 0,
       jstNow(),

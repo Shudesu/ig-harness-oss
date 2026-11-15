@@ -26,12 +26,12 @@ const fakeClient = () => ({
     sendSenderAction: vi.fn(async (..._args: unknown[]) => undefined),
 });
 
-describe('presence setting (U18, default OFF)', () => {
-    it('defaults to OFF', async () => {
-        expect(await isDmPresenceEnabled(state.db)).toBe(false);
+describe('presence setting (U18, default ON since 2026-11-15)', () => {
+    it('defaults to ON (operator approval 2026-11-15)', async () => {
+        expect(await isDmPresenceEnabled(state.db)).toBe(true);
     });
 
-    it('persists the ON/OFF toggle', async () => {
+    it('persists the ON/OFF toggle (explicit OFF stays OFF)', async () => {
         await setDmPresenceEnabled(state.db, true);
         expect(await isDmPresenceEnabled(state.db)).toBe(true);
         await setDmPresenceEnabled(state.db, false);
@@ -171,7 +171,7 @@ describe('guardrail snapshot (U22 visibility)', () => {
         state.sqlite.exec(`INSERT INTO messages_log(follower_id,direction,message_type,body) VALUES(1,'out','text','{}')`);
         const snap = await guardrailSnapshot(state.db, 'a');
         expect(snap.paused).toBe(false);
-        expect(snap.presenceEnabled).toBe(false);
+        expect(snap.presenceEnabled).toBe(true);
         expect(snap.window.startHourJst).toBe(9);
         expect(snap.window.endHourJst).toBe(23);
         expect(typeof snap.window.within).toBe('boolean');

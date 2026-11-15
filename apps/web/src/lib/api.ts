@@ -326,6 +326,9 @@ export interface IgAccountSummary {
   hasVerifyToken: boolean
   isActive: boolean
   isDefault: boolean
+  /** instagram_login = Instagramログイン（IGAA…）/ facebook_login = 統合ログイン（EAA…） */
+  connectionType?: 'instagram_login' | 'facebook_login'
+  pageId?: string | null
   createdAt: string
   updatedAt: string
   /** Last saved connection check (null = never checked). */
@@ -400,6 +403,11 @@ export const accountsApi = {
       { method: 'POST', body: JSON.stringify({ subscribe }) },
     )
     if (!res.data) throw new Error(res.error || '接続チェックに失敗しました')
+    return res.data
+  },
+  subscribeWebhooks: async (id: string): Promise<{ connectionType: string; node: string; fields: string[] }> => {
+    const res = await fetchApi<ApiResponse<{ connectionType: string; node: string; fields: string[] }>>(`/api/accounts/${id}/subscribe-webhooks`, { method: 'POST' })
+    if (!res.data) throw new Error(res.error || 'Webhook購読に失敗しました')
     return res.data
   },
 }

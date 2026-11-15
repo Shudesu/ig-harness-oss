@@ -72,7 +72,7 @@ export default function DeliveryGuardrails() {
                     onClick={() => toggle('presence', { enabled: !data.presenceEnabled })}
                     className="rounded-lg px-3 py-1.5 text-sm border border-kumo-line"
                 >
-                    既読＋入力中を自動DMに付ける：{data.presenceEnabled ? 'ON' : 'OFF'}（既定OFF）
+                    既読＋入力中を自動DMに付ける：{data.presenceEnabled ? 'ON' : 'OFF'}（既定ON）
                 </button>
             </div>
             <p className="text-xs text-kumo-subtle">停止中は新規の自動送信を行わず、待ち行列は停止解除後に再開します。</p>

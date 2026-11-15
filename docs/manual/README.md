@@ -20,6 +20,7 @@ OSS 本体（コード・最低限のセットアップ手順）は無料で公�
 | 5 | [LINE Cross-Link](./05-line-cross-link.md) | 🔒有料 | IG → LINE 中間ページ＋push 配信フロー |
 | 6 | [運用フロー](./06-operations.md) | 🔒有料 | 日次／週次／月次の運用ルーチンとチーム化 |
 | 7 | [トラブルシュート](./07-troubleshooting.md) | 無料 | Standard Access の壁、商標苦情、Webhook 切り分け |
+| 9 | [新しいMetaアプリでつなぐ（統合ログイン）](./09-unified-login.md) | 無料 | 2026-10以降の新規Metaアプリ（EAAトークン）での接続手順 |
 
 ## 無料 / 有料の境界
 
