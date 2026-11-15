@@ -1,3 +1,11 @@
+## Unreleased — improve-all (2026-11-15)
+
+- Public comment replies now default to a thread reply (`POST /{comment-id}/replies`); the @username top-level comment remains as reply mode `mention` for campaigns and comment rules. Comment rules get a public reply text separate from the DM body (`replyText`: null = default text, '' = none; fixes #15).
+- New `delivery_failures` log (migration 0024, additive) with Meta error code/subcode and sanitized message for private replies, DMs, public replies, webhook processing and account setup; `GET /api/delivery-failures` and a 接続状態 page show it with hints. Retained 90 days; removed by data deletion.
+- Adding an account subscribes it to webhooks (`subscribed_apps`, opt-out) and probes comments/messages permissions; results via `/api/accounts`, `/api/health`, `/api/accounts/:id/connection(-check)`.
+- SDK `accounts` resource and MCP tools `list_accounts`, `add_account`, `switch_account`, `remove_account`, `check_account_connection` (approval-gated, tokens masked).
+- Admin: sidebar regrouped (comment rules / scenarios back), minimal broadcasts / forms / tags pages, connection status page.
+
 ## Unreleased — Meta API audit (2026-10-26)
 
 - Default Graph API v25.0, configurable through IG_GRAPH_API_VERSION; version setting shared by SDK, Worker and installer. Meta's general Graph version table lists v21.0 expiry as 2027-01-21.
