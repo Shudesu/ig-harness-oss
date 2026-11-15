@@ -65,6 +65,8 @@ export type Env = {
     /** Optional override for the env-seeded default account: instagram_login | facebook_login. */
     IG_CONNECTION_TYPE?: string;
     IG_REQUIRE_APPSECRET_PROOF?: string;
+    /** Optional: the Meta App id, used to build the app access token for /debug_token and app subscriptions. */
+    IG_APP_ID?: string;
     IG_APP_SECRET: string;
     IG_ACCESS_TOKEN: string;
     IG_USER_ID: string;
