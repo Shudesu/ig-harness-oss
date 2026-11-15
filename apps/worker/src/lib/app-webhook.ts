@@ -209,6 +209,11 @@ export async function fixAppWebhook(
     };
   }
   const report = await checkAppWebhook(env, db, account);
+  await db.prepare(
+    `INSERT INTO integration_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+       updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))`,
+  ).bind(`health:app_webhook:${account.id}`, JSON.stringify(report)).run().catch(() => {});
   return { fixed: true, verifyTokenGenerated: true, report };
 }
 

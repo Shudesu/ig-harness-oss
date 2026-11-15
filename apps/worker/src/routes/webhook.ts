@@ -822,11 +822,10 @@ async function handleMentionContentEvent(
     else if (rule.match_type === 'regex') { try { isMatch = new RegExp(rule.keyword, 'i').test(mentionText); } catch { isMatch = false; } }
     if (!isMatch) continue;
 
-    const expandedBody = rule.response_body
-      .replace(/\{\{username\}\}/g, username ?? '')
-      .replace(/\{\{igsid\}\}/g, username ?? '');
+    // Codex review: rule.response_body is a DM payload (JSON) — never send it
+    // publicly. The public mention reply uses only the operator's reply_text.
     const replyText = rule.reply_text ? commentRulePublicReply(rule.reply_text, username ?? '') : null;
-    const message = (replyText ? `${replyText} ` : '') + expandedBody;
+    const message = (replyText ?? `${username ? `@${username} ` : ''}メンションありがとうございます！`);
     try {
       // Public mention reply: POST /{ig-user-id}/mentions with comment_id
       // when available; caption mentions reply on the media itself.

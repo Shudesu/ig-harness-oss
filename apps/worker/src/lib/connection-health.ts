@@ -194,10 +194,11 @@ export async function runConnectionHealth(
       : undefined,
   });
 
-  // ── ig.app.subscription (B-08; live only when requested) ──
+  // ── ig.app.subscription (B-08; live when requested or stale) ──
   let appWebhook: AppWebhookReport;
   const stored = map.get(`health:app_webhook:${accountId}`);
-  if (opts.live || !stored) {
+  const storedFresh = stored && Date.parse((JSON.parse(stored) as AppWebhookReport).checkedAt) > Date.now() - 3_600_000;
+  if (opts.live || !storedFresh) {
     appWebhook = await checkAppWebhook(env, db, account);
     await db.prepare(
       `INSERT INTO integration_settings (key, value) VALUES (?, ?)

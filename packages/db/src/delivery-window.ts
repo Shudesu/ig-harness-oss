@@ -66,12 +66,15 @@ export function currentJstHour(now = Date.now()): number {
   return new Date(now + 9 * 60 * 60_000).getUTCHours();
 }
 
-/** Push a date into the window (JST semantics), like the old enforceDeliveryWindow. */
+/** Push a date into the window. Callers pass dates already shifted to JST
+ * (Date.now() + 9h + delay), matching the historical enforceDeliveryWindow:
+ * the JST hour is read with date.getUTCHours(). */
 export function enforceWindow(window: DeliveryWindow, date: Date, preferredHour?: number): Date {
-  if (isWithinWindow(window, currentJstHour(date.getTime()))) return date;
+  const jstHour = date.getUTCHours();
+  if (isWithinWindow(window, jstHour)) return date;
   const startHour = preferredHour ?? window.start;
   const result = new Date(date);
-  if (currentJstHour(date.getTime()) >= window.end) {
+  if (jstHour >= window.end) {
     result.setUTCDate(result.getUTCDate() + 1);
   }
   result.setUTCHours(startHour, 0, 0, 0);

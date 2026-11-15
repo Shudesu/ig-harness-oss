@@ -49,7 +49,8 @@ interface DebugTokenResponse {
     app_id?: string;
     expires_at?: number;
     data_access_expires_at?: number;
-    scopes?: Array<{ scope: string }>;
+    /** Meta docs list `scopes` as string[]; tolerate the {scope} object form too. */
+    scopes?: Array<string | { scope?: string }>;
     error?: { code?: number; message?: string };
   };
   error?: { code?: number; message?: string };
@@ -89,7 +90,7 @@ export async function debugAccountToken(
       const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
       const payload = (await res.json().catch(() => ({}))) as DebugTokenResponse;
       if (payload.data?.app_id !== undefined || payload.data?.is_valid !== undefined) {
-        const scopes = (payload.data.scopes ?? []).map((s) => s.scope);
+        const scopes = (payload.data.scopes ?? []).map((s) => typeof s === 'string' ? s : s.scope ?? '').filter(Boolean);
         const required = IG_REQUIRED_SCOPES[
           account.access_token.startsWith('EAA') ? 'facebook_login' : 'instagram_login'
         ];

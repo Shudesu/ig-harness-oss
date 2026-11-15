@@ -396,14 +396,17 @@ export class InstagramClient {
 
   // ── B-18: comment moderation ──
 
-  /** Hide a comment (reversible via POST /{comment-id}/unhide in the same API). */
+  /**
+   * Hide a comment: POST /{comment-id}?hide=true (Comment moderation).
+   * Reversible via the same endpoint with hide=false.
+   */
   async hideComment(commentId: string): Promise<{ success?: boolean }> {
-    return this.request('POST', `/${encodeURIComponent(commentId)}/hide`);
+    return this.request('POST', `/${encodeURIComponent(commentId)}?hide=true`);
   }
 
   /** Un-hide a previously hidden comment. */
   async unhideComment(commentId: string): Promise<{ success?: boolean }> {
-    return this.request('POST', `/${encodeURIComponent(commentId)}/unhide`);
+    return this.request('POST', `/${encodeURIComponent(commentId)}?hide=false`);
   }
 
   // ── B-19: ice breakers / persistent menu (messenger_profile) ──

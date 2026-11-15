@@ -4,6 +4,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../index.js';
 import { resolveAccount, getAccountClient } from '../lib/accounts.js';
+import { requireRole } from '../middleware/role-guard.js';
 
 const ALLOWED_FIELDS = ['ice_breakers', 'persistent_menu', 'greeting'];
 
@@ -26,7 +27,7 @@ function validatePayload(payload: unknown): string | null {
   return null;
 }
 
-messengerProfile.get('/api/messenger-profile', async (c) => {
+messengerProfile.get('/api/messenger-profile', requireRole('owner', 'admin'), async (c) => {
   const account = await resolveAccount(c);
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const fields = readFields(c.req.query('fields'));
@@ -41,7 +42,7 @@ messengerProfile.get('/api/messenger-profile', async (c) => {
   }
 });
 
-messengerProfile.post('/api/messenger-profile', async (c) => {
+messengerProfile.post('/api/messenger-profile', requireRole('owner'), async (c) => {
   const account = await resolveAccount(c);
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const payload = await c.req.json().catch(() => null);
@@ -57,7 +58,7 @@ messengerProfile.post('/api/messenger-profile', async (c) => {
   }
 });
 
-messengerProfile.delete('/api/messenger-profile', async (c) => {
+messengerProfile.delete('/api/messenger-profile', requireRole('owner'), async (c) => {
   const account = await resolveAccount(c);
   if (!account) return c.json({ success: false, error: 'account not found' }, 404);
   const fields = readFields(c.req.query('fields'));

@@ -85,16 +85,19 @@ async function bumpSignatureCounter(db: D1Database, bucketPrefix: string, lastKe
   }
 }
 
-const signatureHours = [0, -1].map((offset) => new Date(Date.now() + offset * 3_600_000).toISOString().slice(0, 13));
+/** Latest hour buckets to scan; recomputed per call so a long-lived isolate keeps counting. */
+function signatureHoursNow(): string[] {
+  return [0, -1].map((offset) => new Date(Date.now() + offset * 3_600_000).toISOString().slice(0, 13));
+}
 
 /** Sum of signature failures over the current and previous hour buckets. Accepts a Map or a plain settings record. */
 export function signatureFailures1h(map: { get(key: string): string | undefined }, accountId: string): number {
-  return signatureHours.reduce((sum, hour) => sum + (Number(map.get(`health:sig_fail:${accountId}:${hour}`) ?? '0') || 0), 0);
+  return signatureHoursNow().reduce((sum, hour) => sum + (Number(map.get(`health:sig_fail:${accountId}:${hour}`) ?? '0') || 0), 0);
 }
 
 /** Sum of signature successes over the current and previous hour buckets. Accepts a Map or a plain settings record. */
 export function signatureSuccesses1h(map: { get(key: string): string | undefined }, accountId: string): number {
-  return signatureHours.reduce((sum, hour) => sum + (Number(map.get(`health:sig_ok:${accountId}:${hour}`) ?? '0') || 0), 0);
+  return signatureHoursNow().reduce((sum, hour) => sum + (Number(map.get(`health:sig_ok:${accountId}:${hour}`) ?? '0') || 0), 0);
 }
 
 /** Latest failure or success timestamp (failure takes precedence; null = none). */
