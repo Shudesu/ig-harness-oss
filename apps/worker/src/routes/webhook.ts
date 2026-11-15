@@ -22,7 +22,7 @@ import { handleFollowCheckPostback, triggerGateForComment, triggerGateForDmKeywo
 import type { IgAccountRef } from '../services/line-cross-link.js';
 import { listIgAccounts, getIgAccountById } from '@ig-harness/db';
 import { ensureDefaultAccount, pickAccountForEntry, toIgAccountRef, getAccountClient } from '../lib/accounts.js';
-import { recordWebhookReceived } from '../lib/health.js';
+import { recordWebhookReceived, recordSignatureFailure, recordSignatureSuccess } from '../lib/health.js';
 import { queueWebhookEvents, drainWebhookEvents } from '../services/webhook-queue.js';
 import { enqueueCommentRuleJob, normalizeReplyMode, processCommentRuleJobs, resumeCommentJobs } from '../services/comment-rule-jobs.js';
 import { forwardLinkedInstagramEngagement } from '../services/line-mileage.js';
@@ -46,6 +46,27 @@ export function parsePostbackPayload(raw: string): PostbackPayload {
 }
 
 const webhook = new Hono<Env>();
+
+/**
+ * Estimate which accounts a webhook body belongs to, for the signature-failure
+ * counter only. Reads nothing but `entry[].id` from the (unverified) body and
+ * never throws — a malformed body simply yields no account ids.
+ */
+export function estimateAccountsForBody(rawBody: string, accounts: IgAccount[]): string[] {
+  try {
+    const parsed = JSON.parse(rawBody) as { object?: unknown; entry?: Array<{ id?: unknown }> };
+    if (parsed?.object !== 'instagram' || !Array.isArray(parsed.entry)) return [];
+    const ids = new Set<string>();
+    for (const entry of parsed.entry) {
+      if (typeof entry?.id !== 'string') continue;
+      const account = pickAccountForEntry(accounts, entry.id);
+      if (account) ids.add(account.id);
+    }
+    return [...ids];
+  } catch {
+    return [];
+  }
+}
 
 // GET /webhook — Meta verification challenge
 webhook.get('/webhook', async (c) => {
@@ -83,6 +104,7 @@ webhook.post('/webhook', async (c) => {
     .filter((sec, i, arr) => arr.indexOf(sec) === i);
   // Empty/missing header is immediately invalid — skip the secret loop.
   if (!signature) {
+    c.executionCtx.waitUntil(recordSignatureFailure(db, estimateAccountsForBody(rawBody, accounts)).catch(() => {}));
     return c.json({ error: 'invalid signature' }, 403);
   }
 
@@ -96,6 +118,9 @@ webhook.post('/webhook', async (c) => {
     }
   }
   if (!valid) {
+    // B-02: record the rejection (count + last time, per estimated account).
+    // The unverified body is used only to estimate the account — never processed.
+    c.executionCtx.waitUntil(recordSignatureFailure(db, estimateAccountsForBody(rawBody, accounts)).catch(() => {}));
     console.warn('[webhook] signature verification failed; rejecting request');
     return c.json({ error: 'invalid signature' }, 403);
   }
@@ -131,6 +156,7 @@ webhook.post('/webhook', async (c) => {
     c.executionCtx.waitUntil(recordWebhookReceived(db, account.id).catch(() => {}));
     accepted.push(account);
   }
+  if (accepted.length) c.executionCtx.waitUntil(recordSignatureSuccess(db, accepted.map((a) => a.id)).catch(() => {}));
   if (accepted.length && c.env.TENANT_SCHEDULER) await armScheduler(c.env);
   c.executionCtx.waitUntil((async () => {
     for (const account of accepted) {
