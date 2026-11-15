@@ -55,6 +55,8 @@ export default function DeliveryStatus() {
     <p className="text-xs text-kumo-subtle">通常DMは最後の応答から24時間以内。コメントへの初回DMは1通で、画像・テンプレートの続きは相手の返信後に送ります。</p>
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     {!selectedAccountId && <p className="text-sm">アカウントを選ぶと結果を確認できます。</p>}
+    {/* 取得中は高さを確保してレイアウトがガクッと動かないようにする */}
+    {!data && !error && selectedAccountId && <div className="space-y-2" aria-hidden="true"><div className="h-4 w-2/3 rounded bg-kumo-line/60 animate-pulse" /><div className="h-4 w-1/2 rounded bg-kumo-line/60 animate-pulse" /><div className="h-4 w-3/4 rounded bg-kumo-line/60 animate-pulse" /></div>}
     {data && <>
       {data.account?.token_api_ok === false && <p role="alert" className="text-sm text-red-600">{data.account.token_api_reason==='account_id_mismatch'?'登録IDとトークンのアカウントが一致しません。データを保持したまま登録IDを確認してください。':data.account.token_api_reason==='api_unavailable'?'Metaへの接続確認に失敗しました。待機状態や接続設定を確認してください。':'Instagramへの再接続が必要です。設定からトークンを更新してください。'}</p>}
       {data.account?.graph_backoff_until && <p className="text-sm">API呼び出しを待機中：{new Date(data.account.graph_backoff_until).toLocaleString('ja-JP')}まで</p>}

@@ -195,7 +195,7 @@ export default function SettingsPage() {
                 type="url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://line-crm-worker.line-crm-api.workers.dev"
+                placeholder="https://ig-harness-worker.<account>.workers.dev"
                 className="w-full px-3 py-2 border border-kumo-line rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#E1306C] font-mono placeholder:text-gray-300 placeholder:font-normal"
               />
             </div>

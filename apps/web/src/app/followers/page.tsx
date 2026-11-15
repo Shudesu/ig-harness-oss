@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Tag } from '@ig-harness/shared'
 import { api } from '@/lib/api'
 import type { FollowerApi } from '@/lib/api'
@@ -104,6 +104,7 @@ export default function FollowersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedFollower, setSelectedFollower] = useState<FollowerApi | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const loadTags = useCallback(async () => {
     try {
@@ -115,6 +116,11 @@ export default function FollowersPage() {
   }, [])
 
   const loadFollowers = useCallback(async () => {
+    // 検索・ページ切替の連続操作で古い応答が後から届き、新しい一覧を
+    // 上書きしないよう、前回の取得を中断してから進める。
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
     setLoading(true)
     setError('')
     try {
@@ -125,7 +131,7 @@ export default function FollowersPage() {
       if (selectedTagId) params.tagId = selectedTagId
       if (search) params.search = search
 
-      const res = await api.followers.list(params)
+      const res = await api.followers.list(params, ac.signal)
       if (res.success && res.data) {
         setFollowers(res.data.items)
         setTotal(res.data.total)
@@ -133,10 +139,11 @@ export default function FollowersPage() {
       } else {
         setError(res.error || 'エラーが発生しました')
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError('フォロワーの読み込みに失敗しました')
     } finally {
-      setLoading(false)
+      if (!ac.signal.aborted) setLoading(false)
     }
   }, [page, selectedTagId, search])
 

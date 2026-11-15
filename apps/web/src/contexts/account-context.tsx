@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { accountsApi, setApiAccountId, ApiError, type IgAccountSummary } from '@/lib/api'
+import { useAuthStatus } from '@/contexts/auth-context'
 
 const STORAGE_KEY = 'ih_account_id'
 
@@ -53,6 +54,7 @@ function storeId(id: string) {
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<AccountWithStats[]>([])
+  const authStatus = useAuthStatus()
   const [selectedAccountId, setSelectedIdState] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null
     // Hydrate the api layer synchronously from localStorage so child pages'
@@ -100,8 +102,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    // 認証が確定するまでアカウント一覧を取りに行かない。
+    // 旧実装はチェック前に叩いて 401 を拾い、確定後に結果が来ないまま
+    // 「スイッチャーが消えたまま」になることがあった。
+    if (authStatus !== 'ok') return
     refreshAccounts()
-  }, [refreshAccounts])
+  }, [authStatus, refreshAccounts])
 
   const setSelectedAccountId = useCallback((id: string) => {
     // Always inject into the api layer first so subsequent fetches use it.

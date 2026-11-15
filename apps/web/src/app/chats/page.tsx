@@ -153,22 +153,46 @@ function MessagePanel({ friendId, onBack }: {
   const isComposingRef = useRef(false)
   const sendLockRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const loadMessages = useCallback(async () => {
+    // 会話を素早く切り替えたとき、古い会話の応答が後から届いて
+    // 新しい会話を上書きしないよう、前回の取得を必ず中断する。
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
     setLoading(true)
     try {
       const res = await fetchApi<{ success: boolean; data: MessageLog[] }>(
         `/api/friends/${friendId}/messages`,
+        { signal: ac.signal },
       )
       if (res.success) setMessages(res.data)
-    } catch { /* silent */ }
-    setLoading(false)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      /* silent */
+    }
+    if (!ac.signal.aborted) setLoading(false)
   }, [friendId])
 
-  useEffect(() => { loadMessages() }, [loadMessages])
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [messages])
+    loadMessages()
+    return () => { abortRef.current?.abort() }
+  }, [loadMessages])
+  // 会話を切り替えた直後と、ユーザーが最下部付近にいるときだけ追従する。
+  // 履歴を読み返している最中に送信・再取得で強制的に最下部へ飛ばされないようにする。
+  const nearBottomRef = useRef(true)
+  useEffect(() => {
+    if (!messages.length) return
+    if (scrollRef.current && (loading || nearBottomRef.current)) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages, loading])
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  }
 
   const handleSend = async () => {
     if (!message.trim() || sending || sendLockRef.current) return
@@ -206,7 +230,7 @@ function MessagePanel({ friendId, onBack }: {
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-1.5 bg-kumo-canvas min-h-0">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-3 space-y-1.5 bg-kumo-canvas min-h-0">
         {loading ? (
           <p className="text-center text-kumo-subtle text-sm py-6">読み込み中...</p>
         ) : messages.length === 0 ? (
