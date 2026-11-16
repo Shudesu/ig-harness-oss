@@ -30,6 +30,31 @@ export class FollowersResource {
     return res.data.count
   }
 
+  /**
+   * Contacts count (DB rows: users who have interacted with the account)
+   * alongside the account's real Instagram follower count. The two diverge in
+   * both directions — silent followers never appear in the DB, and past
+   * contacts stay after they unfollow — so they are reported separately.
+   */
+  async countDetails(): Promise<{
+    contacts: number
+    instagramFollowerCount: number | null
+    instagramFollowerCountUpdatedAt: string | null
+  }> {
+    const res = await this.http.get<
+      ApiResponse<{
+        count: number
+        instagramFollowerCount?: number | null
+        instagramFollowerCountUpdatedAt?: string | null
+      }>
+    >('/api/friends/count')
+    return {
+      contacts: res.data.count,
+      instagramFollowerCount: res.data.instagramFollowerCount ?? null,
+      instagramFollowerCountUpdatedAt: res.data.instagramFollowerCountUpdatedAt ?? null,
+    }
+  }
+
   async addTag(followerId: string, tagId: string): Promise<void> {
     await this.http.post(`/api/friends/${followerId}/tags`, { tagId })
   }

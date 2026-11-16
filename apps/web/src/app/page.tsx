@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 
 interface DashboardStats {
   followerCount: number | null
+  instagramFollowerCount: number | null
   activeCommentRulesCount: number | null
   activeScenariosCount: number | null
 }
@@ -19,9 +20,10 @@ interface StatCardProps {
   icon: React.ReactNode
   href: string
   accentColor?: string
+  note?: string
 }
 
-function StatCard({ title, value, loading, icon, href, accentColor = '#E1306C' }: StatCardProps) {
+function StatCard({ title, value, loading, icon, href, accentColor = '#E1306C', note }: StatCardProps) {
   return (
     <Link href={href} className="block bg-kumo-base rounded-lg shadow-sm border border-kumo-line p-6 hover:shadow-md transition-shadow group">
       <div className="flex items-start justify-between">
@@ -42,6 +44,7 @@ function StatCard({ title, value, loading, icon, href, accentColor = '#E1306C' }
           {icon}
         </div>
       </div>
+      {note && <p className="text-xs text-kumo-subtle mt-2">{note}</p>}
       <p className="text-xs text-kumo-subtle mt-3 group-hover:text-pink-600 transition-colors">
         詳細を見る →
       </p>
@@ -52,6 +55,7 @@ function StatCard({ title, value, loading, icon, href, accentColor = '#E1306C' }
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
     followerCount: null,
+    instagramFollowerCount: null,
     activeCommentRulesCount: null,
     activeScenariosCount: null,
   })
@@ -73,6 +77,11 @@ export default function DashboardPage() {
           followerCount:
             followerCountRes.status === 'fulfilled' && followerCountRes.value.success
               ? (followerCountRes.value.data as { count: number }).count
+              : null,
+          instagramFollowerCount:
+            followerCountRes.status === 'fulfilled' && followerCountRes.value.success
+              ? ((followerCountRes.value.data as { instagramFollowerCount?: number | null })
+                  .instagramFollowerCount ?? null)
               : null,
           activeCommentRulesCount:
             commentRulesRes.status === 'fulfilled' && commentRulesRes.value.success
@@ -135,17 +144,32 @@ export default function DashboardPage() {
       <div className="mb-6"><DeliveryStatus /></div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <StatCard
           title="フォロワー数"
-          value={stats.followerCount}
+          value={stats.instagramFollowerCount}
           loading={loading}
           href="/followers"
           accentColor="#E1306C"
+          note="Instagram の実数"
           icon={
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          }
+        />
+        <StatCard
+          title="接触ユーザー数"
+          value={stats.followerCount}
+          loading={loading}
+          href="/followers"
+          accentColor="#833AB4"
+          note="コメント・DM等で接触した人数（CRM登録数）"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
           }
         />

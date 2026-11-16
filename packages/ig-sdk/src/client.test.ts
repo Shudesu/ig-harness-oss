@@ -62,3 +62,11 @@ it('keeps Meta error message/type for operators but masks token-like strings', a
   const error = await client.replyToComment('c', 'x').catch((e) => e);
   expect(error.metaMessage).toBe('(#10) No permission access_token=****'); expect(error.metaType).toBe('OAuthException'); expect(error.message).not.toContain('No permission');
 });
+it('reads the real follower count from the IG user node', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response('{"followers_count":73}')); vi.stubGlobal('fetch', fetch);
+  const client = new InstagramClient({ accessToken: 'test', igUserId: '123' });
+  await expect(client.getMyFollowerCount()).resolves.toBe(73);
+  expect(String(fetch.mock.calls[0][0])).toContain('followers_count');
+  fetch.mockResolvedValue(new Response('{}'));
+  await expect(client.getMyFollowerCount()).resolves.toBeNull();
+});

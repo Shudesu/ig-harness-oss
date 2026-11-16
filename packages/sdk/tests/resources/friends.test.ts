@@ -74,3 +74,18 @@ describe('FriendsResource', () => {
     expect(http.delete).toHaveBeenCalledWith('/api/friends/friend-1/tags/tag-1')
   })
 })
+
+describe('FriendsResource.countDetails', () => {
+  it('returns contacts and instagram follower count separately', async () => {
+    const http = mockHttp({ get: vi.fn().mockResolvedValue({ success: true, data: { count: 25, instagramFollowerCount: 73, instagramFollowerCountUpdatedAt: '2026-11-16T00:00:00.000Z' } }) })
+    const resource = new FriendsResource(http)
+    await expect(resource.countDetails()).resolves.toEqual({ contacts: 25, instagramFollowerCount: 73, instagramFollowerCountUpdatedAt: '2026-11-16T00:00:00.000Z' })
+    expect(http.get).toHaveBeenCalledWith('/api/friends/count')
+  })
+
+  it('defaults instagram fields to null for older workers', async () => {
+    const http = mockHttp({ get: vi.fn().mockResolvedValue({ success: true, data: { count: 25 } }) })
+    const resource = new FriendsResource(http)
+    await expect(resource.countDetails()).resolves.toEqual({ contacts: 25, instagramFollowerCount: null, instagramFollowerCountUpdatedAt: null })
+  })
+})

@@ -961,7 +961,13 @@ export const api = {
     get: (id: string) =>
       fetchApi<ApiResponse<FollowerApi>>(`/api/friends/${id}`),
     count: () =>
-      fetchApi<ApiResponse<{ count: number }>>('/api/friends/count'),
+      fetchApi<
+        ApiResponse<{
+          count: number
+          instagramFollowerCount?: number | null
+          instagramFollowerCountUpdatedAt?: string | null
+        }>
+      >('/api/friends/count'),
     addTag: (followerId: string, tagId: string) =>
       fetchApi<ApiResponse<null>>(`/api/friends/${followerId}/tags`, {
         method: 'POST',

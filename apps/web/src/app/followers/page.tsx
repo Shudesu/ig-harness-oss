@@ -158,7 +158,7 @@ export default function FollowersPage() {
 
   return (
     <div>
-      <Header title="フォロワー" description="Instagramフォロワーの管理" />
+      <Header title="フォロワー" description="コメント・DM等で接触したユーザーの管理（フォロワー全員の一覧ではありません）" />
 
       {/* Filters */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 mb-4">
