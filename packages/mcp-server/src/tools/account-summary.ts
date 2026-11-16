@@ -5,7 +5,7 @@ import { getClient } from "../client.js";
 export function registerAccountSummary(server: McpServer): void {
   server.tool(
     "account_summary",
-    "Get a high-level summary of the Instagram account: follower count, active scenarios, recent broadcasts, tags, and forms. Use this to understand the current state before making changes.",
+    "Get a high-level summary of the Instagram account: contacts count and real Instagram follower count, active scenarios, recent broadcasts, tags, and forms. Use this to understand the current state before making changes. Note: followers.total is the CRM contacts count (users who have interacted), NOT the Instagram follower count — use followers.instagramFollowerCount for the real count.",
     {
       _unused: z
         .string()
@@ -16,9 +16,9 @@ export function registerAccountSummary(server: McpServer): void {
       try {
         const client = getClient();
 
-        const [totalFollowers, scenarios, broadcasts, tags, forms] =
+        const [followerCounts, scenarios, broadcasts, tags, forms] =
           await Promise.all([
-            client.followers.count(),
+            client.followers.countDetails(),
             client.scenarios.list(),
             client.broadcasts.list(),
             client.tags.list(),
@@ -32,7 +32,13 @@ export function registerAccountSummary(server: McpServer): void {
 
         const summary = {
           followers: {
-            total: totalFollowers,
+            // Back-compat: `total` is the CRM contacts count (users who have
+            // interacted), not the Instagram follower count.
+            total: followerCounts.contacts,
+            contacts: followerCounts.contacts,
+            instagramFollowerCount: followerCounts.instagramFollowerCount,
+            instagramFollowerCountUpdatedAt:
+              followerCounts.instagramFollowerCountUpdatedAt,
           },
           scenarios: {
             total: scenarios.length,

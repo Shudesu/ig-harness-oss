@@ -33,6 +33,26 @@ export class FriendsResource {
     return res.data.count
   }
 
+  /** Contacts count plus the real Instagram follower count (see FollowersResource.countDetails). */
+  async countDetails(): Promise<{
+    contacts: number
+    instagramFollowerCount: number | null
+    instagramFollowerCountUpdatedAt: string | null
+  }> {
+    const res = await this.http.get<
+      ApiResponse<{
+        count: number
+        instagramFollowerCount?: number | null
+        instagramFollowerCountUpdatedAt?: string | null
+      }>
+    >('/api/friends/count')
+    return {
+      contacts: res.data.count,
+      instagramFollowerCount: res.data.instagramFollowerCount ?? null,
+      instagramFollowerCountUpdatedAt: res.data.instagramFollowerCountUpdatedAt ?? null,
+    }
+  }
+
   async addTag(friendId: string, tagId: string): Promise<void> {
     await this.http.post(`/api/friends/${friendId}/tags`, { tagId })
   }

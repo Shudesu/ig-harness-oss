@@ -247,6 +247,25 @@ export class InstagramClient {
   }
 
   /**
+   * The account's real Instagram follower count, read from the IG user node.
+   * There is no API to list followers, but the aggregate count is available.
+   * Returns null when the field is absent from the response.
+   */
+  async getMyFollowerCount(): Promise<number | null> {
+    const value =
+      this.connectionType === 'facebook_login'
+        ? await this.request<{ followers_count?: number }>(
+            'GET',
+            `/${this.igUserId}?fields=followers_count`,
+          )
+        : await this.request<{ followers_count?: number }>(
+            'GET',
+            `/me?fields=followers_count`,
+          );
+    return typeof value.followers_count === 'number' ? value.followers_count : null;
+  }
+
+  /**
    * Facebook Login / Unified login only: IG professional accounts this token
    * can act for. Unified login system-user tokens list them through
    * /me/assigned_instagram_accounts (no Page); Page-linked Facebook Login user

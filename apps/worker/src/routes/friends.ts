@@ -12,7 +12,7 @@ import {
   jstNow,
   getIgAccountById,
 } from '@ig-harness/db';
-import type { Friend as DbFriend, Tag as DbTag } from '@ig-harness/db';
+import type { Friend as DbFriend, Tag as DbTag, IgAccount } from '@ig-harness/db';
 import { resolveAccount, getAccountClient } from '../lib/accounts.js';
 import type { Env } from '../index.js';
 
@@ -123,6 +123,58 @@ friends.get('/api/friends', async (c) => {
   }
 });
 
+const FOLLOWER_COUNT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * The account's real Instagram follower count. The followers table only holds
+ * users who have interacted with the account (comment / DM / mention), so its
+ * row count is a contacts count, not a follower count. The real count comes
+ * from the IG user node and is cached for an hour to stay well inside API
+ * rate limits. Never throws: on any failure it returns the stale cache or null.
+ */
+async function getInstagramFollowerCount(
+  env: Env['Bindings'],
+  db: D1Database,
+  account: IgAccount,
+): Promise<{ count: number | null; updatedAt: string | null }> {
+  const key = `profile:followers_count:${account.id}`;
+  let cached: { count: number; fetchedAt: string } | null = null;
+  try {
+    const row = await db.prepare('SELECT value FROM integration_settings WHERE key = ?')
+      .bind(key)
+      .first<{ value: string }>();
+    if (row?.value) {
+      const parsed = JSON.parse(row.value) as { count?: unknown; fetchedAt?: unknown };
+      if (typeof parsed.count === 'number' && typeof parsed.fetchedAt === 'string') {
+        cached = { count: parsed.count, fetchedAt: parsed.fetchedAt };
+        if (Date.now() - Date.parse(parsed.fetchedAt) < FOLLOWER_COUNT_CACHE_TTL_MS) {
+          return { count: cached.count, updatedAt: cached.fetchedAt };
+        }
+      }
+    }
+  } catch { /* cache read failure: fall through to a live fetch */ }
+
+  try {
+    const client = await getAccountClient(env, db, account);
+    const fresh = await client.getMyFollowerCount();
+    if (fresh !== null) {
+      const fetchedAt = new Date().toISOString();
+      await db.prepare(
+        `INSERT INTO integration_settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', datetime('now'))`,
+      )
+        .bind(key, JSON.stringify({ count: fresh, fetchedAt }))
+        .run()
+        .catch(() => {});
+      return { count: fresh, updatedAt: fetchedAt };
+    }
+  } catch (err) {
+    console.error('GET /api/friends/count follower-count fetch error:', err);
+  }
+  return cached ? { count: cached.count, updatedAt: cached.fetchedAt } : { count: null, updatedAt: null };
+}
+
 // GET /api/friends/count - friend count (must be before /:id)
 friends.get('/api/friends/count', async (c) => {
   try {
@@ -137,7 +189,17 @@ friends.get('/api/friends/count', async (c) => {
     } else {
       count = await getFriendCount(c.env.DB, { accountId: account.id });
     }
-    return c.json({ success: true, data: { count } });
+    // `count` stays the DB contacts count for backward compatibility; the real
+    // Instagram follower count travels alongside it under its own name.
+    const instagram = await getInstagramFollowerCount(c.env, c.env.DB, account);
+    return c.json({
+      success: true,
+      data: {
+        count,
+        instagramFollowerCount: instagram.count,
+        instagramFollowerCountUpdatedAt: instagram.updatedAt,
+      },
+    });
   } catch (err) {
     console.error('GET /api/friends/count error:', err);
     return c.json({ success: false, error: 'Internal server error' }, 500);
