@@ -9,10 +9,11 @@
   },
   "dependencies": {
     "@ig-harness/shared": "workspace:*",
-    "next": "^15.1.0",
+    "next": "15.5.28",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@cloudflare/kumo": "^2.12.0"
+    "@cloudflare/kumo": "^2.12.0",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

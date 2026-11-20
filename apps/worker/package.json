@@ -16,7 +16,7 @@
     "@ig-harness/db": "workspace:*",
     "@ig-harness/ig-sdk": "workspace:*",
     "@ig-harness/shared": "workspace:*",
-    "hono": "^4.6.0"
+    "hono": "4.12.25"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.0.0",

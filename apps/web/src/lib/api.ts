@@ -7,7 +7,7 @@ import type {
 
 // Cloud tenants share one static build and call their own origin. Standalone
 // Pages builds must still specify the API destination explicitly.
-const API_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NEXT_PUBLIC_SAME_ORIGIN_API === '1' ? '' : undefined)
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || (process.env.NEXT_PUBLIC_SAME_ORIGIN_API === '1' ? '' : undefined)
 if (API_URL === undefined) {
   throw new Error(
     'NEXT_PUBLIC_API_URL is not set. Build cannot proceed without a valid API URL. ' +
