@@ -11,7 +11,8 @@ import {
   createFormSubmission,
   jstNow,
 } from '@ig-harness/db';
-import { getFriendByLineUserId, getFriendById, getIgAccountById } from '@ig-harness/db';
+import { getFriendById, getIgAccountById } from '@ig-harness/db';
+import { issueFormToken, verifyTrackingToken } from '../lib/tracking-token.js';
 import { addTagToFriend, enrollFriendInScenario } from '@ig-harness/db';
 import type { Form as DbForm, FormSubmission as DbFormSubmission } from '@ig-harness/db';
 import { resolveAccount, getAccountClient } from '../lib/accounts.js';
@@ -186,6 +187,36 @@ forms.get('/api/forms/:id/submissions', async (c) => {
   }
 });
 
+// POST /api/forms/:id/token — issue a signed per-follower form token (auth required).
+// Embed the returned token in the form link sent to that follower; the public
+// submit endpoint resolves the submitter only from this token.
+forms.post('/api/forms/:id/token', async (c) => {
+  try {
+    const formId = c.req.param('id');
+    const form = await getFormById(c.env.DB, formId);
+    if (!form) {
+      return c.json({ success: false, error: 'Form not found' }, 404);
+    }
+    const body = await c.req.json<{ followerId?: unknown }>().catch(() => ({} as { followerId?: unknown }));
+    const followerId = typeof body.followerId === 'number' ? String(body.followerId) : body.followerId;
+    if (typeof followerId !== 'string' || !/^[1-9]\d*$/.test(followerId)) {
+      return c.json({ success: false, error: 'followerId is required' }, 400);
+    }
+    const friend = await getFriendById(c.env.DB, followerId);
+    if (!friend || (form.account_id && friend.account_id !== form.account_id)) {
+      return c.json({ success: false, error: 'Follower not found for this form' }, 404);
+    }
+    const token = await issueFormToken(c.env, formId, followerId);
+    if (!token) {
+      return c.json({ success: false, error: 'Form token signing key is not configured' }, 503);
+    }
+    return c.json({ success: true, data: { token } });
+  } catch (err) {
+    console.error('POST /api/forms/:id/token error:', err);
+    return c.json({ success: false, error: 'Internal server error' }, 500);
+  }
+});
+
 // POST /api/forms/:id/submit — submit form (public)
 forms.post('/api/forms/:id/submit', async (c) => {
   try {
@@ -198,9 +229,10 @@ forms.post('/api/forms/:id/submit', async (c) => {
       return c.json({ success: false, error: 'This form is no longer accepting responses' }, 400);
     }
 
+    // Body ids (friendId / lineUserId) are deliberately ignored: this endpoint
+    // is public, so the submitter is identified only by a signed form token.
     const body = await c.req.json<{
-      lineUserId?: string;
-      friendId?: string;
+      token?: string;
       data?: Record<string, unknown>;
     }>();
 
@@ -226,15 +258,24 @@ forms.post('/api/forms/:id/submit', async (c) => {
       }
     }
 
-    // Resolve friend by lineUserId or friendId
-    let friendId: string | null = body.friendId ?? null;
-    if (!friendId && body.lineUserId) {
-      const friend = await getFriendByLineUserId(c.env.DB, body.lineUserId);
-      if (friend) {
-        // followers.id is numeric in SQLite — coerce so downstream string-typed
-        // helpers (createFormSubmission, addTagToFriend, ...) get a consistent shape.
-        friendId = String(friend.id);
+    // Resolve the submitter only from a signed form token (issueFormToken).
+    // Without one the submission is stored anonymously with no side effects.
+    let friendId: string | null = null;
+    if (body.token !== undefined) {
+      const payload = typeof body.token === 'string'
+        ? await verifyTrackingToken(c.env, body.token, 'form', formId)
+        : null;
+      if (!payload?.followerId) {
+        return c.json({ success: false, error: 'Invalid or expired form token' }, 400);
       }
+      const friend = await getFriendById(c.env.DB, payload.followerId);
+      // The follower must exist and belong to the form's account (when set).
+      if (!friend || (form.account_id && friend.account_id !== form.account_id)) {
+        return c.json({ success: false, error: 'Invalid or expired form token' }, 400);
+      }
+      // followers.id is numeric in SQLite — coerce so downstream string-typed
+      // helpers (createFormSubmission, addTagToFriend, ...) get a consistent shape.
+      friendId = String(friend.id);
     }
 
     // Save submission (friendId null if not resolved — avoids FK constraint)

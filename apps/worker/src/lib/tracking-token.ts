@@ -36,7 +36,7 @@ async function sign(payload: object, bytes: Uint8Array): Promise<string> {
   return part + '.' + base64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(part))));
 }
 export interface TrackingPayload {
-  v: 1; purpose: 'link' | 'gate'; linkId: string; exp: number; n: string;
+  v: 1; purpose: 'link' | 'gate' | 'form'; linkId: string; exp: number; n: string;
   igsid?: string; followerId?: string; destination?: string;
 }
 export async function issueTrackingToken(env: TrackingEnv, input: Omit<TrackingPayload, 'v' | 'exp' | 'n'>, now = Date.now()): Promise<string | null> {
@@ -57,9 +57,17 @@ export async function verifyTrackingToken(env: TrackingEnv, token: string, purpo
     const seconds = Math.floor(now / 1000);
     if (p.v !== 1 || p.purpose !== purpose || p.linkId !== linkId || !Number.isSafeInteger(p.exp) || p.exp <= seconds || p.exp > seconds + TOKEN_TTL || !/^[A-Za-z0-9_-]{22}$/.test(p.n)) return null;
     if (purpose === 'gate' && (destination === undefined || p.destination !== await destinationHash(destination))) return null;
+    // A form token must name the follower directly; it identifies who is submitting.
+    if (purpose === 'form' && !p.followerId) return null;
     if (!!p.igsid === !!p.followerId || (p.igsid && (typeof p.igsid !== 'string' || p.igsid.length > 128)) || (p.followerId && (typeof p.followerId !== 'string' || !/^[1-9]\d*$/.test(p.followerId)))) return null;
     return p;
   } catch { return null; }
+}
+// Signed per-follower form link. The public submit endpoint resolves the
+// submitter only from this token (linkId = form id), never from body ids.
+export async function issueFormToken(env: TrackingEnv, formId: string, followerId: string, now = Date.now()): Promise<string | null> {
+  if (!/^[1-9]\d*$/.test(followerId)) return null;
+  return issueTrackingToken(env, { purpose: 'form', linkId: formId, followerId }, now);
 }
 // LINE spec 08 wire format. Shared secret is independent of local tracking keys.
 export async function issueIgLinkToken(env: TrackingEnv, igsid: string, iga?: string): Promise<string | null> {

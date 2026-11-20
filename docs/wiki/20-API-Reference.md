@@ -159,7 +159,8 @@ status: `draft`, `scheduled`, `sending`, `sent`
 | PUT | `/api/forms/:id` | フォーム更新 | 同上 + `isActive?` |
 | DELETE | `/api/forms/:id` | フォーム削除 | - |
 | GET | `/api/forms/:id/submissions` | 回答一覧 | - |
-| POST | `/api/forms/:id/submit` | フォーム送信 (認証不要) | `{ lineUserId?, friendId?, data? }` |
+| POST | `/api/forms/:id/token` | 回答者ごとの署名付きフォームトークン発行（要認証） | `{ followerId }` |
+| POST | `/api/forms/:id/submit` | フォーム送信 (認証不要。本人は署名付き `token` のみで決定し、本文の friendId/lineUserId は無視) | `{ token?, data? }` |
 
 fields の type: `text`, `email`, `tel`, `number`, `textarea`, `select`, `radio`, `checkbox`, `date`
 
