@@ -61,8 +61,8 @@ importers:
         specifier: 8.5.18
         version: 8.5.18
       tailwindcss:
-        specifier: ^4.0.0
-        version: 4.2.2
+        specifier: ^4.3.5
+        version: 4.3.5
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
@@ -2571,6 +2571,9 @@ packages:
   tailwindcss@4.2.2:
     resolution: {integrity: sha512-KWBIxs1Xb6NoLdMVqhbhgwZf2PGBpPEiwOqgI4pFIYbNTfBXiKYyWoTsXgBQ9WFg/OlhnvHaY+AEpW7wSmFo2Q==}
 
+  tailwindcss@4.3.5:
+    resolution: {integrity: sha512-FcQk9BuffmEHJP2G0XmB2SplU1aLTI7j07Kunk+U74Ny+XiWOtzXz9aujFZ/avntw1e2cOv/3PkgzflQ7gX2vQ==}
+
   tapable@2.3.0:
     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
     engines: {node: '>=6'}
@@ -4923,6 +4926,8 @@ snapshots:
   supports-color@10.2.2: {}
 
   tailwindcss@4.2.2: {}
+
+  tailwindcss@4.3.5: {}
 
   tapable@2.3.0: {}
 
