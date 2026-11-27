@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { applyMigrations, splitSql } from './migration-runner.mjs';
 const repoDir = fileURLToPath(new URL('../', import.meta.url));
@@ -22,6 +23,21 @@ test('fresh install, second run, staff hashing and account ownership preservatio
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ig_schema_migrations').get().n, 27);
   db.close();
 });
+test('completes a schema-only install so Settings queries can run', async (t) => {
+  const db = new DatabaseSync(':memory:');
+  t.after(() => db.close());
+  db.exec(readFileSync(new URL('../packages/db/schema.sql', import.meta.url), 'utf8'));
+
+  const settingsQuery = 'SELECT value FROM integration_settings WHERE key = ?';
+  const connectionsQuery = 'SELECT * FROM line_harness_connections ORDER BY is_default DESC, created_at ASC';
+  assert.throws(() => db.prepare(settingsQuery), /no such table: integration_settings/);
+  assert.throws(() => db.prepare(connectionsQuery), /no such table: line_harness_connections/);
+
+  await applyMigrations(adapter(db));
+  assert.deepEqual(db.prepare(settingsQuery).all('test-setting'), []);
+  assert.deepEqual(db.prepare(connectionsQuery).all(), []);
+});
+
 test('a failed file has no success marker and can resume without losing earlier migrations', async () => {
   const db = new DatabaseSync(':memory:');
   await assert.rejects(applyMigrations(adapter(db, (sql) => sql.includes('CREATE TABLE broadcast_runs'))), /0018_delivery_safety/);
@@ -38,7 +54,6 @@ test('applied-file drift stops rather than silently skipping a changed migration
   db.close();
 });
 test('adopts an untracked partially upgraded DB without dropping staff metadata or account scope', async () => {
-  const { readFileSync } = await import('node:fs');
   const db = new DatabaseSync(':memory:');
   const schema = readFileSync(new URL('../packages/db/schema.sql', import.meta.url), 'utf8')
     .replace('  line_friend_uuid TEXT,\n', '').replace('CREATE INDEX IF NOT EXISTS idx_followers_line_friend_uuid ON followers(line_friend_uuid);', '');
