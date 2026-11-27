@@ -229,17 +229,15 @@ https://line-harness.your-account.workers.dev
 
 ```bash
 pnpm db:migrate
-# => wrangler d1 execute line-crm --file=packages/db/schema.sql
 ```
 
 ### ローカル
 
 ```bash
 pnpm db:migrate:local
-# => wrangler d1 execute line-crm --file=packages/db/schema.sql --local
 ```
 
-スキーマは `CREATE TABLE IF NOT EXISTS` を使用しているため、冪等に実行可能。既存テーブルはスキップされる。
+どちらのコマンドも Worker の D1 バインディング `DB` を対象にします。新規 DB ではベーススキーマを作成してから、未適用の migration を順に実行します。`schema.sql` だけを適用済みの場合も、対象環境のコマンドを実行すると設定画面に必要なテーブルが作成されます。
 
 ### D1 データベース作成 (初回のみ)
 

@@ -104,15 +104,14 @@ npx wrangler d1 create line-crm
 # 出力される database_id を wrangler.toml に記入
 ```
 
-### スキーマ適用
+### スキーマと migration の適用
 
 ```bash
 # 本番
-npx wrangler d1 execute line-crm --file=packages/db/schema.sql
+pnpm db:migrate
 
 # ローカル開発
 pnpm db:migrate:local
-# = wrangler d1 execute line-crm --file=packages/db/schema.sql --local
 ```
 
 ### D1 ダッシュボード確認
@@ -311,6 +310,6 @@ pnpm dev:web             # 管理画面ローカル起動
 pnpm build               # 全パッケージビルド
 pnpm deploy:worker       # Workers デプロイ
 pnpm deploy:web          # 管理画面ビルド
-pnpm db:migrate          # 本番D1にスキーマ適用
-pnpm db:migrate:local    # ローカルD1にスキーマ適用
+pnpm db:migrate          # 本番D1に migration を適用
+pnpm db:migrate:local    # ローカルD1に migration を適用
 ```

@@ -118,8 +118,8 @@ echo "Backup completed: $BACKUP_DIR"
 ### リストア
 
 ```bash
-# schema.sql で空テーブル作成
-wrangler d1 execute line-crm --file=packages/db/schema.sql
+# 復元先の D1 を Worker の DB バインディングに設定してから実行
+pnpm db:migrate
 
 # JSON からデータ復元（手動 INSERT が必要）
 ```
